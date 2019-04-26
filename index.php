@@ -281,7 +281,7 @@ function render_list($path, $files)
                         $parent_url = $current_url;
                     }
                     ?>
-                    <a href="<?php echo $parent_url; ?>" class="back-link">
+                    <a href="<?php echo path_format($parent_url); ?>" class="back-link">
                         <ion-icon name="arrow-back"></ion-icon>
                     </a>
                 <?php } ?>
@@ -340,10 +340,11 @@ function render_list($path, $files)
         var path = decodeURIComponent('<?php echo urlencode($path); ?>');
 
         function path_format(path) {
+            path = '/' + path;
             while (path.indexOf('//') !== -1) {
                 path = path.replace('//', '/')
             }
-            return '/' + path.replace(/^\/|\/$/g, '')
+            return path
         }
 
         document.querySelectorAll('.list-header-container h3').forEach(function (e) {

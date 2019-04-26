@@ -33,6 +33,7 @@ function curl_request($url, $data = false, $headers = [])
 
 function path_format($path)
 {
+    $path = '/' . $path;
     while (strpos($path, '//') !== FALSE) {
         $path = str_replace('//', '/', $path);
     }
