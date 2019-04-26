@@ -29,7 +29,6 @@ When redirected, replace <code>http://localhost</code> with current host', 'Erro
     try {
         $files = list_files($path);
     } catch (\Exception $e) {
-        var_export($e);
         return message($e->getMessage(), 'Exception', 500);
     }
 
