@@ -4,7 +4,7 @@ include 'vendor/autoload.php';
 include 'functions.php';
 global $config;
 $config = [
-    'base_path' => '/release/QDrive',
+    'base_path' => getenv('base_path'),
     'refresh_token' => ''
 ];
 
@@ -15,7 +15,9 @@ function main_handler($event, $context)
     $path = substr($event['path'], strlen($event['requestContext']['path']));
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = $config['base_path'] . $path;
-
+    if (!$config['base_path']) {
+        return message('Missing env <code>base_path</code>');
+    }
     if (!$config['refresh_token']) {
         if (strpos($path, '/authorization_code') !== FALSE && isset($_GET['code'])) {
             return message(get_refresh_token($_GET['code']));
