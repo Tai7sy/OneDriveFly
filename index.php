@@ -4,8 +4,9 @@ include 'vendor/autoload.php';
 include 'functions.php';
 global $config;
 $config = [
-    'base_path' => getenv('base_path'),
-    'refresh_token' => ''
+    'base_path' => getenv('base_path'), // 程序目录, 需要在环境变量配置
+    'list_path' => '', // 需要列出的网盘路径, 默认根路径
+    'refresh_token' => '',
 ];
 
 function main_handler($event, $context)
@@ -55,10 +56,13 @@ function get_refresh_token($code)
  */
 function list_files($path = '/')
 {
+    $is_preview = false;
+    if (substr($path, -8) === '/preview') {
+        $is_preview = true;
+        $path = substr($path, 0, -8);
+    }
     global $config;
-    while (strpos($path, '//') !== FALSE) $path = str_replace('//', '/', $path);
-    if ($path === '' || !$path) $path = '/';
-
+    $path = path_format($config['list_path'] . path_format($path));
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
     if (!($files = $cache->fetch('path_' . $path))) {
 
@@ -87,13 +91,16 @@ function list_files($path = '/')
             $cache->save('path_' . $path, $files, 60);
         }
     }
-    if (isset($files['file'])) {
-        // is file
+    if (isset($files['file']) && !$is_preview) {
+        // is file && not preview mode
         return output('', 302, false, [
             'Location' => $files['@microsoft.graph.downloadUrl']
         ]);
     }
     // return '<pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
+    if (substr($path, 0, strlen($config['list_path'])) === $config['list_path']) {
+        $path = substr($path, strlen($config['list_path']));
+    }
     return render_list($path, $files);
 }
 
@@ -272,6 +279,9 @@ function render_list($path, $files)
             <div class="list-header-container">
                 <?php if ($path !== '/') {
                     $current_url = $_SERVER['PHP_SELF'];
+                    if (substr($current_url, -8) === '/preview') {
+                        $current_url = substr($current_url, 0, -8);
+                    }
                     while (substr($current_url, -1) === '/') {
                         $current_url = substr($current_url, 0, -1);
                     }
@@ -288,49 +298,90 @@ function render_list($path, $files)
                 <h3><?php echo $path; ?></h3>
             </div>
             <div class="list-body-container">
-                <table class="list-table">
-                    <tr>
-                        <th class="file" width="60%">文件</th>
-                        <th class="updated_at" width="25%">修改时间</th>
-                        <th class="size" width="15%">大小</th>
-                    </tr>
-                    <!-- Dirs -->
+                <?php
+
+                if (isset($files['file'])) {
+
+                    ?>
+                    <div style="margin: 24px 4px 4px; text-align: center">
+                        <div style="margin: 24px">
+                            <a href="<?php echo $files['@microsoft.graph.downloadUrl'] ?>">
+                                <ion-icon name="download"></ion-icon>&nbsp;下载
+                            </a>
+                        </div>
+                        <?php
+                        $ext = strtolower(substr($path, strrpos($path, '.') + 1));
+                        if (in_array($ext, ['bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                            echo '
+                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%">
+                        ';
+                        } elseif (in_array($ext, ['mp4', 'webm', 'ogg'])) {
+                            echo '
+                        <video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>
+                        ';
+
+                        } elseif (in_array($ext, ['mp3', 'flac', 'wav'])) {
+                            echo '
+                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%" ></audio>
+                        ';
+                        }else{
+                            echo '<span>文件格式不支持预览</span>';
+                        }
+                        ?>
+                    </div>
                     <?php
-                    if (isset($files['error'])) {
-                        echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
-                    } else {
-                        foreach ($files['children'] as $file) {
-                            // Folders
-                            if (isset($file['folder'])) { ?>
-                                <tr data-to>
-                                    <td class="file">
-                                        <ion-icon name="folder"></ion-icon>
-                                        <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
-                                            <?php echo $file['name']; ?>
-                                        </a>
-                                    </td>
-                                    <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
-                                    <td class="size"><?php echo size_format($file['size']); ?></td>
-                                </tr>
-                            <?php }
-                        }
-                        foreach ($files['children'] as $file) {
-                            // Files
-                            if (isset($file['file'])) { ?>
-                                <tr data-to>
-                                    <td class="file">
-                                        <ion-icon name="document"></ion-icon>
-                                        <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
-                                            <?php echo $file['name']; ?>
-                                        </a>
-                                    </td>
-                                    <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
-                                    <td class="size"><?php echo size_format($file['size']); ?></td>
-                                </tr>
-                            <?php }
-                        }
-                    } ?>
-                </table>
+                } else {
+                    ?>
+                    <table class="list-table">
+                        <tr>
+                            <th class="file" width="60%">文件</th>
+                            <th class="updated_at" width="25%">修改时间</th>
+                            <th class="size" width="15%">大小</th>
+                        </tr>
+                        <!-- Dirs -->
+                        <?php
+                        if (isset($files['error'])) {
+                            echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
+                        } else {
+                            foreach ($files['children'] as $file) {
+                                // Folders
+                                if (isset($file['folder'])) { ?>
+                                    <tr data-to>
+                                        <td class="file">
+                                            <ion-icon name="folder"></ion-icon>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
+                                                <?php echo $file['name']; ?>
+                                            </a>
+                                        </td>
+                                        <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
+                                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                                    </tr>
+                                <?php }
+                            }
+                            foreach ($files['children'] as $file) {
+                                // Files
+                                if (isset($file['file'])) { ?>
+                                    <tr data-to>
+                                        <td class="file">
+                                            <ion-icon name="document"></ion-icon>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/preview">
+                                                <?php echo $file['name']; ?>
+                                            </a>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
+                                                <ion-icon name="download"></ion-icon>
+                                            </a>
+                                        </td>
+                                        <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
+                                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                                    </tr>
+                                <?php }
+                            }
+
+                        } ?>
+                    </table>
+                    <?php
+                }
+                ?>
             </div>
         </div>
     </div>
@@ -361,7 +412,7 @@ function render_list($path, $files)
             e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
         });
     </script>
-    <script src="//unpkg.com/ionicons@4.4.4/dist/ionicons.js"></script>
+    <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
     </html>
 
     <?php
@@ -369,8 +420,9 @@ function render_list($path, $files)
 }
 
 // for debug
-if (php_sapi_name() !== 'cli')
-    print_r(main_handler(array(
+if (php_sapi_name() !== 'cli') {
+    $config['base_path'] = '/OneDrive_SCF';
+    echo(main_handler(array(
         'headerParameters' =>
             array(),
         'headers' =>
@@ -389,7 +441,7 @@ if (php_sapi_name() !== 'cli')
                 'x-qualifier' => '$LATEST',
             ),
         'httpMethod' => 'GET',
-        'path' => '/QDrive/environment/NET',
+        'path' => '/QDrive',
         'pathParameters' =>
             array(),
         'queryString' =>
@@ -406,4 +458,5 @@ if (php_sapi_name() !== 'cli')
                 'sourceIp' => '124.115.222.150',
                 'stage' => 'release',
             )
-    ), null));
+    ), null)['body']);
+}
