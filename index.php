@@ -322,7 +322,7 @@ function render_list($path, $files)
 
                         } elseif (in_array($ext, ['mp3', 'flac', 'wav'])) {
                             echo '
-                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%" ></audio>
+                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
                         ';
                         }else{
                             echo '<span>文件格式不支持预览</span>';
@@ -349,7 +349,7 @@ function render_list($path, $files)
                                     <tr data-to>
                                         <td class="file">
                                             <ion-icon name="folder"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/">
                                                 <?php echo $file['name']; ?>
                                             </a>
                                         </td>
@@ -367,7 +367,7 @@ function render_list($path, $files)
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/preview">
                                                 <?php echo $file['name']; ?>
                                             </a>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']) . ($file['name'] === 'preview' ? '/' : ''); ?>">
                                                 <ion-icon name="download"></ion-icon>
                                             </a>
                                         </td>
@@ -391,7 +391,7 @@ function render_list($path, $files)
         var path = decodeURIComponent('<?php echo urlencode($path); ?>');
 
         function path_format(path) {
-            path = '/' + path;
+            path = '/' + path + '/';
             while (path.indexOf('//') !== -1) {
                 path = path.replace('//', '/')
             }
