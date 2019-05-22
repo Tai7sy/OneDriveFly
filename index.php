@@ -29,13 +29,7 @@ Please set a <code>refresh_token</code> in environments<br>
 When redirected, replace <code>http://localhost</code> with current host', 'Error', 500);
     }
 
-    try {
-        $files = list_files($path);
-    } catch (\Exception $e) {
-        return message($e->getMessage(), 'Exception', 500);
-    }
-
-    return $files;
+    return list_files($path);
 }
 
 function get_refresh_token($code)
@@ -49,20 +43,11 @@ function get_refresh_token($code)
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
 
-/**
- * @param $path
- * @return false|mixed|string
- * @throws Exception
- */
-function list_files($path = '/')
+function fetch_files($path = '/')
 {
-    $is_preview = false;
-    if (substr($path, -8) === '/preview') {
-        $is_preview = true;
-        $path = substr($path, 0, -8);
-    }
     global $config;
     $path = path_format($config['list_path'] . path_format($path));
+    $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
     if (!($files = $cache->fetch('path_' . $path))) {
 
@@ -91,6 +76,18 @@ function list_files($path = '/')
             $cache->save('path_' . $path, $files, 60);
         }
     }
+    return $files;
+}
+
+function list_files($path)
+{
+    $is_preview = false;
+    if (substr($path, -8) === '/preview') {
+        $is_preview = true;
+        $path = substr($path, 0, -8);
+    }
+    $path = path_format($path);
+    $files = fetch_files($path);
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
         return output('', 302, false, [
@@ -98,9 +95,6 @@ function list_files($path = '/')
         ]);
     }
     // return '<pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
-    if (substr($path, 0, strlen($config['list_path'])) === $config['list_path']) {
-        $path = substr($path, strlen($config['list_path']));
-    }
     return render_list($path, $files);
 }
 
@@ -133,144 +127,39 @@ function render_list($path, $files)
         <meta name=viewport content="width=device-width,initial-scale=1">
         <title>QDrive</title>
         <style type="text/css">
-            body {
-                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                font-size: 14px;
-                line-height: 1em;
-                background-color: #f7f7f9;
-                color: #000000;
+            body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
+            a{color:#24292e;cursor:pointer;text-decoration:none}
+            a:hover{color:#24292e}
+            .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:3.5rem}
+            .title a{color:#333;text-decoration:none}
+            .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
+            .list-container{position:relative;overflow:hidden}
+            .list-header-container{position:relative}
+            .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;padding:30px 20px;vertical-align:middle;text-decoration:none}
+            .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
+            .list-header-container .table-header{margin:0;border:0 none;padding:30px 20px;text-align:center;font-weight:400;color:#000;background-color:#f7f7f9}
+            .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
+            .list-table{width:100%;padding:20px;border-spacing:0}
+            .list-table tr{height:40px}
+            .list-table tr[data-to]:hover{background:#f1f1f1}
+            .list-table tr:first-child{background:#fff}
+            .list-table td,.list-table th{padding:0 10px;text-align:left}
+            .list-table .size,.list-table .updated_at{text-align:right}
+            .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
+            .readme{padding:8px;background-color: #fff;}
+            #readme{padding: 20px;text-align: left}
+
+            @media only screen and (max-width:480px){
+                .title{margin-bottom: 24px}
+                .list-wrapper{width:95%; margin-bottom:24px;}
+                .list-table {padding: 8px}
+                .list-table td, .list-table th{padding:0 10px;text-align:left;white-space:nowrap;overflow:auto;max-width:80px}
             }
-
-            a {
-                color: #2eb5ef;
-                cursor: pointer;
-                text-decoration: none;
-            }
-
-            a:hover {
-                color: #2eb5ef;
-            }
-
-            h1 {
-                text-align: center;
-                margin-top: 2rem;
-                letter-spacing: 2px;
-                margin-bottom: 3.5rem;
-            }
-
-            h1 a {
-                color: #333;
-                text-decoration: none;
-            }
-
-            .list-wrapper {
-                width: 80%;
-                margin: 0 auto 40px;
-                position: relative;
-                box-shadow: 0 0 32px 0 rgba(0, 0, 0, 0.1);
-            }
-
-            .list-container {
-                position: relative;
-                overflow: hidden;
-            }
-
-            .list-container .list-header-container {
-                position: relative;
-            }
-
-            .list-container .list-header-container a.back-link {
-                color: #000000;
-                display: inline-block;
-                position: absolute;
-                font-size: 16px;
-                padding: 30px 20px;
-                vertical-align: middle;
-                text-decoration: none;
-            }
-
-            body, .list-wrapper, .list-container, .list-header-container, a.back-link:hover {
-                color: #2eb5ef;
-            }
-
-            .list-container .list-header-container h3 {
-                margin: 0;
-                border: 0 none;
-                padding: 30px 20px;
-                text-align: center;
-                font-weight: 400;
-                color: #000000;
-                background-color: #f7f7f9;
-            }
-
-            .list-body-container {
-                position: relative;
-                left: 0;
-                overflow-x: hidden;
-                overflow-y: auto;
-                box-sizing: border-box;
-                background: white;
-            }
-
-            .list-body-container .list-table {
-                width: 100%;
-                padding: 20px;
-                border-spacing: 0;
-            }
-
-            .list-body-container .list-table tr {
-                height: 40px;
-            }
-
-            .list-body-container .list-table tr a {
-
-            }
-
-            .list-body-container .list-table tr[data-to]:hover {
-                background: #f1f1f1;
-            }
-
-            .list-body-container .list-table tr:first-child {
-                background: white;
-            }
-
-            .list-body-container .list-table th,
-            .list-body-container .list-table td {
-                padding: 0 10px;
-                text-align: left;
-            }
-
-            .list-body-container .list-table .updated_at,
-            .list-body-container .list-table .size {
-                text-align: right;
-            }
-
-            .list-body-container .list-table .file ion-icon {
-                font-size: 15px;
-                margin-right: 5px;
-                vertical-align: bottom;
-            }
-
-            @media only screen and (max-width: 480px) {
-                .list-wrapper {
-                    width: 95%;
-                }
-
-                .list-body-container .list-table th,
-                .list-body-container .list-table td {
-                    padding: 0 10px;
-                    text-align: left;
-                    white-space: nowrap;
-                    overflow: auto;
-                    max-width: 80px;
-                }
-            }
-
         </style>
     </head>
 
     <body>
-    <h1>
+    <h1 class="title">
         <a href="<?php echo $config['base_path']; ?>">QDrive</a>
     </h1>
 
@@ -295,7 +184,7 @@ function render_list($path, $files)
                         <ion-icon name="arrow-back"></ion-icon>
                     </a>
                 <?php } ?>
-                <h3><?php echo $path; ?></h3>
+                <h3 class="table-header"><?php echo $path; ?></h3>
             </div>
             <div class="list-body-container">
                 <?php
@@ -306,14 +195,15 @@ function render_list($path, $files)
                     <div style="margin: 24px 4px 4px; text-align: center">
                         <div style="margin: 24px">
                             <a href="<?php echo $files['@microsoft.graph.downloadUrl'] ?>">
-                                <ion-icon name="download"></ion-icon>&nbsp;下载
+                                <ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载
                             </a>
+                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 12px;"><?php echo path_format($config['base_path'] . '/' . $path) ?></textarea>
                         </div>
                         <?php
                         $ext = strtolower(substr($path, strrpos($path, '.') + 1));
                         if (in_array($ext, ['bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
                             echo '
-                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%">
+                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%"/>
                         ';
                         } elseif (in_array($ext, ['mp4', 'webm', 'ogg'])) {
                             echo '
@@ -324,7 +214,11 @@ function render_list($path, $files)
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
                         ';
-                        }else{
+                        } elseif (in_array($ext, ['md'])) {
+                            echo '
+                        <div id="readme">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</div>
+                        ';
+                        } else {
                             echo '<span>文件格式不支持预览</span>';
                         }
                         ?>
@@ -340,6 +234,8 @@ function render_list($path, $files)
                         </tr>
                         <!-- Dirs -->
                         <?php
+
+                        $readme = false;
                         if (isset($files['error'])) {
                             echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
                         } else {
@@ -360,7 +256,10 @@ function render_list($path, $files)
                             }
                             foreach ($files['children'] as $file) {
                                 // Files
-                                if (isset($file['file'])) { ?>
+                                if (isset($file['file'])) {
+                                    if (strtolower($file['name']) === 'readme.md')
+                                        $readme = $file;
+                                    ?>
                                     <tr data-to>
                                         <td class="file">
                                             <ion-icon name="document"></ion-icon>
@@ -380,15 +279,26 @@ function render_list($path, $files)
                         } ?>
                     </table>
                     <?php
+
+                    if ($readme) {
+                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
+<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
+<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
+<div id="readme">' . curl_request(fetch_files(path_format($path . '/' . $readme['name']))['@microsoft.graph.downloadUrl'])
+                            . '</div></div>';
+                    }
+
                 }
                 ?>
             </div>
         </div>
     </div>
     </body>
-    <script>
+    <script type="text/javascript">
+        function e(e){return e.replace(RegExp("^"+(e.match(/^(\t| )+/)||"")[0],"gm"),"")}function n(e){return(e+"").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function r(a){function c(e){var n=t[e.replace(/\*/g,"_")[1]||""],r=i[i.length-1]==e;return n?n[1]?(i[r?"pop":"push"](e),n[0|r]):n[0]:e}function o(){for(var e="";i.length;)e+=c(i[i.length-1]);return e}var l,g,s,p,u,m=/((?:^|\n+)(?:\n---+|\* \*(?: \*)+)\n)|(?:^```(\w*)\n([\s\S]*?)\n```$)|((?:(?:^|\n+)(?:\t|  {2,}).+)+\n*)|((?:(?:^|\n)([>*+-]|\d+\.)\s+.*)+)|(?:\!\[([^\]]*?)\]\(([^\)]+?)\))|(\[)|(\](?:\(([^\)]+?)\))?)|(?:(?:^|\n+)([^\s].*)\n(\-{3,}|={3,})(?:\n+|$))|(?:(?:^|\n+)(#{1,3})\s*(.+)(?:\n+|$))|(?:`([^`].*?)`)|(  \n\n*|\n{2,}|__|\*\*|[_*])/gm,i=[],h="",f=0,$={};for(a=a.replace(/^\[(.+?)\]:\s*(.+)$/gm,function(e,n,r){return $[n.toLowerCase()]=r,""}).replace(/^\n+|\n+$/g,"");s=m.exec(a);)g=a.substring(f,s.index),f=m.lastIndex,l=s[0],g.match(/[^\\](\\\\)*\\$/)||(s[3]||s[4]?l='<pre class="code '+(s[4]?"poetry":s[2].toLowerCase())+'">'+e(n(s[3]||s[4]).replace(/^\n+|\n+$/g,""))+"</pre>":s[6]?(u=s[6],u.match(/\./)&&(s[5]=s[5].replace(/^\d+/gm,"")),p=r(e(s[5].replace(/^\s*[>*+.-]/gm,""))),">"===u?u="blockquote":(u=u.match(/\./)?"ol":"ul",p=p.replace(/^(.*)(\n|$)/gm,"<li>$1</li>")),l="<"+u+">"+p+"</"+u+">"):s[8]?l='<img src="'+n(s[8])+'" alt="'+n(s[7])+'">':s[10]?(h=h.replace("<a>",'<a href="'+n(s[11]||$[g.toLowerCase()])+'">'),l=o()+"</a>"):s[9]?l="<a>":s[12]||s[14]?(u="h"+(s[14]?s[14].length:"="===s[13][0]?1:2),l="<"+u+">"+r(s[12]||s[15])+"</"+u+">"):s[16]?l="<code>"+n(s[16])+"</code>":(s[17]||s[1])&&(l=c(s[17]||"--"))),h+=g,h+=l;return(h+a.substring(f)+o()).trim()}var t={"":["<em>","</em>"],_:["<strong>","</strong>"],"\n":["<br />"]," ":["<br />"],"-":["<hr />"]};var markdown=r;
+    </script>
+    <script type="text/javascript">
         var root = '<?php echo $config["base_path"]; ?>';
-        var path = decodeURIComponent('<?php echo urlencode($path); ?>');
 
         function path_format(path) {
             path = '/' + path + '/';
@@ -398,7 +308,7 @@ function render_list($path, $files)
             return path
         }
 
-        document.querySelectorAll('.list-header-container h3').forEach(function (e) {
+        document.querySelectorAll('.table-header').forEach(function (e) {
             var path = e.innerText;
             var paths = path.split('/');
             if (paths <= 2)
@@ -411,6 +321,16 @@ function render_list($path, $files)
             e.innerHTML += paths[paths.length - 1];
             e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
         });
+
+        var $readme = document.getElementById('readme');
+        if ($readme) {
+            $readme.innerHTML = markdown($readme.innerHTML)
+        }
+
+        var $url = document.getElementById('url');
+        if ($url) {
+            $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML
+        }
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
     </html>
