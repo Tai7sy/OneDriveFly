@@ -205,10 +205,12 @@ function render_list($path, $files)
                             echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%"/>
                         ';
-                        } elseif (in_array($ext, ['mp4', 'webm', 'ogg'])) {
+                        } elseif (in_array($ext, ['mp4', 'mkv', 'avi', 'webm', 'ogg'])) {
                             echo '
-                        <video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>
-                        ';
+                        <video controls="controls" style="width: 100%">
+                            <source src="' . $files['@microsoft.graph.downloadUrl'] . '" type="video/webm">
+                            Your browser does not support the video tag.
+                        </video>';
 
                         } elseif (in_array($ext, ['mp3', 'flac', 'wav'])) {
                             echo '
