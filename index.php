@@ -1,19 +1,47 @@
 <?php
-
 include 'vendor/autoload.php';
 include 'functions.php';
+global $event1;
 global $config;
 $config = [
-    'base_path' => getenv('base_path'), // 程序目录, 需要在环境变量配置
-    'list_path' => '', // 需要列出的网盘路径, 默认根路径
+    'sitename' => getenv('sitename'),
+    'list_path' => getenv('public_path'),
+    'passfile' => getenv('passfile'),
+    'base_path' => '',
     'refresh_token' => '',
 ];
+//环境变量一定要添加：
+/*
+scfname：SCF函数的名称，一定要添加，不然出错。
+*/
+//环境变量可添加：
+/*
+sitename：网站的名称，不添加会显示为‘请在环境变量添加sitename’
+public_path：使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
+private_path：使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'
+passfile：自定义密码文件名，可以是'.password'，也可以是'aaaa.txt'等等，列目录时不会显示，只有知道密码才能下载此文件。
+*/
 
 function main_handler($event, $context)
 {
+    global $event1;
     global $config;
     $event = json_decode(json_encode($event), true);
-    $path = substr($event['path'], strlen($event['requestContext']['path']));
+    $event1 = $event;
+    $host_name = $event['headers']['host'];
+    $serviceId = $event['requestContext']['serviceId'];
+    if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
+        $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.getenv('scfname');
+        $config['list_path'] = getenv('public_path');
+        $path = substr($event['path'], 1+strlen(getenv('scfname')));
+    } else {
+        $config['base_path'] = getenv('base_path');
+        if (empty($config['base_path'])) $config['base_path'] = '/';
+        $config['list_path'] = getenv('private_path');
+        $path = substr($event['path'], strlen($event['requestContext']['path']));
+    }
+    if (empty($config['list_path'])) $config['list_path'] = '/';
+    if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = $config['base_path'] . $path;
     if (!$config['base_path']) {
@@ -81,6 +109,8 @@ function fetch_files($path = '/')
 
 function list_files($path)
 {
+    global $event1;
+    global $config;
     $is_preview = false;
     if (substr($path, -8) === '/preview') {
         $is_preview = true;
@@ -90,9 +120,13 @@ function list_files($path)
     $files = fetch_files($path);
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
-        return output('', 302, false, [
-            'Location' => $files['@microsoft.graph.downloadUrl']
-        ]);
+        $ishidden=passhidden($path);
+        if ($ishidden<4) {
+            echo json_encode($event1);
+            return output('', 302, false, [
+                'Location' => $files['@microsoft.graph.downloadUrl']
+            ]);
+        }
     }
     // return '<pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
     return render_list($path, $files);
@@ -113,10 +147,99 @@ function message($message, $title = 'Message', $statusCode = 200)
     return output('<html><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
 }
 
-function render_list($path, $files)
+function passhidden($path)
 {
     global $config;
+    if ($config['passfile'] != '') {
+        $hiddenpass=gethiddenpass($path,$config['passfile']);
+        if ($hiddenpass != '') {
+            return comppass($hiddenpass);
+        } else {
+            return 1;
+        }
+    } else {
+        return 0;
+    }
+    return 4;
+}
+
+function gethiddenpass($path,$passfile)
+{
+    $path=urldecode($path);
+    $ispassfile = fetch_files($path);
+    if (isset($ispassfile['file'])) {
+        $patharray = explode("/", $path);
+        $patharrayfile = $patharray[count($patharray)-1];
+        if (!empty($patharrayfile)) $path=substr($path,0,-strlen($patharrayfile));
+    }
+
+    while ($path !== '' ) {
+        $passfile1 = path_format($path.'/'.$passfile);
+        $passfile1 = urlencode($passfile1);
+        $ispassfile = fetch_files($passfile1);
+
+        if (isset($ispassfile['file'])) {
+            $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
+            $password=$passwordf[0];
+            $password=md5($password);
+            return $password;
+        }
+        $patharray = explode("/", $path);
+        $patharrayfile = $patharray[count($patharray)-1];
+        $path=substr($path,0,-strlen($patharrayfile)-1);
+    }
+
+    return '';
+}
+
+function comppass($pass) {
+    global $event1;
+    $_POSTbody = explode("&",$event1['body']);
+    foreach ($_POSTbody as $postvalues){
+        $tmp=explode("=",$postvalues);
+        $_POST[$tmp[0]]=$tmp[1];
+    }
+    $cookiebody = explode(";",$event1['headers']['cookie']);
+    foreach ($cookiebody as $cookievalues){
+        $tmp=explode("=",$cookievalues);
+        $_COOKIE[$tmp[0]]=$tmp[1];
+    }
+
+    if ($_POST['password1'] !== '') {
+        if (md5($_POST['password1']) === $pass ) {
+            return 2;
+        }
+    }
+    if ($_COOKIE['password'] !== '') {
+        if ($_COOKIE['password'] === $pass ) {
+            return 3;
+        }
+    }
+
+    return 4;
+}
+
+function render_list($path, $files)
+{
+    global $event1;
+    global $config;
+    date_default_timezone_set('Asia/Shanghai');
+    $base64icon=base64EncodeImage(__DIR__.'/favicon.ico');
+    $_POSTbody = explode("&",$event1['body']);
+    foreach ($_POSTbody as $postvalues){
+        $tmp=explode("=",$postvalues);
+        $_POST[$tmp[0]]=$tmp[1];
+    }
     $path = path_format(urldecode($path));
+
+    if ($path !== '/') {
+    	$pretitle = $path;
+    	$patharray = explode("/", $path);
+    	$patharrayfile = $patharray[count($patharray)-1];
+    	if (!empty($patharrayfile)) $pretitle=$patharrayfile;
+    } else {
+      $pretitle = '首页';
+    }
     @ob_start();
     ?>
     <!DOCTYPE html>
@@ -125,7 +248,9 @@ function render_list($path, $files)
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
-        <title>QDrive</title>
+        <link rel="icon" href="<?php echo $base64icon;?>" type="image/x-icon" />
+        <link rel="shortcut icon" href="<?php echo $base64icon;?>" type="image/x-icon" />
+        <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
         <style type="text/css">
             body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
             a{color:#24292e;cursor:pointer;text-decoration:none}
@@ -160,7 +285,7 @@ function render_list($path, $files)
 
     <body>
     <h1 class="title">
-        <a href="<?php echo $config['base_path']; ?>">QDrive</a>
+        <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'];?></a>
     </h1>
 
     <div class="list-wrapper">
@@ -188,16 +313,14 @@ function render_list($path, $files)
             </div>
             <div class="list-body-container">
                 <?php
-
+                $ishidden=passhidden($path);
+                if ($ishidden<4) {
                 if (isset($files['file'])) {
-
                     ?>
-                    <div style="margin: 24px 4px 4px; text-align: center">
-                        <div style="margin: 24px">
-                            <a href="<?php echo $files['@microsoft.graph.downloadUrl'] ?>">
-                                <ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载
-                            </a>
-                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 12px;"><?php echo path_format($config['base_path'] . '/' . $path) ?></textarea>
+                    <div style="margin: 12px 4px 4px; text-align: center">
+                    	  <div style="margin: 24px">
+                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;"><?php echo path_format($config['base_path'] . '/' . $path) ?></textarea>
+                            <a href="<?php echo $files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
                         </div>
                         <?php
                         $ext = strtolower(substr($path, strrpos($path, '.') + 1));
@@ -205,16 +328,17 @@ function render_list($path, $files)
                             echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%"/>
                         ';
-                        } elseif (in_array($ext, ['mp4', 'mkv', 'avi', 'webm', 'ogg'])) {
+                        } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
                             echo '
-                        <video controls="controls" style="width: 100%">
-                            <source src="' . $files['@microsoft.graph.downloadUrl'] . '" type="video/webm">
-                            Your browser does not support the video tag.
-                        </video>';
-
-                        } elseif (in_array($ext, ['mp3', 'flac', 'wav'])) {
+                        <video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>
+                        ';
+                        } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
+                        ';
+                        } elseif (in_array($ext, ['txt', 'sh'])) {
+                            echo '
+                        <div id="txt"><textarea id="txt-a" readonly style="width: 95%;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
                         ';
                         } elseif (in_array($ext, ['md'])) {
                             echo '
@@ -259,6 +383,7 @@ function render_list($path, $files)
                             foreach ($files['children'] as $file) {
                                 // Files
                                 if (isset($file['file'])) {
+                                    if ($file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
                                     if (strtolower($file['name']) === 'readme.md')
                                         $readme = $file;
                                     ?>
@@ -276,6 +401,7 @@ function render_list($path, $files)
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
                                     </tr>
                                 <?php }
+                                }
                             }
 
                         } ?>
@@ -289,18 +415,43 @@ function render_list($path, $files)
 <div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(path_format($path . '/' . $readme['name']))['@microsoft.graph.downloadUrl'])
                             . '</textarea></div></div>';
                     }
-
+                }
+                } else {
+                    echo '<div class="mdui-container-fluid">
+	<div class="mdui-col-md-6 mdui-col-offset-md-3">
+	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4></center>
+	  <form action="" method="post">
+		  <div class="mdui-textfield mdui-textfield-floating-label">
+		    <label class="mdui-textfield-label">密码</label>
+		    <input name="password1" class="mdui-textfield-input" type="password"/>
+		  </div>
+		  <br>
+		  <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">
+		  	查看
+		  </button>
+	  </form>
+	</div>
+</div>';
+                    #echo '<br>hidden';
                 }
                 ?>
             </div>
         </div>
     </div>
+    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$event1['requestContext']['sourceIp'];?></font>
     </body>
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
     <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
     <script type="text/javascript">
         var root = '<?php echo $config["base_path"]; ?>';
-
+        var $ishidden = '<?php echo $ishidden; ?>';
+        var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
+        if ($ishidden==2) {
+            var expd = new Date();
+            expd.setTime(expd.getTime()+(12*60*60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="password="+$hiddenpass+";"+expires;
+        }
         function path_format(path) {
             path = '/' + path + '/';
             while (path.indexOf('//') !== -1) {
@@ -327,57 +478,27 @@ function render_list($path, $files)
         if ($readme) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
         }
-
+        var $textarea=document.getElementById('txt-a');
+        if ($textarea) {
+            $textarea.style.height = $textarea.scrollHeight + 'px';
+        }
         var $url = document.getElementById('url');
         if ($url) {
-            $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML
+            $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
+            $url.style.height = $url.scrollHeight + 'px';
         }
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
+    <!--<?php echo json_encode($event1);?>-->
     </html>
-
     <?php
     return output(ob_get_clean());
 }
 
-// for debug
-if (php_sapi_name() !== 'cli') {
-    $config['base_path'] = '/OneDrive_SCF';
-    echo(main_handler(array(
-        'headerParameters' =>
-            array(),
-        'headers' =>
-            array(
-                'accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
-                'accept-encoding' => 'gzip, deflate, br',
-                'accept-language' => 'zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7',
-                'cache-control' => 'max-age=0',
-                'connection' => 'keep-alive',
-                'endpoint-timeout' => '15',
-                'host' => 'service-pzvjomp6-1251059978.gz.apigw.tencentcs.com',
-                'referer' => 'https://service-pzvjomp6-1251059978.gz.apigw.tencentcs.com/release/QDrive',
-                'upgrade-insecure-requests' => '1',
-                'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36',
-                'x-anonymous-consumer' => 'true',
-                'x-qualifier' => '$LATEST',
-            ),
-        'httpMethod' => 'GET',
-        'path' => '/QDrive',
-        'pathParameters' =>
-            array(),
-        'queryString' =>
-            array(),
-        'queryStringParameters' =>
-            array(),
-        'requestContext' =>
-            array(
-                'httpMethod' => 'ANY',
-                'identity' =>
-                    array(),
-                'path' => '/QDrive',
-                'serviceId' => 'service-pzvjomp6',
-                'sourceIp' => '124.115.222.150',
-                'stage' => 'release',
-            )
-    ), null)['body']);
+function base64EncodeImage ($image_file) {
+  $base64_image = '';
+  $image_info = getimagesize($image_file);
+  $image_data = fread(fopen($image_file, 'r'), filesize($image_file));
+  $base64_image = 'data:' . $image_info['mime'] . ';base64,' . chunk_split(base64_encode($image_data));
+  return $base64_image;
 }
