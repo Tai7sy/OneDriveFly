@@ -122,7 +122,7 @@ function list_files($path)
         // is file && not preview mode
         $ishidden=passhidden($path);
         if ($ishidden<4) {
-            echo json_encode($event1);
+            echo urldecode(json_encode($event1));
             return output('', 302, false, [
                 'Location' => $files['@microsoft.graph.downloadUrl']
             ]);
@@ -340,9 +340,9 @@ function render_list($path, $files)
                             echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
-                        } elseif (in_array($ext, ['txt', 'sh'])) {
+                        } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js'])) {
                             echo '
-                        <div id="txt"><textarea id="txt-a" readonly style="width: 95%;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
+                        <div id="txt"><textarea id="txt-a" readonly style="width: 95%;">' . htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl'])) . '</textarea></div>
                         ';
                         } elseif (in_array($ext, ['md'])) {
                             echo '
@@ -497,7 +497,7 @@ function render_list($path, $files)
         }
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
-    <!--<?php echo json_encode($event1);?>-->
+    <!--<?php echo urldecode(json_encode($event1));?>-->
     </html>
     <?php
     return output(ob_get_clean());
