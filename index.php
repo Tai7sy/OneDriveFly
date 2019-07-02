@@ -336,6 +336,10 @@ function render_list($path, $files)
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
                         ';
+                        } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf'])) {
+                            echo '
+                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
+                        ';
                         } elseif (in_array($ext, ['txt', 'sh'])) {
                             echo '
                         <div id="txt"><textarea id="txt-a" readonly style="width: 95%;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
@@ -412,7 +416,7 @@ function render_list($path, $files)
                         echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
 <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
 <span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
-<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(path_format($path . '/' . $readme['name']))['@microsoft.graph.downloadUrl'])
+<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(urlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
                             . '</textarea></div></div>';
                     }
                 }
@@ -477,6 +481,10 @@ function render_list($path, $files)
         var $readme = document.getElementById('readme');
         if ($readme) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+        }
+        var $officearea=document.getElementById('office-a');
+        if ($officearea) {
+            $officearea.style.height = window.innerHeight + 'px';
         }
         var $textarea=document.getElementById('txt-a');
         if ($textarea) {
