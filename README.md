@@ -2,7 +2,7 @@
 OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 
 分支跟master对比：  
-20190709，去掉scfname的设置，直接从context里读，再次简化安装过程。
+20190709，去掉scfname的设置，直接从context里读，再次简化安装过程。  
 //去掉这个base64，可自行在onedrive里面放一个favicon.ico文件。20190701，作为一个(假)网站，怎么能没有icon，但直接放个favicon.ico是下载不下来，显示不了的，所以要base64一下。  
 20190629,新增加密功能：没有密码的话不能直接去下级目录，也不能下载文件。  
 在config新增sitename，方便改网站名称；  
