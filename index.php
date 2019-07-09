@@ -5,17 +5,11 @@ global $event1;
 global $config;
 $config = [
     'sitename' => getenv('sitename'),
-    'list_path' => getenv('public_path'),
     'passfile' => getenv('passfile'),
     'pagesplitnum' => getenv('pagesplitnum'),
-    'base_path' => '',
     'refresh_token' => '',
 ];
-//环境变量一定要添加：
-/*
-scfname：SCF函数的名称，一定要添加，不然出错。
-*/
-//环境变量可添加：
+//环境变量添加：
 /*
 sitename：网站的名称，不添加会显示为‘请在环境变量添加sitename’
 public_path：使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
@@ -31,13 +25,15 @@ function main_handler($event, $context)
     global $config;
     
     $event = json_decode(json_encode($event), true);
+    $context = json_decode(json_encode($context), true);
+    $function_name = $context['function_name'];
     $event1 = $event;
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
-        $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.getenv('scfname');
+        $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name;
         $config['list_path'] = getenv('public_path');
-        $path = substr($event['path'], 1+strlen(getenv('scfname')));
+        $path = substr($event['path'], 1+strlen($function_name));
     } else {
         $config['base_path'] = getenv('base_path');
         if (empty($config['base_path'])) $config['base_path'] = '/';
@@ -122,8 +118,7 @@ function fetch_files($path = '/')
         $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
 
         if (isset($files['folder'])) {
-        #if (isset($files['children'])) {
-            // is folder, then cache
+            // is folder, then list files
             if (isset($_POST['nextlink'])) {
                 $url = urldecode($_POST['nextlink']);
             } else {
@@ -217,6 +212,7 @@ function gethiddenpass($path,$passfile)
     while ($path !== '' ) {
         $passfile1 = path_format($path.'/'.$passfile);
         $passfile1 = urlencode($passfile1);
+        #echo $passfile1.'<br>';
         $ispassfile = fetch_files($passfile1);
 
         if (isset($ispassfile['file'])) {
@@ -265,7 +261,6 @@ function render_list($path, $files)
     global $event1;
     global $config;
     date_default_timezone_set('Asia/Shanghai');
-    //$base64icon=base64EncodeImage(__DIR__.'/favicon.ico');
     $_POSTbody = explode("&",$event1['body']);
     foreach ($_POSTbody as $postvalues){
         $tmp=explode("=",$postvalues);
@@ -291,7 +286,7 @@ function render_list($path, $files)
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
         <link rel="icon" href="/favicon.ico" type="image/x-icon" />
-        <link rel="shortcut icon" href="/favicon.ico<?php echo $base64icon;?>" type="image/x-icon" />
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
         <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
         <style type="text/css">
             body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
@@ -378,7 +373,7 @@ function render_list($path, $files)
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
                         ';
-                        } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf'])) {
+                        } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
                             echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
@@ -444,7 +439,7 @@ function render_list($path, $files)
                                     <tr data-to>
                                         <td class="file"><?php #$filenum++; echo $filenum;?>
                                             <ion-icon name="document"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/preview">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/preview" target=_blank>
                                                 <?php echo $file['name']; ?>
                                             </a>
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']) . ($file['name'] === 'preview' ? '/' : ''); ?>">
@@ -560,12 +555,4 @@ function render_list($path, $files)
     unset($files['children']['@odata.nextLink']);
     unset($_POST['nextlink']);
     return output(ob_get_clean(),$statusCode);
-}
-
-function base64EncodeImage ($image_file) {
-  $base64_image = '';
-  $image_info = getimagesize($image_file);
-  $image_data = fread(fopen($image_file, 'r'), filesize($image_file));
-  $base64_image = 'data:' . $image_info['mime'] . ';base64,' . chunk_split(base64_encode($image_data));
-  return $base64_image;
 }
