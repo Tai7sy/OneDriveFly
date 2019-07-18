@@ -6,17 +6,16 @@ global $config;
 $config = [
     'sitename' => getenv('sitename'),
     'passfile' => getenv('passfile'),
-    'pagesplitnum' => getenv('pagesplitnum'),
     'refresh_token' => '',
 ];
-//环境变量添加：
+//在环境变量添加：
 /*
-sitename：网站的名称，不添加会显示为‘请在环境变量添加sitename’
-public_path：使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
-private_path：使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'
-passfile：自定义密码文件名，可以是'.password'，也可以是'aaaa.txt'等等，列目录时不会显示，只有知道密码才能下载此文件。
-pagesplitnum：设置每页显示数量。
-//t1,t2~t7：把refresh_token按128字节切开来放在环境变量，不想再出现ctrl+c、ctrl+v把token也贴到github的事了
+sitename：       网站的名称，不添加会显示为‘请在环境变量添加sitename’
+public_path：    使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
+private_path：   使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'
+passfile：       自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
+        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
+t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，不想再出现ctrl+c、ctrl+v把token也贴到github的事了
 */
 
 function main_handler($event, $context)
@@ -40,7 +39,11 @@ function main_handler($event, $context)
         $config['list_path'] = getenv('private_path');
         $path = substr($event['path'], strlen($event['requestContext']['path']));
     }
-    if (empty($config['list_path'])) $config['list_path'] = '/';
+    if (empty($config['list_path'])) {
+        $config['list_path'] = '/';
+    } else {
+        $config['list_path'] = spurlencode($config['list_path']) ;
+    }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = $config['base_path'] . $path;
@@ -106,36 +109,36 @@ function fetch_files($path = '/')
         }
 
         // https://docs.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0
-//https://developer.microsoft.com/zh-cn/graph/graph-explorer
+        // https://developer.microsoft.com/zh-cn/graph/graph-explorer
 
         $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
         if ($path !== '/') {
-                    $url .= ':/' . $path;
+                    $url .= ':' . $path;
                     if (substr($url,-1)=='/') $url=substr($url,0,-1);
-                    
                 }
-        #$url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
+        $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
         $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+        // echo $url . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
 
-        if (isset($files['folder'])) {
-            // is folder, then list files
+        if (isset($files['folder']) and $files['folder']['childCount']>200 ) {
+            // files num > 200 , then get nextlink
             if (isset($_POST['nextlink'])) {
                 $url = urldecode($_POST['nextlink']);
             } else {
                 $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
                 if ($path !== '/') {
-                    $url .= ':/' . $path;
+                    $url .= ':' . $path;
                     if (substr($url,-1)=='/') $url=substr($url,0,-1);
                     $url .= ':/children';
-                    #?$top=5
                 } else {
                     $url .= '/children';
-                    #$url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
-                    #$files['children']['value'] = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true)['children'];
                 }
-                if ($config['pagesplitnum']!='') $url .= '?$top=' . $config['pagesplitnum'];
+                #if ($config['pagesplitnum']!='') $url .= '?$top=' . $config['pagesplitnum'];
+                #?$top=5&orderby=name%20DESC
             }
-            $files['children'] = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+            $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+            $files['children'] = $children['value'];
+            $files['@odata.nextLink'] = $children['@odata.nextLink'];
             //if (!isset($_POST['nextlink'])) $cache->save('path_' . $path, $files, 60);
         }
     }
@@ -182,12 +185,21 @@ function message($message, $title = 'Message', $statusCode = 200)
     return output('<html><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
 }
 
+function spurlencode($str) {
+    $tmparr=explode("/",$str);
+    #echo count($tmparr);
+    $tmp='';
+    for($x=0;$x<count($tmparr);$x++) {
+        $tmp .= '/' . urlencode($tmparr[$x]);
+    }
+    return path_format($tmp);
+}
 function passhidden($path)
 {
     global $config;
+    $path = str_replace('&amp;','&', path_format(urldecode($path)));
     if ($config['passfile'] != '') {
         $hiddenpass=gethiddenpass($path,$config['passfile']);
-        #echo $hiddenpass;
         if ($hiddenpass != '') {
             return comppass($hiddenpass);
         } else {
@@ -201,29 +213,21 @@ function passhidden($path)
 
 function gethiddenpass($path,$passfile)
 {
-    $path=urldecode($path);
-    $ispassfile = fetch_files($path);
+    if (substr($path,-1)=='/') $path=substr($path,0,-1);
+    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile)));
+    #echo '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
     if (isset($ispassfile['file'])) {
-        $patharray = explode("/", $path);
-        $patharrayfile = $patharray[count($patharray)-1];
-        if (!empty($patharrayfile)) $path=substr($path,0,-strlen($patharrayfile));
-    }
-
-    while ($path !== '' ) {
-        $passfile1 = path_format($path.'/'.$passfile);
-        $passfile1 = urlencode($passfile1);
-        #echo $passfile1.'<br>';
-        $ispassfile = fetch_files($passfile1);
-
-        if (isset($ispassfile['file'])) {
-            $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
-            $password=$passwordf[0];
-            $password=md5($password);
-            return $password;
+        $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
+        $password=$passwordf[0];
+        $password=md5($password);
+        return $password;
+    } else {
+        if ($path !== '' ) {
+            $path = substr($path,0,strrpos($path,'/'));
+            return gethiddenpass($path,$passfile);
+        } else {
+            return '';
         }
-        $patharray = explode("/", $path);
-        $patharrayfile = $patharray[count($patharray)-1];
-        $path=substr($path,0,-strlen($patharrayfile)-1);
     }
 
     return '';
@@ -234,7 +238,7 @@ function comppass($pass) {
     $_POSTbody = explode("&",$event1['body']);
     foreach ($_POSTbody as $postvalues){
         $tmp=explode("=",$postvalues);
-        $_POST[$tmp[0]]=$tmp[1];
+        $_POST[$tmp[0]]=urldecode($tmp[1]);
     }
     $cookiebody = explode(";",$event1['headers']['cookie']);
     foreach ($cookiebody as $cookievalues){
@@ -266,13 +270,13 @@ function render_list($path, $files)
         $tmp=explode("=",$postvalues);
         $_POST[$tmp[0]]=$tmp[1];
     }
-    $path = path_format(urldecode($path));
-
+    $path = str_replace('&','&amp;', path_format(urldecode($path))) ;
     if ($path !== '/') {
-    	$pretitle = $path;
-    	$patharray = explode("/", $path);
-    	$patharrayfile = $patharray[count($patharray)-1];
-    	if (!empty($patharrayfile)) $pretitle=$patharrayfile;
+        if (isset($files['file'])) {
+            $pretitle = $files['name'];
+        } else {
+            $pretitle = $path;
+        }
     } else {
       $pretitle = '首页';
     }
@@ -346,7 +350,7 @@ function render_list($path, $files)
                         <ion-icon name="arrow-back"></ion-icon>
                     </a>
                 <?php } ?>
-                <h3 class="table-header"><?php echo $path; ?></h3>
+                <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
             </div>
             <div class="list-body-container">
                 <?php
@@ -378,8 +382,10 @@ function render_list($path, $files)
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
                         } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js'])) {
-                            if ($files['name']==='当前index.php') {
-                                $str =  htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
+                            if ($files['name']==='当前demo的index.php') {
+                                $str = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
+';
+                                $str .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
                             } else {
                                 $str = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
                             }
@@ -406,7 +412,7 @@ function render_list($path, $files)
                         </tr>
                         <!-- Dirs -->
                         <?php
-                        $filenum = 0;
+                        $filenum = $_POST['filenum'];
                         $readme = false;
                         if (isset($files['error'])) {
                             echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
@@ -414,14 +420,14 @@ function render_list($path, $files)
                         } else {
                             #echo json_encode($files['children'], JSON_PRETTY_PRINT);
                             #if (isset($files['children']['@odata.nextLink'])) echo $files['children']['@odata.nextLink'];
-                            foreach ($files['children']['value'] as $file) {
+                            foreach ($files['children'] as $file) {
                                 // Folders
                                 if (isset($file['folder'])) { ?>
                                     <tr data-to>
-                                        <td class="file"><?php #$filenum++; echo $filenum;?>
+                                        <td class="file"><?php $filenum++; echo $filenum;?>
                                             <ion-icon name="folder"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/">
-                                                <?php echo $file['name']; ?>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>/">
+                                                <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
                                         </td>
                                         <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
@@ -429,7 +435,7 @@ function render_list($path, $files)
                                     </tr>
                                 <?php }
                             }
-                            foreach ($files['children']['value'] as $file) {
+                            foreach ($files['children'] as $file) {
                                 // Files
                                 if (isset($file['file'])) {
                                     if ($file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
@@ -437,12 +443,12 @@ function render_list($path, $files)
                                         $readme = $file;
                                     ?>
                                     <tr data-to>
-                                        <td class="file"><?php #$filenum++; echo $filenum;?>
+                                        <td class="file"><?php $filenum++; echo $filenum;?>
                                             <ion-icon name="document"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']); ?>/preview" target=_blank>
-                                                <?php echo $file['name']; ?>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>/preview" target=_blank>
+                                                <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . $file['name']) . ($file['name'] === 'preview' ? '/' : ''); ?>">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])) . ($file['name'] === 'preview' ? '/' : ''); ?>">
                                                 <ion-icon name="download"></ion-icon>
                                             </a>
                                         </td>
@@ -452,11 +458,11 @@ function render_list($path, $files)
                                 <?php }
                                 }
                             }
-                            if (isset($files['children']['@odata.nextLink']) || isset($_POST['nextlink'])) {
+                            if (isset($files['@odata.nextLink']) || isset($_POST['nextlink'])) {
                                 $prepagenext = '<tr><td align=center>';
                                 if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
                                 $prepagenext .= '</td><td></td><td align=center>';
-                                if (isset($files['children']['@odata.nextLink'])) $prepagenext .= '<form action="" method="POST" id="nextpageform"><input type="hidden" name="nextlink" value="'.$files['children']['@odata.nextLink'].'"><a href="javascript:void(0);" onclick="document.getElementById(\'nextpageform\').submit();">下一页</a></form>';
+                                if (isset($files['@odata.nextLink'])) $prepagenext .= '<form action="" method="POST" id="nextpageform"><input type="hidden" name="filenum" value="'.$filenum .'"><input type="hidden" name="nextlink" value="'.$files['@odata.nextLink'].'"><a href="javascript:void(0);" onclick="document.getElementById(\'nextpageform\').submit();">下一页</a></form>';
                                 $prepagenext .= '</td></tr>';
                                 echo $prepagenext;
                             }
@@ -468,7 +474,7 @@ function render_list($path, $files)
                         echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
 <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
 <span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
-<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(urlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
+<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
                             . '</textarea></div></div>';
                     }
                 }
@@ -552,7 +558,7 @@ function render_list($path, $files)
     <!--<?php echo urldecode(json_encode($event1));?>-->
     </html>
     <?php
-    unset($files['children']['@odata.nextLink']);
-    unset($_POST['nextlink']);
+    unset($files['@odata.nextLink']);
+    unset($_POST);
     return output(ob_get_clean(),$statusCode);
 }
