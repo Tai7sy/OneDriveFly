@@ -30,7 +30,7 @@ function main_handler($event, $context)
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
-        $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name;
+        $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
         $config['list_path'] = getenv('public_path');
         $path = substr($event['path'], 1+strlen($function_name));
     } else {
@@ -47,6 +47,17 @@ function main_handler($event, $context)
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = $config['base_path'] . $path;
+    $_POSTbody = explode("&",$event1['body']);
+    foreach ($_POSTbody as $postvalues){
+        $tmp=explode("=",$postvalues);
+        $_POST[$tmp[0]]=urldecode($tmp[1]);
+    }
+    $cookiebody = explode(";",$event1['headers']['cookie']);
+    foreach ($cookiebody as $cookievalues){
+        $tmp=explode("=",$cookievalues);
+        $_COOKIE[$tmp[0]]=$tmp[1];
+    }
+
     if (!$config['base_path']) {
         return message('Missing env <code>base_path</code>');
     }
@@ -71,12 +82,12 @@ function get_refresh_token($code)
         'client_id=298004f7-c751-4d56-aba3-b058c0154fd2&client_secret=-%5E%28%21BpF-l9%2Fz%23%5B%2B%2A5t%29alg%3B%5BV%40%3B%3B%29_%5D%3B%29%40j%23%5EE%3BT%28%26%5E4uD%3B%2A%26%3F%232%29%3EH%3F&grant_type=authorization_code&resource=https://graph.microsoft.com/&redirect_uri=http://localhost/authorization_code&code=' . $code), true);
     if (isset($ret['refresh_token'])) {
         $tmptoken=$ret['refresh_token'];
-        $str = 'split:';
-        for ($i=0;strlen($tmptoken)>0;$i++) {
-            $str .= $i . '<br><textarea readonly style="width: 100%;height: 65px">' . substr($tmptoken,0,128) . '</textarea>';
+        $str = 'split:<br>';
+        for ($i=1;strlen($tmptoken)>0;$i++) {
+            $str .= 't' . $i . ':<textarea readonly style="width: 100%;height: 45px">' . substr($tmptoken,0,128) . '</textarea>';
             $tmptoken=substr($tmptoken,128);
         }
-        return '<div>refresh_token:</div><table><tr><td width=50%><textarea readonly style="width: 100%;height: 500px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
+        return '<table width=100%><tr><td width=50%>refresh_token:<textarea readonly style="width: 100%;height: 500px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
     }
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
@@ -84,12 +95,6 @@ function get_refresh_token($code)
 function fetch_files($path = '/')
 {
     global $config;
-    global $event1;
-    $_POSTbody = explode("&",$event1['body']);
-    foreach ($_POSTbody as $postvalues){
-        $tmp=explode("=",$postvalues);
-        $_POST[$tmp[0]]=$tmp[1];
-    }
     $path = path_format($config['list_path'] . path_format($path));
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
@@ -123,7 +128,7 @@ function fetch_files($path = '/')
         if (isset($files['folder']) and $files['folder']['childCount']>200 ) {
             // files num > 200 , then get nextlink
             if (isset($_POST['nextlink'])) {
-                $url = urldecode($_POST['nextlink']);
+                $url = $_POST['nextlink'];
             } else {
                 $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
                 if ($path !== '/') {
@@ -150,15 +155,12 @@ function list_files($path)
     global $event1;
     global $config;
     $is_preview = false;
-    if (substr($path, -8) === '/preview') {
-        $is_preview = true;
-        $path = substr($path, 0, -8);
-    }
+    if ($_GET['preview']) $is_preview = true;
     $path = path_format($path);
     $files = fetch_files($path);
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
-        $ishidden=passhidden($path);
+        $ishidden=passhidden(substr($path,0,strrpos($path,'/')));
         if ($ishidden<4) {
             echo urldecode(json_encode($event1));
             return output('', 302, false, [
@@ -192,13 +194,14 @@ function spurlencode($str) {
     for($x=0;$x<count($tmparr);$x++) {
         $tmp .= '/' . urlencode($tmparr[$x]);
     }
-    return path_format($tmp);
+    return $tmp;
 }
 function passhidden($path)
 {
     global $config;
     $path = str_replace('&amp;','&', path_format(urldecode($path)));
     if ($config['passfile'] != '') {
+        if (substr($path,-1)=='/') $path=substr($path,0,-1);
         $hiddenpass=gethiddenpass($path,$config['passfile']);
         if ($hiddenpass != '') {
             return comppass($hiddenpass);
@@ -213,9 +216,8 @@ function passhidden($path)
 
 function gethiddenpass($path,$passfile)
 {
-    if (substr($path,-1)=='/') $path=substr($path,0,-1);
     $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile)));
-    #echo '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
+    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
     if (isset($ispassfile['file'])) {
         $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
         $password=$passwordf[0];
@@ -229,34 +231,12 @@ function gethiddenpass($path,$passfile)
             return '';
         }
     }
-
     return '';
 }
 
 function comppass($pass) {
-    global $event1;
-    $_POSTbody = explode("&",$event1['body']);
-    foreach ($_POSTbody as $postvalues){
-        $tmp=explode("=",$postvalues);
-        $_POST[$tmp[0]]=urldecode($tmp[1]);
-    }
-    $cookiebody = explode(";",$event1['headers']['cookie']);
-    foreach ($cookiebody as $cookievalues){
-        $tmp=explode("=",$cookievalues);
-        $_COOKIE[$tmp[0]]=$tmp[1];
-    }
-
-    if ($_POST['password1'] !== '') {
-        if (md5($_POST['password1']) === $pass ) {
-            return 2;
-        }
-    }
-    if ($_COOKIE['password'] !== '') {
-        if ($_COOKIE['password'] === $pass ) {
-            return 3;
-        }
-    }
-
+    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) return 2;    
+    if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
     return 4;
 }
 
@@ -265,11 +245,6 @@ function render_list($path, $files)
     global $event1;
     global $config;
     date_default_timezone_set('Asia/Shanghai');
-    $_POSTbody = explode("&",$event1['body']);
-    foreach ($_POSTbody as $postvalues){
-        $tmp=explode("=",$postvalues);
-        $_POST[$tmp[0]]=$tmp[1];
-    }
     $path = str_replace('&','&amp;', path_format(urldecode($path))) ;
     if ($path !== '/') {
         if (isset($files['file'])) {
@@ -289,8 +264,8 @@ function render_list($path, $files)
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
-        <link rel="icon" href="/favicon.ico" type="image/x-icon" />
-        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
+        <link rel="icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
+        <link rel="shortcut icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
         <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
         <style type="text/css">
             body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
@@ -334,9 +309,6 @@ function render_list($path, $files)
             <div class="list-header-container">
                 <?php if ($path !== '/') {
                     $current_url = $_SERVER['PHP_SELF'];
-                    if (substr($current_url, -8) === '/preview') {
-                        $current_url = substr($current_url, 0, -8);
-                    }
                     while (substr($current_url, -1) === '/') {
                         $current_url = substr($current_url, 0, -1);
                     }
@@ -365,7 +337,7 @@ function render_list($path, $files)
                         </div>
                         <?php
                         $ext = strtolower(substr($path, strrpos($path, '.') + 1));
-                        if (in_array($ext, ['bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                        if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
                             echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%"/>
                         ';
@@ -381,7 +353,7 @@ function render_list($path, $files)
                             echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
-                        } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js'])) {
+                        } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
                             if ($files['name']==='当前demo的index.php') {
                                 $str = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
 ';
@@ -406,7 +378,8 @@ function render_list($path, $files)
                     ?>
                     <table class="list-table">
                         <tr>
-                            <th class="file" width="60%">文件</th>
+                            <th class="updated_at" width="5%">序号</th>
+                            <th class="file" width="55%">文件</th>
                             <th class="updated_at" width="25%">修改时间</th>
                             <th class="size" width="15%">大小</th>
                         </tr>
@@ -419,14 +392,14 @@ function render_list($path, $files)
                             $statusCode=404;
                         } else {
                             #echo json_encode($files['children'], JSON_PRETTY_PRINT);
-                            #if (isset($files['children']['@odata.nextLink'])) echo $files['children']['@odata.nextLink'];
                             foreach ($files['children'] as $file) {
                                 // Folders
                                 if (isset($file['folder'])) { ?>
                                     <tr data-to>
-                                        <td class="file"><?php $filenum++; echo $filenum;?>
+                                        <td class="updated_at"><?php $filenum++; echo $filenum;?></td>
+                                        <td class="file">
                                             <ion-icon name="folder"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>/">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>">
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
                                         </td>
@@ -439,16 +412,20 @@ function render_list($path, $files)
                                 // Files
                                 if (isset($file['file'])) {
                                     if ($file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
-                                    if (strtolower($file['name']) === 'readme.md')
-                                        $readme = $file;
-                                    ?>
+                                    if (strtolower($file['name']) === 'readme.md') $readme = $file;
+                                    if (strtolower($file['name']) === 'index.html') {
+                                        $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name'])))['@microsoft.graph.downloadUrl']);
+                                        $html .= '<!--' . urldecode(json_encode($event1)) . '-->';
+                                        return output($html,200);
+                                    } ?>
                                     <tr data-to>
-                                        <td class="file"><?php $filenum++; echo $filenum;?>
+                                        <td class="updated_at"><?php $filenum++; echo $filenum;?></td>
+                                        <td class="file">
                                             <ion-icon name="document"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>/preview" target=_blank>
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>?preview" target=_blank>
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])) . ($file['name'] === 'preview' ? '/' : ''); ?>">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>">
                                                 <ion-icon name="download"></ion-icon>
                                             </a>
                                         </td>
@@ -459,17 +436,25 @@ function render_list($path, $files)
                                 }
                             }
                             if (isset($files['@odata.nextLink']) || isset($_POST['nextlink'])) {
-                                $prepagenext = '<tr><td align=center>';
+                                $prepagenext = '<tr>
+                                    <td></td>
+                                    <td align=center>';
                                 if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
-                                $prepagenext .= '</td><td></td><td align=center>';
-                                if (isset($files['@odata.nextLink'])) $prepagenext .= '<form action="" method="POST" id="nextpageform"><input type="hidden" name="filenum" value="'.$filenum .'"><input type="hidden" name="nextlink" value="'.$files['@odata.nextLink'].'"><a href="javascript:void(0);" onclick="document.getElementById(\'nextpageform\').submit();">下一页</a></form>';
+                                $prepagenext .= '</td>
+                                    <td></td>
+                                    <td align=center>';
+                                if (isset($files['@odata.nextLink'])) $prepagenext .= '
+                                <form action="" method="POST" id="nextpageform">
+                                    <input type="hidden" name="filenum" value="'.$filenum .'">
+                                    <input type="hidden" name="nextlink" value="'.$files['@odata.nextLink'].'">
+                                    <a href="javascript:void(0);" onclick="document.getElementById(\'nextpageform\').submit();">下一页</a>
+                                </form>';
                                 $prepagenext .= '</td></tr>';
                                 echo $prepagenext;
                             }
                         } ?>
                     </table>
                     <?php
-                    //<a href="javascript:history.back(-1)">上一页</a>
                     if ($readme) {
                         echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
 <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
@@ -481,20 +466,17 @@ function render_list($path, $files)
                 } else {
                     echo '<div class="mdui-container-fluid">
 	<div class="mdui-col-md-6 mdui-col-offset-md-3">
-	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4></center>
+	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4>
 	  <form action="" method="post">
 		  <div class="mdui-textfield mdui-textfield-floating-label">
 		    <label class="mdui-textfield-label">密码</label>
 		    <input name="password1" class="mdui-textfield-input" type="password"/>
-		  </div>
-		  <br>
-		  <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">
-		  	查看
-		  </button>
+		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
+          </div>
 	  </form>
+      </center>
 	</div>
 </div>';
-                    #echo '<br>hidden';
                 }
                 ?>
             </div>
@@ -560,5 +542,8 @@ function render_list($path, $files)
     <?php
     unset($files['@odata.nextLink']);
     unset($_POST);
-    return output(ob_get_clean(),$statusCode);
+    unset($_GET);
+    unset($_COOKIE);
+    $html=ob_get_clean();
+    return output($html,$statusCode);
 }
