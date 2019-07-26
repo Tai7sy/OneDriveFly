@@ -32,7 +32,7 @@ function main_handler($event, $context)
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
         $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
         $config['list_path'] = getenv('public_path');
-        $path = substr($event['path'], 1+strlen($function_name));
+        $path = substr($event['path'], strlen('/'.$function_name));
     } else {
         $config['base_path'] = getenv('base_path');
         if (empty($config['base_path'])) $config['base_path'] = '/';
@@ -46,11 +46,11 @@ function main_handler($event, $context)
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     $_GET = $event['queryString'];
-    $_SERVER['PHP_SELF'] = $config['base_path'] . $path;
+    $_SERVER['PHP_SELF'] = path_format($config['base_path'] . $path);
     $_POSTbody = explode("&",$event1['body']);
     foreach ($_POSTbody as $postvalues){
         $tmp=explode("=",$postvalues);
-        $_POST[$tmp[0]]=urldecode($tmp[1]);
+        $_POST[urldecode($tmp[0])]=urldecode($tmp[1]);
     }
     $cookiebody = explode(";",$event1['headers']['cookie']);
     foreach ($cookiebody as $cookievalues){
@@ -95,6 +95,7 @@ function get_refresh_token($code)
 function fetch_files($path = '/')
 {
     global $config;
+    $path1 = path_format($path);
     $path = path_format($config['list_path'] . path_format($path));
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
@@ -123,28 +124,115 @@ function fetch_files($path = '/')
                 }
         $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
         $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
-        // echo $url . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
+        // echo $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
 
-        if (isset($files['folder']) and $files['folder']['childCount']>200 ) {
-            // files num > 200 , then get nextlink
-            if (isset($_POST['nextlink'])) {
-                $url = $_POST['nextlink'];
-            } else {
-                $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
-                if ($path !== '/') {
-                    $url .= ':' . $path;
-                    if (substr($url,-1)=='/') $url=substr($url,0,-1);
-                    $url .= ':/children';
-                } else {
-                    $url .= '/children';
+        if (isset($files['folder'])) {
+            if ($files['folder']['childCount']>200) {
+                // files num > 200 , then get nextlink
+                $page = $_POST['pagenum']==''?1:$_POST['pagenum'];
+                $maxpage = ceil($files['folder']['childCount']/200);
+                for ($page1=1;$page1<=$maxpage;$page1++) {
+                    if ($_POST[$path1.'_'.$page1]!='') $files['folder'][$path.'_'.$page1]=$_POST[$path1.'_'.$page1];
                 }
-                #if ($config['pagesplitnum']!='') $url .= '?$top=' . $config['pagesplitnum'];
-                #?$top=5&orderby=name%20DESC
+                if (!($files['children'] = $cache->fetch('files_' . $path . '_page_' . $page))) {
+                    $page3=$page-1;
+                    if (isset($files['folder'][$path.'_'.$page3])) {
+                        $url = $files['folder'][$path.'_'.$page3];
+                        $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                        $files['children'] = $children['value'];
+                        //$files['@odata.nextLink'] = $children['@odata.nextLink'];
+                        $files['folder']['page']=$page;
+                        $cache->save('files_' . $path . '_page_' . $page, $files['children'], 60);
+                        $cache->save('nextlink_' . $path . '_page_' . $page, $children['@odata.nextLink'], 60);
+                        for ($page4=1;$page4<=$maxpage;$page4++) {
+                            if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
+                                if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
+                            } else {
+                                $files['folder'][$path.'_'.$page4] = $url;
+                            }
+                        }
+                        return $files;
+                    }
+                    for ($page1=$page;$page1>=1;$page1--) {
+                        $page3=$page1-1;
+                        $url = $cache->fetch('nextlink_' . $path . '_page_' . $page3);
+                        if ($url == '') {
+                            //echo $page3 .'not have url'. $url .'<br>' ;
+                            if ($page1==1) {
+                                $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
+                                if ($path !== '/') {
+                                    $url .= ':' . $path;
+                                    if (substr($url,-1)=='/') $url=substr($url,0,-1);
+                                    $url .= ':/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
+                                } else {
+                                    $url .= '/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
+                                }
+                                $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                                $cache->save('files_' . $path . '_page_' . $page1, $children['value'], 60);
+                                $cache->save('nextlink_' . $path . '_page_' . $page1, $children['@odata.nextLink'], 60);
+                                $url = $children['@odata.nextLink'];
+                                for ($page2=$page1+1;$page2<=$page;$page2++) {
+                                    sleep(1);
+                                    $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+                                    //echo $page2 . ' ' . $url . '<br>';
+                                    $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
+                                    $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                    $url = $children['@odata.nextLink'];
+                                }
+                                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                                $files['children'] = $children['value'];
+                                //$files['@odata.nextLink'] = $children['@odata.nextLink'];
+                                $files['folder']['page']=$page;
+                                for ($page4=1;$page4<=$maxpage;$page4++) {
+                                    if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
+                                        if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
+                                    } else {
+                                        $files['folder'][$path.'_'.$page4] = $url;
+                                    }
+                                }
+                                return $files;
+                            }
+                        } else {
+                            //echo $page3 .'have url<br> '. $url .'<br> ' ;
+                            for ($page2=$page3+1;$page2<=$page;$page2++) {
+                                sleep(1);
+                                $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
+                                    //echo $page2 . ' ' . $url . '<br>';
+                                $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
+                                $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                $url = $children['@odata.nextLink'];
+                            }
+                                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                            $files['children'] = $children['value'];
+                            //$files['@odata.nextLink'] = $children['@odata.nextLink'];
+                            $files['folder']['page']=$page;
+                            for ($page4=1;$page4<=$maxpage;$page4++) {
+                                if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
+                                    if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
+                                } else {
+                                    $files['folder'][$path.'_'.$page4] = $url;
+                                }
+                            }
+                            return $files;
+                        }
+                    }
+                } else {
+                    //$files['@odata.nextLink'] = $cache->fetch('nextlink_' . $path . '_page_' . $page);
+                    $files['folder']['page']=$page;
+                    for ($page4=1;$page4<=$maxpage;$page4++) {
+                        if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
+                            if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
+                        } else {
+                            $files['folder'][$path.'_'.$page4] = $url;
+                        }
+                    }
+                }
+            } else {
+                // files num < 200 , then cache
+                $cache->save('path_' . $path, $files, 60);
             }
-            $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
-            $files['children'] = $children['value'];
-            $files['@odata.nextLink'] = $children['@odata.nextLink'];
-            //if (!isset($_POST['nextlink'])) $cache->save('path_' . $path, $files, 60);
         }
     }
     return $files;
@@ -153,7 +241,6 @@ function fetch_files($path = '/')
 function list_files($path)
 {
     global $event1;
-    global $config;
     $is_preview = false;
     if ($_GET['preview']) $is_preview = true;
     $path = path_format($path);
@@ -194,6 +281,7 @@ function spurlencode($str) {
     for($x=0;$x<count($tmparr);$x++) {
         $tmp .= '/' . urlencode($tmparr[$x]);
     }
+    $tmp = str_replace('+', '%20',$tmp);
     return $tmp;
 }
 function passhidden($path)
@@ -278,7 +366,7 @@ function render_list($path, $files)
             .list-header-container{position:relative}
             .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;padding:30px 20px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
-            .list-header-container .table-header{margin:0;border:0 none;padding:30px 20px;text-align:center;font-weight:400;color:#000;background-color:#f7f7f9}
+            .list-header-container .table-header{margin:0;border:0 none;padding:30px 20px 10px 5px;text-align:center;font-weight:400;color:#000;background-color:#f7f7f9}
             .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
             .list-table{width:100%;padding:20px;border-spacing:0}
             .list-table tr{height:40px}
@@ -386,6 +474,7 @@ function render_list($path, $files)
                         <!-- Dirs -->
                         <?php
                         $filenum = $_POST['filenum'];
+                        if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
                         $readme = false;
                         if (isset($files['error'])) {
                             echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
@@ -411,7 +500,7 @@ function render_list($path, $files)
                             foreach ($files['children'] as $file) {
                                 // Files
                                 if (isset($file['file'])) {
-                                    if ($file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
+                                    if (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
                                     if (strtolower($file['name']) === 'readme.md') $readme = $file;
                                     if (strtolower($file['name']) === 'index.html') {
                                         $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name'])))['@microsoft.graph.downloadUrl']);
@@ -435,26 +524,54 @@ function render_list($path, $files)
                                 <?php }
                                 }
                             }
-                            if (isset($files['@odata.nextLink']) || isset($_POST['nextlink'])) {
-                                $prepagenext = '<tr>
-                                    <td></td>
-                                    <td align=center>';
-                                if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
-                                $prepagenext .= '</td>
-                                    <td></td>
-                                    <td align=center>';
-                                if (isset($files['@odata.nextLink'])) $prepagenext .= '
-                                <form action="" method="POST" id="nextpageform">
-                                    <input type="hidden" name="filenum" value="'.$filenum .'">
-                                    <input type="hidden" name="nextlink" value="'.$files['@odata.nextLink'].'">
-                                    <a href="javascript:void(0);" onclick="document.getElementById(\'nextpageform\').submit();">下一页</a>
-                                </form>';
-                                $prepagenext .= '</td></tr>';
-                                echo $prepagenext;
-                            }
                         } ?>
                     </table>
                     <?php
+                    if ($files['folder']['childCount']>200) {
+                        //echo json_encode($files['folder'], JSON_PRETTY_PRINT);
+                        $pagenum = $files['folder']['page'];
+                        $maxpage = ceil($files['folder']['childCount']/200);
+                        $prepagenext = '<form action="" method="POST" id="nextpageform">
+                        <input type="hidden" id="pagenum" name="pagenum" value="'. $pagenum .'">
+                        <table width=100% border=0>
+                            <tr>
+                                <td width=60px align=center>';
+                        //if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
+                        if ($pagenum!=1) {
+                            $prepagenum = $pagenum-1;
+                            $prepagenext .= '
+                            <a href="javascript:void(0);" onclick="document.getElementById(\'pagenum\').value='.$prepagenum.';document.getElementById(\'nextpageform\').submit();">上一页</a>
+                            ';
+                        }
+                        $prepagenext .= '</td>
+                                <td align=center>
+                                ';
+                        //$pathpage = path_format($config['list_path'].$path).'_'.$page;
+                        for ($page=1;$page<=$maxpage;$page++) {
+                            if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">
+                                    ';
+                            if ($page == $pagenum) {
+                                $prepagenext .= '<font color=red>' . $page . '</font> 
+                                ';
+                            } else {
+                                $prepagenext .= '<a href="javascript:void(0);" onclick="document.getElementById(\'pagenum\').value='.$page.';document.getElementById(\'nextpageform\').submit();">' . $page . '</a> 
+                                ';
+                            }
+                        }
+                        $prepagenext = substr($prepagenext,0,-1);
+                        $prepagenext .= '</td>
+                                <td width=60px align=center>';
+                        if ($pagenum!=$maxpage) {
+                            $nextpagenum = $pagenum+1;
+                            $prepagenext .= '
+                            <a href="javascript:void(0);" onclick="document.getElementById(\'pagenum\').value='.$nextpagenum.';document.getElementById(\'nextpageform\').submit();">下一页</a>
+                            ';
+                        }
+                            $prepagenext .= '</td>
+                            </tr></table>
+                            </form>';
+                            echo $prepagenext;
+                    }
                     if ($readme) {
                         echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
 <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
@@ -477,6 +594,7 @@ function render_list($path, $files)
       </center>
 	</div>
 </div>';
+                    $statusCode = 401;
                 }
                 ?>
             </div>
@@ -537,13 +655,13 @@ function render_list($path, $files)
         }
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
-    <!--<?php echo urldecode(json_encode($event1));?>-->
     </html>
     <?php
-    unset($files['@odata.nextLink']);
+    unset($files);
     unset($_POST);
     unset($_GET);
     unset($_COOKIE);
     $html=ob_get_clean();
+    echo urldecode(json_encode($event1));
     return output($html,$statusCode);
 }
