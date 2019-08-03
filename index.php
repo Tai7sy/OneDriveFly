@@ -57,6 +57,7 @@ function main_handler($event, $context)
         $tmp=explode("=",$cookievalues);
         $_COOKIE[$tmp[0]]=$tmp[1];
     }
+    $config['function_name'] = $function_name;
 
     if (!$config['base_path']) {
         return message('Missing env <code>base_path</code>');
@@ -71,6 +72,16 @@ Please set a <code>refresh_token</code> in environments<br>
 <a target="_blank" href="https://login.microsoftonline.com/common/oauth2/authorize?response_type=code&client_id=298004f7-c751-4d56-aba3-b058c0154fd2&redirect_uri=http://localhost/authorization_code">Get a refresh_token</a><br><br>
 When redirected, replace <code>http://localhost</code> with current host', 'Error', 500);
     }
+    if (getenv('admin')!='') {
+    if ($_COOKIE[$function_name]==md5(getenv('admin'))) {
+        $config['admin']=1;
+    } else {
+        $config['admin']=0;
+    }
+    if ($_GET['admin']) {
+        if ($_POST['password1']==getenv('admin')) return adminform($function_name,md5($_POST['password1']),$_SERVER['PHP_SELF']);
+        return adminform();
+    }}
 
     return list_files($path);
 }
@@ -84,7 +95,7 @@ function get_refresh_token($code)
         $tmptoken=$ret['refresh_token'];
         $str = 'split:<br>';
         for ($i=1;strlen($tmptoken)>0;$i++) {
-            $str .= 't' . $i . ':<textarea readonly style="width: 100%;height: 45px">' . substr($tmptoken,0,128) . '</textarea>';
+            $str .= 't' . $i . ':<textarea readonly style="width: 95%;height: 45px">' . substr($tmptoken,0,128) . '</textarea>';
             $tmptoken=substr($tmptoken,128);
         }
         return '<table width=100%><tr><td width=50%>refresh_token:<textarea readonly style="width: 100%;height: 500px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
@@ -111,10 +122,12 @@ function fetch_files($path = '/')
                 throw new Exception('failed to get access_token.');
             }
             $access_token = $ret['access_token'];
+            $config['access_token'] = $access_token;
             $cache->save('access_token', $access_token, $ret['expires_in'] - 60);
         }
 
         // https://docs.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0
+        // https://docs.microsoft.com/zh-cn/graph/api/driveitem-put-content?view=graph-rest-1.0&tabs=http
         // https://developer.microsoft.com/zh-cn/graph/graph-explorer
 
         $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
@@ -125,35 +138,31 @@ function fetch_files($path = '/')
         $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
         $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
         // echo $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
-
+        //改名、移目录，echo MSAPI('PATCH','/public/qqqq.txt','{"parentReference":{"path": "/drive/root:/public/release"}}',$access_token);
+	
         if (isset($files['folder'])) {
             if ($files['folder']['childCount']>200) {
                 // files num > 200 , then get nextlink
+                $cachefilename = '.SCFcache_'.$config['function_name'];
                 $page = $_POST['pagenum']==''?1:$_POST['pagenum'];
                 $maxpage = ceil($files['folder']['childCount']/200);
-                for ($page1=1;$page1<=$maxpage;$page1++) {
-                    if ($_POST[$path1.'_'.$page1]!='') $files['folder'][$path.'_'.$page1]=$_POST[$path1.'_'.$page1];
-                }
+
                 if (!($files['children'] = $cache->fetch('files_' . $path . '_page_' . $page))) {
-                    $page3=$page-1;
-                    if (isset($files['folder'][$path.'_'.$page3])) {
-                        $url = $files['folder'][$path.'_'.$page3];
-                        $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
-                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
-                        $files['children'] = $children['value'];
-                        //$files['@odata.nextLink'] = $children['@odata.nextLink'];
-                        $files['folder']['page']=$page;
-                        $cache->save('files_' . $path . '_page_' . $page, $files['children'], 60);
-                        $cache->save('nextlink_' . $path . '_page_' . $page, $children['@odata.nextLink'], 60);
-                        for ($page4=1;$page4<=$maxpage;$page4++) {
-                            if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
-                                if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
-                            } else {
-                                $files['folder'][$path.'_'.$page4] = $url;
+                    // 下载cache文件获取跳页链接
+                    $cachefile = fetch_files(path_format($path1 . '/' .$cachefilename));
+                    if ($cachefile['size']>0) {
+                        $pageinfo = curl_request($cachefile['@microsoft.graph.downloadUrl']);
+                        //$cachefilesize = strlen($pageinfo);
+                        $pageinfo = json_decode($pageinfo,true);
+                        //$rsize=$files['size']-$cachefile['size'];
+                        //if ($pageinfo['size']==$files['size']) {
+                            for ($page4=1;$page4<$maxpage;$page4++) {
+                                $cache->save('nextlink_' . $path . '_page_' . $page4, $pageinfo['nextlink_' . $path . '_page_' . $page4], 60);
+                                $pageinfocache['nextlink_' . $path . '_page_' . $page4] = $pageinfo['nextlink_' . $path . '_page_' . $page4];
                             }
-                        }
-                        return $files;
+                        //}
                     }
+                    $pageinfochange=0;
                     for ($page1=$page;$page1>=1;$page1--) {
                         $page3=$page1-1;
                         $url = $cache->fetch('nextlink_' . $path . '_page_' . $page3);
@@ -169,29 +178,38 @@ function fetch_files($path = '/')
                                     $url .= '/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
                                 }
                                 $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
-                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                                 $cache->save('files_' . $path . '_page_' . $page1, $children['value'], 60);
-                                $cache->save('nextlink_' . $path . '_page_' . $page1, $children['@odata.nextLink'], 60);
+                                $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page1);
+                                if ($nextlink!=$children['@odata.nextLink']) {
+                                    $cache->save('nextlink_' . $path . '_page_' . $page1, $children['@odata.nextLink'], 60);
+                                    $pageinfocache['nextlink_' . $path . '_page_' . $page1] = $children['@odata.nextLink'];
+                                    $pageinfocache = clearbehindvalue($path,$page1,$maxpage,$pageinfocache);
+                                    $pageinfochange = 1;
+                                }
                                 $url = $children['@odata.nextLink'];
                                 for ($page2=$page1+1;$page2<=$page;$page2++) {
                                     sleep(1);
                                     $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
                                     //echo $page2 . ' ' . $url . '<br>';
                                     $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
-                                    $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                    $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page2);
+                                    if ($nextlink!=$children['@odata.nextLink']) {
+                                        $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                        $pageinfocache['nextlink_' . $path . '_page_' . $page2] = $children['@odata.nextLink'];
+                                        $pageinfocache = clearbehindvalue($path,$page2,$maxpage,$pageinfocache);
+                                        $pageinfochange = 1;
+                                    }
                                     $url = $children['@odata.nextLink'];
                                 }
                                 //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                                 $files['children'] = $children['value'];
-                                //$files['@odata.nextLink'] = $children['@odata.nextLink'];
                                 $files['folder']['page']=$page;
-                                for ($page4=1;$page4<=$maxpage;$page4++) {
-                                    if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
-                                        if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
-                                    } else {
-                                        $files['folder'][$path.'_'.$page4] = $url;
-                                    }
-                                }
+                                $pageinfocache['filenum'] = $files['folder']['childCount'];
+                                $pageinfocache['dirsize'] = $files['size'];
+                                $pageinfocache['cachesize'] = $cachefile['size'];
+                                $pageinfocache['size'] = $files['size']-$cachefile['size'];
+                                if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $access_token);
                                 return $files;
                             }
                         } else {
@@ -199,27 +217,29 @@ function fetch_files($path = '/')
                             for ($page2=$page3+1;$page2<=$page;$page2++) {
                                 sleep(1);
                                 $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $access_token]), true);
-                                    //echo $page2 . ' ' . $url . '<br>';
+                                //echo $page2 . ' ' . $url . '<br>';
                                 $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
-                                $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page2);
+                                if ($nextlink!=$children['@odata.nextLink']) {
+                                    $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
+                                    $pageinfocache['nextlink_' . $path . '_page_' . $page2] = $children['@odata.nextLink'];
+                                    $pageinfocache = clearbehindvalue($path,$page2,$maxpage,$pageinfocache);
+                                    $pageinfochange = 1;
+                                }
                                 $url = $children['@odata.nextLink'];
                             }
                                 //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                             $files['children'] = $children['value'];
-                            //$files['@odata.nextLink'] = $children['@odata.nextLink'];
                             $files['folder']['page']=$page;
-                            for ($page4=1;$page4<=$maxpage;$page4++) {
-                                if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
-                                    if ($files['folder'][$path.'_'.$page4]!='') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path.'_'.$page4], 60);
-                                } else {
-                                    $files['folder'][$path.'_'.$page4] = $url;
-                                }
-                            }
+                            $pageinfocache['filenum'] = $files['folder']['childCount'];
+                            $pageinfocache['dirsize'] = $files['size'];
+                            $pageinfocache['cachesize'] = $cachefile['size'];
+                            $pageinfocache['size'] = $files['size']-$cachefile['size'];
+                            if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $access_token);
                             return $files;
                         }
                     }
                 } else {
-                    //$files['@odata.nextLink'] = $cache->fetch('nextlink_' . $path . '_page_' . $page);
                     $files['folder']['page']=$page;
                     for ($page4=1;$page4<=$maxpage;$page4++) {
                         if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
@@ -274,19 +294,128 @@ function message($message, $title = 'Message', $statusCode = 200)
     return output('<html><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
 }
 
+function adminform($name = '', $pass = '', $path = '')
+{
+    $statusCode = 200;
+    $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
+    if ($name !='') {
+        $html .= '<script type="text/javascript">
+        function abc(){
+            //alert("abc");
+            var expd = new Date();
+            expd.setTime(expd.getTime()+(1*60*60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="'.$name.'='.$pass.';"+expires;
+            location.href=location.protocol + "//" + location.host + "'.$path.'";
+        }
+</script>';
+        $statusCode = 401;
+    }
+    $html .= '
+    <body onload="abc();">
+    <div class="mdui-container-fluid">
+	<div class="mdui-col-md-6 mdui-col-offset-md-3">
+	  <center><h4 class="mdui-typo-display-2-opacity">输入密码</h4>
+	  <form action="" method="post">
+		  <div class="mdui-textfield mdui-textfield-floating-label">
+		    <label class="mdui-textfield-label">密码</label>
+		    <input name="password1" class="mdui-textfield-input" type="password"/>
+		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
+          </div>
+	  </form>
+      </center>
+	</div>
+</div>';
+    
+    $html .= '</body></html>';
+    return output($html,$statusCode);
+}
+
+function MSAPI($method, $path, $data, $access_token)
+{
+    /*echo $path.' 
+'.$str;*/
+    $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
+    if ($path !== '/') {
+        $url .= ':' . $path;
+        if (substr($url,-1)=='/') $url=substr($url,0,-1);
+    }
+    if ($method=='PUT') {
+        $url .= ':/content';
+        $headers['Content-Type'] = 'text/plain';
+    }
+    if ($method=='PATCH') {
+        $headers['Content-Type'] = 'application/json';
+    }
+
+    $headers['Authorization'] = 'Bearer ' . $access_token;
+    if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
+    if (!isset($headers['Referer'])) $headers['Referer'] = $url;
+    $sendHeaders = array();
+    foreach ($headers as $headerName => $headerVal) {
+        $sendHeaders[] = $headerName . ': ' . $headerVal;
+    }
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    /*if ($method=='PUT') {
+        #curl_setopt($ch, CURLOPT_PUT, 1);
+        #curl_setopt($ch, CURLOPT_INFILE, $data);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST,"PUT");
+        curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
+    }
+    if ($method=='PATCH') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST,"PATCH");
+        curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
+    }*/
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST,$method);
+    curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
+
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回获取的输出文本流
+    curl_setopt($ch, CURLOPT_HEADER, 0);         // 将头文件的信息作为数据流输出
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return $response;
+}
+
+function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
+{
+    for ($page=$page1+1;$page<$maxpage;$page++) {
+        $pageinfocache['nextlink_' . $path . '_page_' . $page] = '';
+    }
+    return $pageinfocache;
+}
+
 function spurlencode($str) {
+    //echo $str .'<br>';
+    $str = str_replace(' ', '%20',$str);
     $tmparr=explode("/",$str);
     #echo count($tmparr);
     $tmp='';
     for($x=0;$x<count($tmparr);$x++) {
         $tmp .= '/' . urlencode($tmparr[$x]);
     }
-    $tmp = str_replace('+', '%20',$tmp);
+    $tmp = str_replace('%2520', '%20',$tmp);
+    //echo $tmp .'<br>';
     return $tmp;
 }
+
+function encode_str_replace($str)
+{
+    $str = str_replace('&','&amp;',$str);
+    $str = str_replace('+','%2B',$str);
+    return $str;
+}
+
 function passhidden($path)
 {
     global $config;
+    $path = str_replace('+','%2B',$path);
     $path = str_replace('&amp;','&', path_format(urldecode($path)));
     if ($config['passfile'] != '') {
         if (substr($path,-1)=='/') $path=substr($path,0,-1);
@@ -333,7 +462,7 @@ function render_list($path, $files)
     global $event1;
     global $config;
     date_default_timezone_set('Asia/Shanghai');
-    $path = str_replace('&','&amp;', path_format(urldecode($path))) ;
+    $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
     if ($path !== '/') {
         if (isset($files['file'])) {
             $pretitle = $files['name'];
@@ -366,7 +495,7 @@ function render_list($path, $files)
             .list-header-container{position:relative}
             .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;padding:30px 20px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
-            .list-header-container .table-header{margin:0;border:0 none;padding:30px 20px 10px 5px;text-align:center;font-weight:400;color:#000;background-color:#f7f7f9}
+            .list-header-container .table-header{margin:0;border:0 none;padding:30px 0px 30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
             .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
             .list-table{width:100%;padding:20px;border-spacing:0}
             .list-table tr{height:40px}
@@ -389,9 +518,9 @@ function render_list($path, $files)
 
     <body>
     <h1 class="title">
-        <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'];?></a>
+        <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'] ;?></a>
     </h1>
-
+    
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
@@ -411,6 +540,7 @@ function render_list($path, $files)
                     </a>
                 <?php } ?>
                 <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
+                <?php if (!$config['admin']) {?><div><a href="?admin">管理登录</a></div><?php } else {?>新建<?php }?>
             </div>
             <div class="list-body-container">
                 <?php
@@ -466,8 +596,8 @@ function render_list($path, $files)
                     ?>
                     <table class="list-table">
                         <tr>
-                            <th class="updated_at" width="5%">序号</th>
-                            <th class="file" width="55%">文件</th>
+                            <!--<th class="updated_at" width="5%">序号</th>-->
+                            <th class="file" width="60%">文件</th>
                             <th class="updated_at" width="25%">修改时间</th>
                             <th class="size" width="15%">大小</th>
                         </tr>
@@ -485,12 +615,13 @@ function render_list($path, $files)
                                 // Folders
                                 if (isset($file['folder'])) { ?>
                                     <tr data-to>
-                                        <td class="updated_at"><?php $filenum++; echo $filenum;?></td>
+                                        <!--<td class="updated_at"><?php $filenum++; echo $filenum;?></td>-->
                                         <td class="file">
                                             <ion-icon name="folder"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>">
+                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>">
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
+                                            <?php if ($config['admin']) {?>重命名 加密<?php }?>
                                         </td>
                                         <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
@@ -508,7 +639,7 @@ function render_list($path, $files)
                                         return output($html,200);
                                     } ?>
                                     <tr data-to>
-                                        <td class="updated_at"><?php $filenum++; echo $filenum;?></td>
+                                        <!--<td class="updated_at"><?php $filenum++; echo $filenum;?></td>-->
                                         <td class="file">
                                             <ion-icon name="document"></ion-icon>
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name'])); ?>?preview" target=_blank>
@@ -517,6 +648,7 @@ function render_list($path, $files)
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>">
                                                 <ion-icon name="download"></ion-icon>
                                             </a>
+                                            <?php if ($config['admin']) {?>重命名 编辑<?php }?>
                                         </td>
                                         <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
@@ -544,7 +676,7 @@ function render_list($path, $files)
                             ';
                         }
                         $prepagenext .= '</td>
-                                <td align=center>
+                                <td class="updated_at">
                                 ';
                         //$pathpage = path_format($config['list_path'].$path).'_'.$page;
                         for ($page=1;$page<=$maxpage;$page++) {
