@@ -1,7 +1,8 @@
-# QDrive
+# OneDrive_SCF
 OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 
 分支跟master对比：  
+20190809，做好重命名、移动、加密目录（来个前端？）  
 20190803，将跳页cache到目录差不多了，加入admin登录，准备重命名等操作（来个前端啊）  
 20190719，改/preview为?preview，更符合习惯。改密码输入框居中。  
 20190718，加密密码可中文可空格；list_path可以设置中文路径了；文件数>200才读第2次获取nextlink；寻找密码文件时改用递归。  
