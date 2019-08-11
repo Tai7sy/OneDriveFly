@@ -11,6 +11,7 @@ $config = [
 //在环境变量添加：
 /*
 sitename：       网站的名称，不添加会显示为‘请在环境变量添加sitename’
+admin:           管理密码，不添加时不显示登录页面
 public_path：    使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
 private_path：   使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'
 passfile：       自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
@@ -26,6 +27,7 @@ function main_handler($event, $context)
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $function_name = $context['function_name'];
+    $config['function_name']=$function_name;
     $event1 = $event;
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
@@ -82,9 +84,7 @@ When redirected, replace <code>http://localhost</code> with current host', 'Erro
             if ($_POST['password1']==getenv('admin')) return adminform($function_name,md5($_POST['password1']),$_SERVER['PHP_SELF']);
             return adminform();
         } else {
-            return output('', 302, false, [
-                'Location' => $_SERVER['PHP_SELF']
-            ]);
+            return output('', 302, false, [ 'Location' => $_SERVER['PHP_SELF'] ]);
         }
     }
 
@@ -270,6 +270,36 @@ function list_files($path)
     $is_preview = false;
     if ($_GET['preview']) $is_preview = true;
     $path = path_format($path);
+    if ($_POST['upload_filename']!='') {
+        // 上传
+        if ($config['admin']) {
+                $path1 = path_format($config['list_path'] . path_format($path));
+                $filename = str_replace(' ', '%20', $_POST['upload_filename']);
+                $filename = urlencode($filename);
+                $filename = str_replace('%2520', '%20', $filename);
+                $remoteaddr=str_replace(":","_",$event1['requestContext']['sourceIp']);
+                $tmpfilename = "tmp/".date("Ymd-His")."-".$remoteaddr."-".$filename;
+                $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
+                $data = base64_decode($data);
+                $tmpfile=fopen($tmpfilename,'wb');
+                fwrite($tmpfile,$data);
+                fclose($tmpfile);
+                $filename = md5_file($tmpfilename) . '-' . $filename;
+                $filename = path_format($path1 . '/' . $filename);
+                $filename .= ':/createUploadSession';
+                $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
+                $uploadurl=json_decode($response,true)['uploadUrl'];
+                    //echo $response;
+                    /*$datasplit=$data;
+                    while ($datasplit!='') {
+                        $tmpdata=substr($datasplit,0,1024000);
+                        $datasplit=substr($datasplit,1024000);
+                        echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
+                    }//大文件循环PUT，SCF用不上*/
+                echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);
+                $cache->save('path_' . $path1, json_decode('{}',true), 1);
+        }
+    }
     if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
         // 重命名
         if ($config['admin']) {
@@ -287,6 +317,19 @@ function list_files($path)
             /*} else {
                 echo $files['error']['message'];
             }*/
+        }
+    }
+    if ($_POST['delete_name']!='') {
+        // 删除
+        if ($config['admin']) {
+                $path1 = path_format($config['list_path'] . path_format($path));
+                $foldername = str_replace(' ', '%20', $_POST['delete_name']);
+                $foldername = urlencode($foldername);
+                $foldername = str_replace('%2520', '%20', $foldername);
+                $foldername = path_format($path1 . '/' . $foldername);
+                //echo $foldername;
+                echo MSAPI('DELETE', $foldername, '', $config['access_token']);
+                $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     }
     if ($_POST['encrypt_folder']!='') {
@@ -316,6 +359,7 @@ function list_files($path)
                 $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
                 // echo $data;
                 echo MSAPI('PATCH', $filename, $data, $config['access_token']);
+                $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     }
     $files = fetch_files($path);
@@ -388,21 +432,30 @@ function MSAPI($method, $path, $data = '', $access_token)
     // 移目录，echo MSAPI('PATCH','/public/qqqq.txt','{"parentReference":{"path": "/drive/root:/public/release"}}',$access_token);
     // 改名，echo MSAPI('PATCH','/public/qqqq.txt','{"name":"f.txt"}',$access_token);
     // 删除，echo MSAPI('DELETE','/public/qqqq.txt','',$access_token);
-    /*echo $path.' 
-'.$data;*/
-    $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
-    if ($path !== '/') {
-        $url .= ':' . $path;
-        if (substr($url,-1)=='/') $url=substr($url,0,-1);
+    // echo $method. $path.$data;
+    if (substr($path,0,7) == 'http://' or substr($path,0,8) == 'https://') {
+        $url=$path;
+        $lenth=strlen($data);
+        $headers['Content-Length'] = $lenth;
+        $lenth--;
+        $headers['Content-Range'] = 'bytes 0-' . $lenth . '/' . $headers['Content-Length'];
+    } else {
+        $url = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        if ($path !== '/') {
+            $url .= ':' . $path;
+            if (substr($url,-1)=='/') $url=substr($url,0,-1);
+        }
+        if ($method=='PUT') {
+            $url .= ':/content';
+            $headers['Content-Type'] = 'text/plain';
+        }
+        if ($method=='PATCH') {
+            $headers['Content-Type'] = 'application/json';
+        }
+        if ($method=='POST') {
+            $headers['Content-Type'] = 'application/json';
+        }
     }
-    if ($method=='PUT') {
-        $url .= ':/content';
-        $headers['Content-Type'] = 'text/plain';
-    }
-    if ($method=='PATCH') {
-        $headers['Content-Type'] = 'application/json';
-    }
-
     $headers['Authorization'] = 'Bearer ' . $access_token;
     if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
     if (!isset($headers['Referer'])) $headers['Referer'] = $url;
@@ -546,14 +599,15 @@ function render_list($path, $files)
             body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
             a{color:#24292e;cursor:pointer;text-decoration:none}
             a:hover{color:#24292e}
-            .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:3.5rem}
+            .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
             .title a{color:#333;text-decoration:none}
             .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
             .list-container{position:relative;overflow:hidden}
             .list-header-container{position:relative}
-            .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;padding:30px 20px;vertical-align:middle;text-decoration:none}
+            .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
-            .list-header-container .table-header{margin:0;border:0 none;padding:30px 0px 30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
+            .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px 30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
+            .login{display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:0px;top:0px}
             .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
             .list-table{width:100%;padding:20px;border-spacing:0}
             .list-table tr{height:40px}
@@ -562,6 +616,12 @@ function render_list($path, $files)
             .list-table td,.list-table th{padding:0 10px;text-align:left}
             .list-table .size,.list-table .updated_at{text-align:right}
             .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
+            <?php if ($config['admin']) { ?>
+            .operate{display: inline-table;list-style:none;}
+            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin: 0;padding: 0;color:#205D67;}
+            .operate:hover ul{position: absolute;display:inline-table;}
+            .operate ul li{list-style:none;}
+            <?php } ?>
             .readme{padding:8px;background-color: #fff;}
             #readme{padding: 20px;text-align: left}
 
@@ -598,14 +658,15 @@ function render_list($path, $files)
                     </a>
                 <?php } ?>
                 <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
-                <div style="display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:5px;top:0px">
-                    <?php if (!$config['admin']) {?>
-                    <a href="?admin">管理登录</a><?php } else {
-                        if (isset($files['file'])) { ?>
-                        编辑 保存
-                        <?php } 
-                        if (isset($files['folder'])) { ?>
-                        新建 <a onclick="showdiv(event,'encrypt','');">加密</a>
+                <div class="login">
+                    <?php if (getenv('admin')!='') if (!$config['admin']) {?>
+                    <a href="?admin">登录</a><?php } else { ?>
+                        <li class="operate">操作<ul style="top:0px;left:0px">
+                        <li><a onclick="logout()">登出</a></li> 
+                        <?php if (isset($files['folder'])) { ?>
+                        <li>新建</li> 
+                        <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
+                        </ul></li>
                     <?php } 
                     } ?>
                 </div>
@@ -641,16 +702,16 @@ function render_list($path, $files)
                         ';
                         } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
                             if ($files['name']==='当前demo的index.php') {
-                                $str = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
+                                $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
 ';
-                                $str .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
+                                $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
                             } else {
-                                $str = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
+                                $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
                             }
                             echo '
-                        <div id="txt"><textarea id="txt-a" readonly style="width: 95%;">' . $str . '</textarea></div>
+                        <div id="txt" style="margin: 24px"><textarea id="txt-a" readonly style="width: 100%; margin-top: 2px;">'.$txtstr.'</textarea></div>
                         ';
-                            if ($config['admin']) echo '编辑';
+                            if ($config['admin']) echo '<a onclick="document.getElementById(\'txt-a\').readOnly=!document.getElementById(\'txt-a\').readOnly;">编辑</a> 保存';
                         } elseif (in_array($ext, ['md'])) {
                             echo '
                         <div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
@@ -691,9 +752,11 @@ function render_list($path, $files)
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
                                             <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
-                                            <a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a> 
-                                            <a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a> 
-                                            <a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a>
+                                            <li class="operate">操作<ul>
+                                                <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
+                                                <li><a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a></li>
+                                                <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
+                                            </ul></li>
                                             <?php }?>
                                         </td>
                                         <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
@@ -722,9 +785,11 @@ function render_list($path, $files)
                                                 <ion-icon name="download"></ion-icon>
                                             </a>
                                             <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
-                                                <a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a>
-                                                 删除
-                                                <a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a>
+                                            <li class="operate">操作<ul>
+                                                <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
+                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
+                                                <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
+                                            </ul></li>
                                             <?php }?>
                                         </td>
                                         <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
@@ -749,7 +814,7 @@ function render_list($path, $files)
                         if ($pagenum!=1) {
                             $prepagenum = $pagenum-1;
                             $prepagenext .= '
-                            <a onclick="document.getElementById(\'pagenum\').value='.$prepagenum.';document.getElementById(\'nextpageform\').submit();">上一页</a>
+                            <a onclick="nextpage('.$prepagenum.');">上一页</a>
                             ';
                         }
                         $prepagenext .= '</td>
@@ -757,13 +822,13 @@ function render_list($path, $files)
                                 ';
                         //$pathpage = path_format($config['list_path'].$path).'_'.$page;
                         for ($page=1;$page<=$maxpage;$page++) {
-                            if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">
-                                    ';
+                            /*if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">
+                                    ';*/
                             if ($page == $pagenum) {
                                 $prepagenext .= '<font color=red>' . $page . '</font> 
                                 ';
                             } else {
-                                $prepagenext .= '<a onclick="document.getElementById(\'pagenum\').value='.$page.';document.getElementById(\'nextpageform\').submit();">' . $page . '</a> 
+                                $prepagenext .= '<a onclick="nextpage('.$page.');">' . $page . '</a> 
                                 ';
                             }
                         }
@@ -773,7 +838,7 @@ function render_list($path, $files)
                         if ($pagenum!=$maxpage) {
                             $nextpagenum = $pagenum+1;
                             $prepagenext .= '
-                            <a onclick="document.getElementById(\'pagenum\').value='.$nextpagenum.';document.getElementById(\'nextpageform\').submit();">下一页</a>
+                            <a onclick="nextpage('.$nextpagenum.');">下一页</a>
                             ';
                         }
                             $prepagenext .= '</td>
@@ -781,42 +846,30 @@ function render_list($path, $files)
                             </form>';
                             echo $prepagenext;
                     }
-                    if ($readme) {
-                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
-<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
-<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
-<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
-                            . '</textarea></div></div>';
-                    }
-                }
-                } else {
-                    echo '<div class="mdui-container-fluid">
-	<div class="mdui-col-md-6 mdui-col-offset-md-3">
-	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4>
-	  <form action="" method="post">
-		  <div class="mdui-textfield mdui-textfield-floating-label">
-		    <label class="mdui-textfield-label">密码</label>
-		    <input name="password1" class="mdui-textfield-input" type="password"/>
-		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
-          </div>
-	  </form>
-      </center>
-	</div>
-</div>';
-                    $statusCode = 401;
-                }
-                ?>
-            </div>
-        </div>
+                    if ($config['admin']) { ?>
+    <div id="upload_div">
+        <form action="" method="POST">
+        文件大小<4M，不然传输失败！
+        <input id="upload_content" type="hidden" name="upload_filecontent">
+        <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
+        <button type=submit>上传</button>
+        </form>
     </div>
-    <?php if ($config['admin']) { ?>
     <div id="rename_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <br><br><a onclick="document.getElementById('rename_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
         <form action="" method="POST">
             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
             &nbsp;&nbsp;&nbsp;<input id="rename_input" name="rename_newname" type="text" value="">
             <button type=submit>更改</button>&nbsp;&nbsp;&nbsp;
-            
+        </form>
+        <br>
+    </div>
+    <div id="delete_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <br><br><a onclick="document.getElementById('delete_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+        <form action="" method="POST">
+            <input id="delete_hidden" name="delete_name" type="hidden" value="">
+            &nbsp;&nbsp;&nbsp;
+            <button type=submit>确定删除</button>&nbsp;&nbsp;&nbsp;
         </form>
         <br>
     </div>
@@ -848,7 +901,35 @@ function render_list($path, $files)
         </form>
         <br>
     </div>
-    <?php } ?>
+    <?php }
+                    if ($readme) {
+                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
+<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
+<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
+<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
+                            . '</textarea></div></div>';
+                    }
+                }
+                } else {
+                    echo '<div class="mdui-container-fluid">
+	<div class="mdui-col-md-6 mdui-col-offset-md-3">
+	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4>
+	  <form action="" method="post">
+		  <div class="mdui-textfield mdui-textfield-floating-label">
+		    <label class="mdui-textfield-label">密码</label>
+		    <input name="password1" class="mdui-textfield-input" type="password"/>
+		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
+          </div>
+	  </form>
+      </center>
+	</div>
+</div>';
+                    $statusCode = 401;
+                }
+                ?>
+            </div>
+        </div>
+    </div>
     <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$event1['requestContext']['sourceIp'];?></font>
     </body>
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
@@ -869,6 +950,10 @@ function render_list($path, $files)
                 path = path.replace('//', '/')
             }
             return path
+        }
+        function nextpage(num) {
+            document.getElementById('pagenum').value=num;
+            document.getElementById('nextpageform').submit();
         }
 
         document.querySelectorAll('.table-header').forEach(function (e) {
@@ -903,6 +988,22 @@ function render_list($path, $files)
             $url.style.height = $url.scrollHeight + 'px';
         }
         <?php if ($config['admin']) { ?>
+        function logout() {
+            var expd = new Date();
+            expd.setTime(expd.getTime()-(60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="<?php echo $config['function_name'];?>='';"+expires;
+            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].$path);?>";
+        }
+        function base64upfile() {
+            var $file=document.getElementById('upload_file').files[0];
+            var $reader = new FileReader();
+            $reader.onloadend=function(e) {
+                var $data=$reader.result;
+                document.getElementById('upload_content').value=$data;
+            }
+            $reader.readAsDataURL($file);
+        }
         function showdiv(event,action,str) {
         var $e = event || window.event;
         var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
@@ -931,6 +1032,7 @@ function render_list($path, $files)
     unset($_GET);
     unset($_COOKIE);
     $html=ob_get_clean();
+    if (strlen(json_encode($event1['body']))>213) $event1['body']='Too Long!...'.substr($event1['body'],-200) ;
     echo urldecode(json_encode($event1));
     return output($html,$statusCode);
 }
