@@ -616,12 +616,12 @@ function render_list($path, $files)
             .list-table td,.list-table th{padding:0 10px;text-align:left}
             .list-table .size,.list-table .updated_at{text-align:right}
             .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
-            <?php if ($config['admin']) { ?>
+<?php if ($config['admin']) { ?>
             .operate{display: inline-table;list-style:none;}
             .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin: 0;padding: 0;color:#205D67;}
             .operate:hover ul{position: absolute;display:inline-table;}
             .operate ul li{list-style:none;}
-            <?php } ?>
+<?php } ?>
             .readme{padding:8px;background-color: #fff;}
             #readme{padding: 20px;text-align: left}
 
@@ -855,6 +855,36 @@ function render_list($path, $files)
         <button type=submit>上传</button>
         </form>
     </div>
+    <?php }
+                    if ($readme) {
+                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
+<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
+<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
+<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
+                            . '</textarea></div></div>';
+                    }
+                }
+                } else {
+                    echo '<div class="mdui-container-fluid">
+	<div class="mdui-col-md-6 mdui-col-offset-md-3">
+	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4>
+	  <form action="" method="post">
+		  <div class="mdui-textfield mdui-textfield-floating-label">
+		    <label class="mdui-textfield-label">密码</label>
+		    <input name="password1" class="mdui-textfield-input" type="password"/>
+		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
+          </div>
+	  </form>
+      </center>
+	</div>
+</div>';
+                    $statusCode = 401;
+                }
+                ?>
+            </div>
+        </div>
+    </div>
+    <?php if ($config['admin']) { ?>
     <div id="rename_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <br><br><a onclick="document.getElementById('rename_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
         <form action="" method="POST">
@@ -901,35 +931,7 @@ function render_list($path, $files)
         </form>
         <br>
     </div>
-    <?php }
-                    if ($readme) {
-                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
-<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
-<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
-<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
-                            . '</textarea></div></div>';
-                    }
-                }
-                } else {
-                    echo '<div class="mdui-container-fluid">
-	<div class="mdui-col-md-6 mdui-col-offset-md-3">
-	  <center><h4 class="mdui-typo-display-2-opacity">输入密码进行查看</h4>
-	  <form action="" method="post">
-		  <div class="mdui-textfield mdui-textfield-floating-label">
-		    <label class="mdui-textfield-label">密码</label>
-		    <input name="password1" class="mdui-textfield-input" type="password"/>
-		    <button type="submit" class="mdui-center mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme">查看</button>
-          </div>
-	  </form>
-      </center>
-	</div>
-</div>';
-                    $statusCode = 401;
-                }
-                ?>
-            </div>
-        </div>
-    </div>
+    <?php } ?>
     <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$event1['requestContext']['sourceIp'];?></font>
     </body>
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
