@@ -1,7 +1,11 @@
-# QDrive
+# OneDrive_SCF
 OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 
 分支跟master对比：  
+20190812，登录后在预览TXT时可以编辑保存（4M大小限制）。  
+20190811，登录后小文件（<4M）上传，因为API网关传送给SCF的event字符串最长为6291456，上传时只能base64后上传，不然00会变20内容出错，亲自试过4.04M/4237481字节的文件上传没问题，再大（4.3M）API网关就拒绝工作。  
+20190809，做好重命名、移动、加密目录、删除（来个前端？）  
+20190803，将跳页cache到目录差不多了，加入admin登录，准备重命名等操作（来个前端啊）  
 20190719，改/preview为?preview，更符合习惯。改密码输入框居中。  
 20190718，加密密码可中文可空格；list_path可以设置中文路径了；文件数>200才读第2次获取nextlink；寻找密码文件时改用递归。  
 20190709，去掉scfname的设置，直接从context里读，再次简化安装过程。  
@@ -24,4 +28,6 @@ t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量�
 
 # Demo
 
-[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/)
+正式：[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/)
+
+可能在编辑：[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)
