@@ -270,96 +270,10 @@ function list_files($path)
     $is_preview = false;
     if ($_GET['preview']) $is_preview = true;
     $path = path_format($path);
-    if ($_POST['upload_filename']!='') {
-        // 上传
-        if ($config['admin']) {
-                $path1 = path_format($config['list_path'] . path_format($path));
-                $filename = str_replace(' ', '%20', $_POST['upload_filename']);
-                $filename = urlencode($filename);
-                $filename = str_replace('%2520', '%20', $filename);
-                $remoteaddr=str_replace(":","_",$event1['requestContext']['sourceIp']);
-                $tmpfilename = "tmp/".date("Ymd-His")."-".$remoteaddr."-".$filename;
-                $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
-                $data = base64_decode($data);
-                $tmpfile=fopen($tmpfilename,'wb');
-                fwrite($tmpfile,$data);
-                fclose($tmpfile);
-                $filename = md5_file($tmpfilename) . '-' . $filename;
-                $filename = path_format($path1 . '/' . $filename);
-                $filename .= ':/createUploadSession';
-                $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
-                $uploadurl=json_decode($response,true)['uploadUrl'];
-                    //echo $response;
-                    /*$datasplit=$data;
-                    while ($datasplit!='') {
-                        $tmpdata=substr($datasplit,0,1024000);
-                        $datasplit=substr($datasplit,1024000);
-                        echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
-                    }//大文件循环PUT，SCF用不上*/
-                echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);
-                $cache->save('path_' . $path1, json_decode('{}',true), 1);
-        }
-    }
-    if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
-        // 重命名
-        if ($config['admin']) {
-            //$files = fetch_files($path .'/' .$_POST['rename_oldname']);
-            //if (isset($files['file'])) {
-                $path1 = path_format($config['list_path'] . path_format($path));
-                $oldname = str_replace(' ', '%20', $_POST['rename_oldname']);
-                $oldname = urlencode($oldname);
-                $oldname = str_replace('%2520', '%20', $oldname);
-                $oldname = path_format($path1 . '/' . $oldname);
-                $data = '{"name":"' . $_POST['rename_newname'] . '"}';
-                //echo $oldname;
-                echo MSAPI('PATCH',$oldname,$data,$config['access_token']);
-                $cache->save('path_' . $path1, json_decode('{}',true), 1);
-            /*} else {
-                echo $files['error']['message'];
-            }*/
-        }
-    }
-    if ($_POST['delete_name']!='') {
-        // 删除
-        if ($config['admin']) {
-                $path1 = path_format($config['list_path'] . path_format($path));
-                $foldername = str_replace(' ', '%20', $_POST['delete_name']);
-                $foldername = urlencode($foldername);
-                $foldername = str_replace('%2520', '%20', $foldername);
-                $foldername = path_format($path1 . '/' . $foldername);
-                //echo $foldername;
-                echo MSAPI('DELETE', $foldername, '', $config['access_token']);
-                $cache->save('path_' . $path1, json_decode('{}',true), 1);
-        }
-    }
-    if ($_POST['encrypt_folder']!='') {
-        // 加密
-        if ($config['admin']) {
-                $path1 = path_format($config['list_path'] . path_format($path));
-                $foldername = str_replace(' ', '%20', $_POST['encrypt_folder']);
-                $foldername = urlencode($foldername);
-                $foldername = str_replace('%2520', '%20', $foldername);
-                $foldername = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
-                //echo $foldername;
-                echo MSAPI('PUT', $foldername, $_POST['encrypt_newpass'], $config['access_token']);
-        }
-    }
-    if ($_POST['move_folder']!='') {
-        // 移动
-        $moveable = 1;
-        if ($path == '/' && $_POST['move_folder'] == '/../') $moveable=0;
-        if ($config['admin'] && $moveable) {
-                $path1 = path_format($config['list_path'] . path_format($path));
-                $filename = str_replace(' ', '%20', $_POST['move_name']);
-                $filename = urlencode($filename);
-                $filename = str_replace('%2520', '%20', $filename);
-                $filename = path_format($path1 . '/' . $filename);
-                //echo $filename;
-                $foldername = path_format('/'.urldecode($path1).'/'.$_POST['move_folder']);
-                $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
-                // echo $data;
-                echo MSAPI('PATCH', $filename, $data, $config['access_token']);
-                $cache->save('path_' . $path1, json_decode('{}',true), 1);
+    if ($config['admin']) {
+        if (adminoperate($path)) {
+            $path1 = path_format($config['list_path'] . path_format($path));
+            $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     }
     $files = fetch_files($path);
@@ -427,6 +341,106 @@ function adminform($name = '', $pass = '', $path = '')
     return output($html,$statusCode);
 }
 
+function adminoperate($path)
+{
+    global $config;
+    $change=0;
+    if ($_POST['upload_filename']!='') {
+        // 上传
+        $path1 = path_format($config['list_path'] . path_format($path));
+        $filename = str_replace(' ', '%20', $_POST['upload_filename']);
+        $filename = urlencode($filename);
+        $filename = str_replace('%2520', '%20', $filename);
+        $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
+        $data = base64_decode($data);
+        /*重命名为MD5加上传名
+        $tmpfilename = "tmp/".date("Ymd-His")."-".$filename;
+        $tmpfile=fopen($tmpfilename,'wb');
+        fwrite($tmpfile,$data);
+        fclose($tmpfile);
+        $filename = md5_file($tmpfilename) . '-' . $filename;*/
+        $filename = path_format($path1 . '/' . $filename);
+        $filename .= ':/createUploadSession';
+        $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
+        $uploadurl=json_decode($response,true)['uploadUrl'];
+                    //echo $response;
+                    /*$datasplit=$data;
+                    while ($datasplit!='') {
+                        $tmpdata=substr($datasplit,0,1024000);
+                        $datasplit=substr($datasplit,1024000);
+                        echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
+                    }//大文件循环PUT，SCF用不上*/
+        echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);
+        $change=1;
+    }
+    if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
+        // 重命名
+        $path1 = path_format($config['list_path'] . path_format($path));
+        $oldname = str_replace(' ', '%20', $_POST['rename_oldname']);
+        $oldname = urlencode($oldname);
+        $oldname = str_replace('%2520', '%20', $oldname);
+        $oldname = path_format($path1 . '/' . $oldname);
+        $data = '{"name":"' . $_POST['rename_newname'] . '"}';
+                //echo $oldname;
+        echo MSAPI('PATCH',$oldname,$data,$config['access_token']);
+        $change=1;
+    }
+    if ($_POST['delete_name']!='') {
+        // 删除
+        $path1 = path_format($config['list_path'] . path_format($path));
+        $foldername = str_replace(' ', '%20', $_POST['delete_name']);
+        $foldername = urlencode($foldername);
+        $foldername = str_replace('%2520', '%20', $foldername);
+        $foldername = path_format($path1 . '/' . $foldername);
+                //echo $foldername;
+        echo MSAPI('DELETE', $foldername, '', $config['access_token']);
+        $change=1;
+    }
+    if ($_POST['encrypt_folder']!='') {
+        // 加密
+        $path1 = path_format($config['list_path'] . path_format($path));
+        $foldername = str_replace(' ', '%20', $_POST['encrypt_folder']);
+        $foldername = urlencode($foldername);
+        $foldername = str_replace('%2520', '%20', $foldername);
+        $foldername = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
+                //echo $foldername;
+        echo MSAPI('PUT', $foldername, $_POST['encrypt_newpass'], $config['access_token']);
+        $change=1;
+    }
+    if ($_POST['move_folder']!='') {
+        // 移动
+        $moveable = 1;
+        if ($path == '/' && $_POST['move_folder'] == '/../') $moveable=0;
+        if ($_POST['move_folder'] == $_POST['move_name']) $moveable=0;
+        if ($moveable) {
+            $path1 = path_format($config['list_path'] . path_format($path));
+            $filename = str_replace(' ', '%20', $_POST['move_name']);
+            $filename = urlencode($filename);
+            $filename = str_replace('%2520', '%20', $filename);
+            $filename = path_format($path1 . '/' . $filename);
+                //echo $filename;
+            $foldername = path_format('/'.urldecode($path1).'/'.$_POST['move_folder']);
+            $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
+                // echo $data;
+            echo MSAPI('PATCH', $filename, $data, $config['access_token']);
+            $change=1;
+        }
+    }
+    if ($_POST['editfile']!='') {
+        // 编辑
+        $path1 = path_format($config['list_path'] . path_format($path));
+        $data = $_POST['editfile'];
+        /*TXT一般不会超过4M，不用二段上传
+        $filename = $path1 . ':/createUploadSession';
+        $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "replace"  }}',$config['access_token']);
+        $uploadurl=json_decode($response,true)['uploadUrl'];
+        echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);*/
+        echo MSAPI('PUT', $path1, $data, $config['access_token']);
+        $change=1;
+    }
+    return $change;
+}
+
 function MSAPI($method, $path, $data = '', $access_token)
 {
     // 移目录，echo MSAPI('PATCH','/public/qqqq.txt','{"parentReference":{"path": "/drive/root:/public/release"}}',$access_token);
@@ -488,6 +502,8 @@ function MSAPI($method, $path, $data = '', $access_token)
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
     $response = curl_exec($ch);
     curl_close($ch);
+    echo '
+';
     return $response;
 }
 
@@ -661,7 +677,7 @@ function render_list($path, $files)
                 <div class="login">
                     <?php if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a href="?admin">登录</a><?php } else { ?>
-                        <li class="operate">操作<ul style="top:0px;left:0px">
+                        <li class="operate">操作<ul style="top:13px;left:20px">
                         <li><a onclick="logout()">登出</a></li> 
                         <?php if (isset($files['folder'])) { ?>
                         <li>新建</li> 
@@ -707,12 +723,16 @@ function render_list($path, $files)
                                 $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
                             } else {
                                 $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
-                            }
-                            echo '
-                        <div id="txt" style="margin: 24px"><textarea id="txt-a" readonly style="width: 100%; margin-top: 2px;">'.$txtstr.'</textarea></div>
-                        ';
-                            if ($config['admin']) echo '<a onclick="document.getElementById(\'txt-a\').readOnly=!document.getElementById(\'txt-a\').readOnly;">编辑</a> 保存';
-                        } elseif (in_array($ext, ['md'])) {
+                            } ?>
+                        <div id="txt" style="margin: 24px">
+                        <?php if ($config['admin']) { ?><form id="txt-form" action="" method="POST">
+                            <a onclick="document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';" id="txt-editbutton" >点击后编辑</a>
+                            <a onclick="document.getElementById('txt-form').submit();">保存</a>
+                         <?php } ?>
+                            <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;"><?php echo $txtstr;?></textarea>
+                        <?php if ($config['admin']) echo '</form>';?>
+                        </div>
+                        <?php } elseif (in_array($ext, ['md'])) {
                             echo '
                         <div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
                         ';
@@ -1035,6 +1055,7 @@ function render_list($path, $files)
     unset($_COOKIE);
     $html=ob_get_clean();
     if (strlen(json_encode($event1['body']))>213) $event1['body']='Too Long!...'.substr($event1['body'],-200) ;
-    echo urldecode(json_encode($event1));
+    echo '
+' . urldecode(json_encode($event1));
     return output($html,$statusCode);
 }
