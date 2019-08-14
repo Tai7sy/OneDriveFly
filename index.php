@@ -310,7 +310,7 @@ function adminform($name = '', $pass = '', $path = '')
 {
     $statusCode = 401;
     $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
-    if ($name !='') {
+    if ($name!='') {
         $html .= '<script type="text/javascript">
             var expd = new Date();
             expd.setTime(expd.getTime()+(1*60*60*1000));
@@ -336,7 +336,6 @@ function adminform($name = '', $pass = '', $path = '')
       </center>
 	</div>
 </div>';
-    
     $html .= '</body></html>';
     return output($html,$statusCode);
 }
@@ -344,10 +343,11 @@ function adminform($name = '', $pass = '', $path = '')
 function adminoperate($path)
 {
     global $config;
+    $path1 = path_format($config['list_path'] . path_format($path));
+    if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     $change=0;
     if ($_POST['upload_filename']!='') {
         // 上传
-        $path1 = path_format($config['list_path'] . path_format($path));
         $filename = str_replace(' ', '%20', $_POST['upload_filename']);
         $filename = urlencode($filename);
         $filename = str_replace('%2520', '%20', $filename);
@@ -375,7 +375,6 @@ function adminoperate($path)
     }
     if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
         // 重命名
-        $path1 = path_format($config['list_path'] . path_format($path));
         $oldname = str_replace(' ', '%20', $_POST['rename_oldname']);
         $oldname = urlencode($oldname);
         $oldname = str_replace('%2520', '%20', $oldname);
@@ -387,7 +386,6 @@ function adminoperate($path)
     }
     if ($_POST['delete_name']!='') {
         // 删除
-        $path1 = path_format($config['list_path'] . path_format($path));
         $foldername = str_replace(' ', '%20', $_POST['delete_name']);
         $foldername = urlencode($foldername);
         $foldername = str_replace('%2520', '%20', $foldername);
@@ -396,9 +394,9 @@ function adminoperate($path)
         echo MSAPI('DELETE', $foldername, '', $config['access_token']);
         $change=1;
     }
-    if ($_POST['encrypt_folder']!='') {
+    if ($_POST['operate_action']=='加密') {
         // 加密
-        $path1 = path_format($config['list_path'] . path_format($path));
+        if ($_POST['encrypt_folder']=='/') $_POST['encrypt_folder']=='';
         $foldername = str_replace(' ', '%20', $_POST['encrypt_folder']);
         $foldername = urlencode($foldername);
         $foldername = str_replace('%2520', '%20', $foldername);
@@ -413,7 +411,6 @@ function adminoperate($path)
         if ($path == '/' && $_POST['move_folder'] == '/../') $moveable=0;
         if ($_POST['move_folder'] == $_POST['move_name']) $moveable=0;
         if ($moveable) {
-            $path1 = path_format($config['list_path'] . path_format($path));
             $filename = str_replace(' ', '%20', $_POST['move_name']);
             $filename = urlencode($filename);
             $filename = str_replace('%2520', '%20', $filename);
@@ -428,7 +425,6 @@ function adminoperate($path)
     }
     if ($_POST['editfile']!='') {
         // 编辑
-        $path1 = path_format($config['list_path'] . path_format($path));
         $data = $_POST['editfile'];
         /*TXT一般不会超过4M，不用二段上传
         $filename = $path1 . ':/createUploadSession';
@@ -436,6 +432,21 @@ function adminoperate($path)
         $uploadurl=json_decode($response,true)['uploadUrl'];
         echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);*/
         echo MSAPI('PUT', $path1, $data, $config['access_token']);
+        $change=1;
+    }
+    if ($_POST['create_name']!='') {
+        // 新建
+        if ($_POST['create_type']=='file') {
+            $filename = str_replace(' ', '%20', $_POST['create_name']);
+            $filename = urlencode($filename);
+            $filename = str_replace('%2520', '%20', $filename);
+            $filename = path_format($path1 . '/' . $filename);
+            echo MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token']);
+        }
+        if ($_POST['create_type']=='folder') {
+            $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
+            echo MSAPI('POST', $path1 . ':/children', $data, $config['access_token']);
+        }
         $change=1;
     }
     return $change;
@@ -634,9 +645,10 @@ function render_list($path, $files)
             .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
 <?php if ($config['admin']) { ?>
             .operate{display: inline-table;list-style:none;}
-            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin: 0;padding: 0;color:#205D67;}
+            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin: -17px 0 0 -1px;padding: 0;color:#205D67;}
             .operate:hover ul{position: absolute;display:inline-table;}
-            .operate ul li{list-style:none;}
+            .operate ul li{padding:1px;list-style:none;}
+            .operatediv_close{position: absolute;right: 10px;top:5px;}
 <?php } ?>
             .readme{padding:8px;background-color: #fff;}
             #readme{padding: 20px;text-align: left}
@@ -677,11 +689,11 @@ function render_list($path, $files)
                 <div class="login">
                     <?php if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a href="?admin">登录</a><?php } else { ?>
-                        <li class="operate">操作<ul style="top:13px;left:20px">
-                        <li><a onclick="logout()">登出</a></li> 
+                        <li class="operate">操作<ul style="left:-15px">
+                        <li><a onclick="logout()">登出</a></li>
                         <?php if (isset($files['folder'])) { ?>
-                        <li>新建</li> 
-                        <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
+                        <li><a onclick="showdiv(event,'create','');">新建</a></li>
+                        <?php if (getenv('passfile')!='') {?><li><a onclick="showdiv(event,'encrypt','');">加密</a></li><?php } ?>
                         </ul></li>
                     <?php } 
                     } ?>
@@ -726,10 +738,10 @@ function render_list($path, $files)
                             } ?>
                         <div id="txt" style="margin: 24px">
                         <?php if ($config['admin']) { ?><form id="txt-form" action="" method="POST">
-                            <a onclick="document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';" id="txt-editbutton" >点击后编辑</a>
-                            <a onclick="document.getElementById('txt-form').submit();">保存</a>
+                            <a onclick="enableedit(this);" id="txt-editbutton">点击后编辑</a>
+                            <a id="txt-save" style="display:none">保存</a>
                          <?php } ?>
-                            <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;"><?php echo $txtstr;?></textarea>
+                            <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;" <?php if ($config['admin']) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"';?> ><?php echo $txtstr;?></textarea>
                         <?php if ($config['admin']) echo '</form>';?>
                         </div>
                         <?php } elseif (in_array($ext, ['md'])) {
@@ -774,8 +786,9 @@ function render_list($path, $files)
                                             <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
                                             <li class="operate">操作<ul>
                                                 <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
-                                                <li><a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a></li>
                                                 <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
+                                                <?php if (getenv('passfile')!='') {?><li><a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a></li><?php } ?>
+                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
                                             </ul></li>
                                             <?php }?>
                                         </td>
@@ -807,8 +820,8 @@ function render_list($path, $files)
                                             <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
                                             <li class="operate">操作<ul>
                                                 <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
-                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
                                                 <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
+                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
                                             </ul></li>
                                             <?php }?>
                                         </td>
@@ -869,10 +882,10 @@ function render_list($path, $files)
                     if ($config['admin']) { ?>
     <div id="upload_div">
         <form action="" method="POST">
-        文件大小<4M，不然传输失败！
         <input id="upload_content" type="hidden" name="upload_filecontent">
         <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
         <button type=submit>上传</button>
+        文件大小<4M，不然传输失败！
         </form>
     </div>
     <?php }
@@ -905,38 +918,40 @@ function render_list($path, $files)
         </div>
     </div>
     <?php if ($config['admin']) { ?>
-    <div id="rename_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <br><br><a onclick="document.getElementById('rename_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+    <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:10px">
+        <br><label id="rename_label"></label><br><a onclick="document.getElementById('rename_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
-            &nbsp;&nbsp;&nbsp;<input id="rename_input" name="rename_newname" type="text" value="">
-            <button type=submit>更改</button>&nbsp;&nbsp;&nbsp;
+            <input id="rename_input" name="rename_newname" type="text" value="">
+            <button name="operate_action" type="submit">重命名</button>
         </form>
-        <br>
+        </div>
     </div>
-    <div id="delete_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <br><br><a onclick="document.getElementById('delete_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+    <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:10px">
+        <br><label id="delete_label"></label><br><a onclick="document.getElementById('delete_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="delete_hidden" name="delete_name" type="hidden" value="">
-            &nbsp;&nbsp;&nbsp;
-            <button type=submit>确定删除</button>&nbsp;&nbsp;&nbsp;
+            <button name="operate_action" type=submit>确定删除</button>
         </form>
-        <br>
+        </div>
     </div>
-    <div id="encrypt_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <br><br><a onclick="document.getElementById('encrypt_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+    <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:10px">
+        <br><label id="encrypt_label"></label><br><a onclick="document.getElementById('encrypt_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
-            &nbsp;&nbsp;&nbsp;<input id="encrypt_input" name="encrypt_newpass" type="text" value="">
-            <button type=submit>加密</button>&nbsp;&nbsp;&nbsp;
+            <input id="encrypt_input" name="encrypt_newpass" type="text" value="">
+            <button name="operate_action" type=submit>加密</button>
         </form>
-        <br>
+        </div>
     </div>
-    <div id="move_div" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <br><br><a onclick="document.getElementById('move_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+    <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:10px">
+        <br><label id="move_label"></label><br><a onclick="document.getElementById('move_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="move_hidden" name="move_name" type="hidden" value="">
-            &nbsp;&nbsp;&nbsp;
             <select id="move_input" name="move_folder">
             <?php if ($path != '/') { ?>
                 <option value="/../">上一级目录</option>
@@ -947,9 +962,22 @@ function render_list($path, $files)
             <?php }
             } ?>
             </select>
-            <button type=submit>移动</button>&nbsp;&nbsp;&nbsp;
+            <button name="operate_action" type=submit>移动</button>
         </form>
-        <br>
+        </div>
+    </div>
+    <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:50px">
+        <br><label id="create_label"></label><a onclick="document.getElementById('create_div').style.display='none';" class="operatediv_close">关闭</a>
+        <form action="" method="POST">
+                <input id="create_hidden" type="hidden" value="">
+                　　　<input id="create_type" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
+                <input id="create_type" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
+                名字：<input id="create_input" name="create_name" type="text" value=""><br>
+                <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
+                　　　<button name="operate_action" type=submit>新建</button>
+        </form>
+        </div>
     </div>
     <?php } ?>
     <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$event1['requestContext']['sourceIp'];?></font>
@@ -1015,7 +1043,7 @@ function render_list($path, $files)
             expd.setTime(expd.getTime()-(60*1000));
             var expires = "expires="+expd.toGMTString();
             document.cookie="<?php echo $config['function_name'];?>='';"+expires;
-            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].$path);?>";
+            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
         }
         function base64upfile() {
             var $file=document.getElementById('upload_file').files[0];
@@ -1027,21 +1055,38 @@ function render_list($path, $files)
             $reader.readAsDataURL($file);
         }
         function showdiv(event,action,str) {
-        var $e = event || window.event;
-        var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
-        var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
-        var $x = $e.pageX || $e.clientX + $scrollX;
-        var $y = $e.pageY || $e.clientY + $scrollY;
-        //offsetWidth，window.innerWidth
-        if ($x + document.getElementById(action + '_div').offsetWidth > window.innerWidth) {
-            document.getElementById(action + '_div').style.left=window.innerWidth-document.getElementById(action + '_div').offsetWidth+'px';
-        } else {
-            document.getElementById(action + '_div').style.left=$x+'px';
+            var $operatediv=document.getElementsByName('operatediv');
+            for ($i=0;$i<$operatediv.length;$i++) {
+                $operatediv[$i].style.display='none';
+            }
+            document.getElementById(action + '_div').style.display='';
+            document.getElementById(action + '_label').innerHTML=str;
+            document.getElementById(action + '_hidden').value=str;
+            if (action=='rename') document.getElementById(action + '_input').value=str;
+
+            var $e = event || window.event;
+            var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
+            var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
+            var $x = $e.pageX || $e.clientX + $scrollX;
+            var $y = $e.pageY || $e.clientY + $scrollY;
+            if (action=='create') {
+                document.getElementById(action + '_div').style.left=(document.body.clientWidth-document.getElementById(action + '_div').offsetWidth)/2 +'px';
+                document.getElementById(action + '_div').style.top=(window.innerHeight-document.getElementById(action + '_div').offsetHeight)/2+$scrollY +'px';
+            } else {
+                if ($x + document.getElementById(action + '_div').offsetWidth > document.body.clientWidth) {
+                    document.getElementById(action + '_div').style.left=document.body.clientWidth-document.getElementById(action + '_div').offsetWidth+'px';
+                } else {
+                    document.getElementById(action + '_div').style.left=$x+'px';
+                }
+                document.getElementById(action + '_div').style.top=$y+'px';
+            }
         }
-        document.getElementById(action + '_div').style.top=$y+'px';
-        document.getElementById(action + '_div').style.display='';
-        document.getElementById(action + '_hidden').value=str;
-        if (action=='rename') document.getElementById(action + '_input').value=str;
+        function enableedit(obj)
+        {
+            document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
+            //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+            obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+            document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
         <?php } ?>
     </script>
@@ -1054,7 +1099,7 @@ function render_list($path, $files)
     unset($_GET);
     unset($_COOKIE);
     $html=ob_get_clean();
-    if (strlen(json_encode($event1['body']))>213) $event1['body']='Too Long!...'.substr($event1['body'],-200) ;
+    if (strlen(json_encode($event1['body']))>213) $event1['body']='Too Long!...'.substr($event1['body'],-200);
     echo '
 ' . urldecode(json_encode($event1));
     return output($html,$statusCode);
