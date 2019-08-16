@@ -2,6 +2,7 @@
 OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 
 更新记录：  
+20190816，设置游客上传目录，可以上传<4M的文件，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面。游客上传的文件会被重命名为MD5加后缀，管理登录后上传的文件不会被重命名。
 20190814，新建文本文件及目录  
 20190812，登录后在预览TXT时可以编辑保存（4M大小限制）。  
 20190811，登录后小文件（<4M）上传，因为API网关传送给SCF的event字符串最长为6291456，上传时只能base64后上传，不然00会变20内容出错，亲自试过4.04M/4237481字节的文件上传没问题，再大（4.3M）API网关就拒绝工作。  
@@ -19,11 +20,12 @@ OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 
 //在环境变量添加：  
 /*  
-sitename：       网站的名称，不添加会显示为‘请在环境变量添加sitename’  
-admin:           管理的登录密码，不设置时不显示登录页面  
-public_path：    使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'，可以多级带中文  
-private_path：   使用私人域名访问时，网盘里的路径，不设置时默认为'/'，可以多级带中文  
-passfile：       自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；  
+sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’  
+admin          ：管理密码，不添加时不显示登录页面  
+public_path    ：使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'  
+private_path   ：使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'  
+imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面  
+passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；  
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，不想再出现ctrl+c、ctrl+v把token也贴到github的事了  
 \*/
