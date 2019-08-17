@@ -1,7 +1,6 @@
 <?php
 include 'vendor/autoload.php';
 include 'functions.php';
-global $event1;
 global $config;
 $config = [
     'sitename' => getenv('sitename'),
@@ -22,14 +21,18 @@ t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量�
 
 function main_handler($event, $context)
 {
-    global $event1;
     global $config;
-    
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
+    $event1 = $event;
+    if (strlen(json_encode($event1['body']))>213) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'=')+1) . 'Too Long!...' . substr($event1['body'],-200);
+    echo urldecode(json_encode($event1)) . '
+ 
+' . urldecode(json_encode($context)) . '
+ 
+';
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
-    $event1 = $event;
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
@@ -50,20 +53,24 @@ function main_handler($event, $context)
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     if (getenv('imgup_path')!='') $config['imgup_path'] = getenv('imgup_path');
-
+    $config['sourceIp'] = $event['requestContext']['sourceIp'];
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = path_format($config['base_path'] . $path);
     $referer = $event['headers']['referer'];
     $tmpurl = substr($referer,strpos($referer,'//')+2);
     $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
-    if ($refererhost==$host_name) $config['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
+    if ($refererhost==$host_name) {
+        $config['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
+    } else {
+        $config['current_url'] = '';
+    }
 
-    $_POSTbody = explode("&",$event1['body']);
+    $_POSTbody = explode("&",$event['body']);
     foreach ($_POSTbody as $postvalues){
         $pos = strpos($postvalues,"=");
         $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
     }
-    $cookiebody = explode("; ",$event1['headers']['cookie']);
+    $cookiebody = explode("; ",$event['headers']['cookie']);
     foreach ($cookiebody as $cookievalues){
         $tmp=explode("=",$cookievalues);
         $_COOKIE[$tmp[0]]=$tmp[1];
@@ -267,8 +274,10 @@ function fetch_files_children($files, $path, $page, $cache)
 
 function list_files($path)
 {
-    global $event1;
     global $config;
+    $is_preview = false;
+    if ($_GET['preview']) $is_preview = true;
+    $path = path_format($path);
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
     if (!($access_token = $cache->fetch('access_token'))) {
@@ -284,9 +293,7 @@ function list_files($path)
         $config['access_token'] = $access_token;
         $cache->save('access_token', $config['access_token'], $ret['expires_in'] - 60);
     }
-    $is_preview = false;
-    if ($_GET['preview']) $is_preview = true;
-    $path = path_format($path);
+
     if ($config['admin']) {
         if (adminoperate($path)) {
             $path1 = path_format($config['list_path'] . path_format($path));
@@ -298,12 +305,15 @@ function list_files($path)
             if ($html!='') return $html;
         }
     }
-    $files = fetch_files($path);
+    if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&!$config['admin']) {
+        $files = json_decode('{"folder":{}}', true);
+    } else {
+        $files = fetch_files($path);
+    }
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
         $ishidden=passhidden(substr($path,0,strrpos($path,'/')));
         if ($config['admin'] or $ishidden<4) {
-            echo urldecode(json_encode($event1));
             return output('', 302, false, [
                 'Location' => $files['@microsoft.graph.downloadUrl']
             ]);
@@ -379,7 +389,7 @@ function guestupload($path)
         fwrite($tmpfile,$data);
         fclose($tmpfile);
         $filename = md5_file($tmpfilename) . $ext;
-        $locationurl = $config['current_url'] . '/' . $filename . '?preview';
+        if ($config['current_url']!='') $locationurl = $config['current_url'] . '/' . $filename . '?preview';
         $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry=json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>');
@@ -634,7 +644,6 @@ function comppass($pass) {
 
 function render_list($path, $files)
 {
-    global $event1;
     global $config;
     @ob_start();
     date_default_timezone_set('Asia/Shanghai');
@@ -743,7 +752,16 @@ function render_list($path, $files)
                 </div>
             </div>
             <div class="list-body-container">
-                <?php
+                <?php if (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&!$config['admin']) { ?>
+                        <div id="upload_div" style="margin:10px"><center>
+        <form action="" method="POST">
+        <input id="upload_content" type="hidden" name="guest_upload_filecontent">
+        <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
+        <button type=submit>上传</button>
+        文件大小<4M，不然传输失败！
+        </form><center>
+    </div>
+                    <?php } else { 
                 $ishidden=passhidden($path);
                 if ($config['admin'] or $ishidden<4) {
                 if (isset($files['file'])) {
@@ -797,17 +815,7 @@ function render_list($path, $files)
                         } ?>
                         </div>
                     </div>
-          <?php } else {
-                    if (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&!$config['admin']) { ?>
-                        <div id="upload_div" style="margin:10px"><center>
-        <form action="" method="POST">
-        <input id="upload_content" type="hidden" name="guest_upload_filecontent">
-        <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
-        <button type=submit>上传</button>
-        文件大小<4M，不然传输失败！
-        </form><center>
-    </div>
-                    <?php } else { ?>
+          <?php } else { ?>
                     <table class="list-table">
                         <tr>
                             <!--<th class="updated_at" width="5%">序号</th>-->
@@ -856,7 +864,6 @@ function render_list($path, $files)
                                     if (strtolower($file['name']) === 'readme.md') $readme = $file;
                                     if (strtolower($file['name']) === 'index.html') {
                                         $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name'])))['@microsoft.graph.downloadUrl']);
-                                        $html .= '<!--' . urldecode(json_encode($event1)) . '-->';
                                         return output($html,200);
                                     } ?>
                                     <tr data-to>
@@ -948,7 +955,7 @@ function render_list($path, $files)
 <div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name'])))['@microsoft.graph.downloadUrl'])
                             . '</textarea></div></div>';
                     }
-                } }
+                }
                 } else {
                     echo '
 <div>
@@ -961,7 +968,7 @@ function render_list($path, $files)
     </center>
 </div>';
                     $statusCode = 401;
-                }
+                } }
                 ?>
             </div>
         </div>
@@ -969,7 +976,7 @@ function render_list($path, $files)
     <?php if ($config['admin']) { ?>
     <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <br><label id="rename_label"></label><br><a onclick="document.getElementById('rename_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="rename_label"></label><br><br><a onclick="document.getElementById('rename_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
             <input id="rename_input" name="rename_newname" type="text" value="">
@@ -979,8 +986,9 @@ function render_list($path, $files)
     </div>
     <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <br><label id="delete_label"></label><br><a onclick="document.getElementById('delete_div').style.display='none';" class="operatediv_close">关闭</a>
+        <br><a onclick="document.getElementById('delete_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
+            <label id="delete_label"></label>
             <input id="delete_hidden" name="delete_name" type="hidden" value="">
             <button name="operate_action" type=submit>确定删除</button>
         </form>
@@ -988,7 +996,7 @@ function render_list($path, $files)
     </div>
     <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <br><label id="encrypt_label"></label><br><a onclick="document.getElementById('encrypt_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="encrypt_label"></label><br><br><a onclick="document.getElementById('encrypt_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
             <input id="encrypt_input" name="encrypt_newpass" type="text" value="">
@@ -998,7 +1006,7 @@ function render_list($path, $files)
     </div>
     <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <br><label id="move_label"></label><br><a onclick="document.getElementById('move_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="move_label"></label><br><br><a onclick="document.getElementById('move_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="move_hidden" name="move_name" type="hidden" value="">
             <select id="move_input" name="move_folder">
@@ -1017,7 +1025,7 @@ function render_list($path, $files)
     </div>
     <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:50px">
-        <br><label id="create_label"></label><a onclick="document.getElementById('create_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="create_label"></label><br><a onclick="document.getElementById('create_div').style.display='none';" class="operatediv_close">关闭</a>
         <form action="" method="POST">
                 <input id="create_hidden" type="hidden" value="">
                 　　　<input id="create_type" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
@@ -1044,7 +1052,7 @@ function render_list($path, $files)
 	</div>
     <?php }
     } ?>
-    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$event1['requestContext']['sourceIp'];?></font>
+    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$config['sourceIp'];?></font>
     </body>
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
     <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
@@ -1166,8 +1174,5 @@ function render_list($path, $files)
     unset($_GET);
     unset($_COOKIE);
     $html=ob_get_clean();
-    if (strlen(json_encode($event1['body']))>213) $event1['body']='Too Long!...'.substr($event1['body'],-200);
-    echo '
-' . urldecode(json_encode($event1));
     return output($html,$statusCode);
 }
