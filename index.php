@@ -25,7 +25,7 @@ function main_handler($event, $context)
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
-    if (strlen(json_encode($event1['body']))>213) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'=')+1) . 'Too Long!...' . substr($event1['body'],-200);
+    if (strlen(json_encode($event1['body']))>150) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+strlen('base64,')) . 'Too Long!...' . substr($event1['body'],-100);
     echo urldecode(json_encode($event1)) . '
  
 ' . urldecode(json_encode($context)) . '
@@ -737,9 +737,7 @@ function render_list($path, $files)
                 <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
                 <div class="login">
                     <?php if (getenv('admin')!='') if (!$config['admin']) {?>
-                    <a onclick="document.getElementById('login_div').style.display='';
-                    document.getElementById('login_div').style.left=(document.body.clientWidth-document.getElementById('login_div').offsetWidth)/2 +'px';
-                document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';">登录</a>
+                    <a onclick="login();">登录</a>
                 <?php } else { ?>
                         <li class="operate">管理<ul style="left:-15px">
                         <li><a onclick="logout()">登出</a></li>
@@ -973,10 +971,11 @@ function render_list($path, $files)
             </div>
         </div>
     </div>
+    <div id="mask" style="position:absolute;display:none;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5"></div>
     <?php if ($config['admin']) { ?>
     <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <label id="rename_label"></label><br><br><a onclick="document.getElementById('rename_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
             <input id="rename_input" name="rename_newname" type="text" value="">
@@ -986,7 +985,7 @@ function render_list($path, $files)
     </div>
     <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <br><a onclick="document.getElementById('delete_div').style.display='none';" class="operatediv_close">关闭</a>
+        <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <label id="delete_label"></label>
             <input id="delete_hidden" name="delete_name" type="hidden" value="">
@@ -996,17 +995,17 @@ function render_list($path, $files)
     </div>
     <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <label id="encrypt_label"></label><br><br><a onclick="document.getElementById('encrypt_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
             <input id="encrypt_input" name="encrypt_newpass" type="text" value="">
-            <button name="operate_action" type=submit>加密</button>
+            <button name="operate_action" type=submit value="加密">加密</button>
         </form>
         </div>
     </div>
     <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:10px">
-        <label id="move_label"></label><br><br><a onclick="document.getElementById('move_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="move_hidden" name="move_name" type="hidden" value="">
             <select id="move_input" name="move_folder">
@@ -1025,7 +1024,7 @@ function render_list($path, $files)
     </div>
     <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:50px">
-        <label id="create_label"></label><br><a onclick="document.getElementById('create_div').style.display='none';" class="operatediv_close">关闭</a>
+        <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
                 <input id="create_hidden" type="hidden" value="">
                 　　　<input id="create_type" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
@@ -1040,7 +1039,7 @@ function render_list($path, $files)
         if (getenv('admin')!='') { ?>
         <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
             <div style="margin:50px">
-            <a onclick="document.getElementById('login_div').style.display='none';" style="position: absolute;right: 10px;top:5px;">关闭</a>
+            <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
 	  <center><h4>输入管理密码</h4>
 	  <form action="<?php if ($_GET['preview']) {echo '?preview&';} else {echo '?';}?>admin" method="post">
 		    <label>密码</label>
@@ -1110,6 +1109,11 @@ function render_list($path, $files)
             $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
             $url.style.height = $url.scrollHeight + 'px';
         }
+        function operatediv_close(operate)
+        {
+            document.getElementById(operate+'_div').style.display='none';
+            document.getElementById('mask').style.display='none';
+        }
         <?php if ($config['admin'] || path_format($config['list_path'].$path)==path_format($config['imgup_path'])) { ?>
         function base64upfile() {
             var $file=document.getElementById('upload_file').files[0];
@@ -1130,12 +1134,15 @@ function render_list($path, $files)
             location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
         }
         function showdiv(event,action,str) {
-            var $operatediv=document.getElementsByName('operatediv');
+            /*var $operatediv=document.getElementsByName('operatediv');
             for ($i=0;$i<$operatediv.length;$i++) {
                 $operatediv[$i].style.display='none';
-            }
+            }*/
+            document.getElementById('mask').style.display='';
+            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
             document.getElementById(action + '_div').style.display='';
-            document.getElementById(action + '_label').innerHTML=str;
+            document.getElementById(action + '_label').innerHTML=str.replace(/&/,'&amp;');
             document.getElementById(action + '_hidden').value=str;
             if (action=='rename') document.getElementById(action + '_input').value=str;
 
@@ -1163,16 +1170,26 @@ function render_list($path, $files)
             obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
             document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
+        <?php } else { ?>
+        function login()
+        {
+            document.getElementById('mask').style.display='';
+            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+            document.getElementById('login_div').style.display='';
+            document.getElementById('login_div').style.left=(document.body.clientWidth-document.getElementById('login_div').offsetWidth)/2 +'px';
+            document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';
+        }
         <?php } ?>
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
     </html>
     <?php
-    $config['admin']=0;
+    $html=ob_get_clean();
+    unset($config);
     unset($files);
     unset($_POST);
     unset($_GET);
     unset($_COOKIE);
-    $html=ob_get_clean();
     return output($html,$statusCode);
 }
