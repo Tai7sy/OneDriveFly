@@ -300,12 +300,12 @@ function list_files($path)
             $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     } else {
-        if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])) {
+        if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&$config['imgup_path']!='') {
             $html = guestupload($path);
             if ($html!='') return $html;
         }
     }
-    if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&!$config['admin']) {
+    if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&$config['imgup_path']!=''&&!$config['admin']) {
         $files = json_decode('{"folder":{}}', true);
     } else {
         $files = fetch_files($path);
@@ -750,7 +750,7 @@ function render_list($path, $files)
                 </div>
             </div>
             <div class="list-body-container">
-                <?php if (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&!$config['admin']) { ?>
+                <?php if (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&$config['imgup_path']!=''&&!$config['admin']) { ?>
                         <div id="upload_div" style="margin:10px"><center>
         <form action="" method="POST">
         <input id="upload_content" type="hidden" name="guest_upload_filecontent">
@@ -766,7 +766,7 @@ function render_list($path, $files)
                     ?>
                     <div style="margin: 12px 4px 4px; text-align: center">
                     	<div style="margin: 24px">
-                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;"><?php echo path_format($config['base_path'] . '/' . $path); ?></textarea>
+                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo path_format($config['base_path'] . '/' . $path); ?></textarea>
                             <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
                         </div>
                         <div style="margin: 24px">
@@ -1114,7 +1114,7 @@ function render_list($path, $files)
             document.getElementById(operate+'_div').style.display='none';
             document.getElementById('mask').style.display='none';
         }
-        <?php if ($config['admin'] || path_format($config['list_path'].$path)==path_format($config['imgup_path'])) { ?>
+        <?php if ($config['admin'] || (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&$config['imgup_path']!='')) { ?>
         function base64upfile() {
             var $file=document.getElementById('upload_file').files[0];
             var $reader = new FileReader();
