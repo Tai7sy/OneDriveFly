@@ -3,8 +3,12 @@ include 'vendor/autoload.php';
 include 'functions.php';
 global $oauth;
 global $config;
+/*
+    帖子 ： https://www.hostloc.com/thread-561971-1-1.html
+    github ： https://github.com/qkqpttgf/OneDrive_SCF
+*/
 $oauth = [
-    'onedrive_ver' => 0, // 0默认 (1个人 ， 2世纪互联 ， 还不会)
+    'onedrive_ver' => 0, // 0默认 (1个人 ， 2世纪互联  #这两个还不会，没做)
 ];
 $config = [
     'sitename' => getenv('sitename'),
@@ -14,9 +18,9 @@ $config = [
 //在环境变量添加：
 /*
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
-admin          ：管理密码，不添加时不显示登录页面
-public_path    ：使用API长链接访问时，网盘里公开的路径，不设置时默认为'/'
-private_path   ：使用私人域名访问时，网盘的路径（可以一样），不设置时默认为'/'
+admin          ：管理密码，不添加时不显示登录页面且无法登录
+public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录
+private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面
 passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
@@ -338,12 +342,12 @@ function list_files($path)
             $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     } else {
-        if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&$config['imgup_path']!='') {
+        if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') {
             $html = guestupload($path);
             if ($html!='') return $html;
         }
     }
-    if (path_format($config['list_path'].urldecode($path))==path_format($config['imgup_path'])&&$config['imgup_path']!=''&&!$config['admin']) {
+    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) {
         // 是图床目录且不是管理
         $files = json_decode('{"folder":{}}', true);
     } else {
@@ -455,15 +459,12 @@ function adminoperate($path)
         $cachefilename = '.tmp_' . $fileinfo['lastModified'] . '_' . $fileinfo['size'] . '_' . $filename;
         $getoldupinfo=fetch_files(path_format($path . '/' . $cachefilename));
         //echo json_encode($getoldupinfo, JSON_PRETTY_PRINT);
-        if (isset($getoldupinfo['file'])) {
+        if (isset($getoldupinfo['file'])&&$getoldupinfo['size']<5120) {
             $getoldupinfo_j = curl_request($getoldupinfo['@microsoft.graph.downloadUrl']);
             $getoldupinfo = json_decode($getoldupinfo_j , true);
             if ($getoldupinfo['size']==$fileinfo['size'] && $getoldupinfo['lastModified']==$fileinfo['lastModified']) {
                 $expirationDateTime = ISO_format( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['expirationDateTime'] );
-                if (time() < strtotime($expirationDateTime)+8*60*60) {
-                    echo $expirationDateTime.'没过期。';
-                    return output($getoldupinfo_j);
-                } else echo $expirationDateTime.'过期';
+                if (time() < strtotime($expirationDateTime)+8*60*60) return output($getoldupinfo_j);
             }
         }
         $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
@@ -835,7 +836,7 @@ function render_list($path, $files)
                 </div>
             </div>
             <div class="list-body-container">
-                <?php if (path_format($config['list_path'].$path)==path_format($config['imgup_path'])&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+                <?php if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
                         <div id="upload_div" style="margin:10px"><center>
         <form action="" method="POST">
         <input id="upload_content" type="hidden" name="guest_upload_filecontent">
@@ -860,7 +861,7 @@ function render_list($path, $files)
                         $ext = strtolower(substr($path, strrpos($path, '.') + 1));
                         if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
                             echo '
-                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" style="width: 100%"/>
+                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
                         ';
                         } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
                             echo '
@@ -1026,12 +1027,12 @@ function render_list($path, $files)
                             </form>';
                             echo $prepagenext;
                     }
+                    //<script src="//cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
                     if ($config['admin']) { ?>
-                    <script src="//cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
-    <div id="upload_div" style="margin:16px"><center>
+    <div id="upload_div" style="margin:0 0 16px 0"><center>
+        <label id="upload_res"></label>
         <input id="upload_file" type="file" name="upload_filename" >
         <button id="upload_submit" onclick="preup();">上传</button>
-        <br><label id="upload_res"></label>
         </center>
     </div>
     <?php }
@@ -1089,4 +1090,382 @@ function render_list($path, $files)
         <form action="" method="POST">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
             <input id="encrypt_input" name="encrypt_newpass" type="text" value="">
-            <?php if (getenv('passfile')!='') {?><button
+            <?php if (getenv('passfile')!='') {?><button name="operate_action" type=submit value="加密">加密</button><?php } else { ?>
+            <br><label>先在环境变量设置passfile才能加密</label><?php } ?>
+        </form>
+        </div>
+    </div>
+    <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:16px">
+        <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
+        <form action="" method="POST">
+            <input id="move_hidden" name="move_name" type="hidden" value="">
+            <select id="move_input" name="move_folder">
+            <?php if ($path != '/') { ?>
+                <option value="/../">上一级目录</option>
+            <?php }
+            foreach ($files['children'] as $file) {
+                if (isset($file['folder'])) { ?>
+                <option value="<?php echo str_replace('&','&amp;', $file['name']);?>"><?php echo str_replace('&','&amp;', $file['name']);?></option>
+            <?php }
+            } ?>
+            </select>
+            <button name="operate_action" type=submit>移动</button>
+        </form>
+        </div>
+    </div>
+    <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:50px">
+        <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
+        <form action="" method="POST">
+                <input id="create_hidden" type="hidden" value="">
+                　　　<input id="create_type" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
+                <input id="create_type" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
+                名字：<input id="create_input" name="create_name" type="text" value=""><br>
+                <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
+                　　　<button name="operate_action" type=submit>新建</button>
+        </form>
+        </div>
+    </div>
+    <?php } else {
+        if (getenv('admin')!='') { ?>
+        <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:50px">
+            <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
+	  <center><h4>输入管理密码</h4>
+	  <form action="<?php if ($_GET['preview']) {echo '?preview&';} else {echo '?';}?>admin" method="post">
+		    <label>密码</label>
+		    <input id="login_input" name="password1" type="password"/>
+		    <button type="submit">查看</button>
+	  </form>
+      </center>
+      </div>
+	</div>
+    <?php }
+    } ?>
+    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$config['sourceIp'];?></font>
+    </body>
+    <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
+    <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
+    <script type="text/javascript">
+        var root = '<?php echo $config["base_path"]; ?>';
+        var $ishidden = '<?php echo $ishidden; ?>';
+        var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
+        if ($ishidden==2) {
+            var expd = new Date();
+            expd.setTime(expd.getTime()+(12*60*60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="password="+$hiddenpass+";"+expires;
+        }
+        function path_format(path) {
+            path = '/' + path + '/';
+            while (path.indexOf('//') !== -1) {
+                path = path.replace('//', '/')
+            }
+            if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
+            return path
+        }
+        function nextpage(num) {
+            document.getElementById('pagenum').value=num;
+            document.getElementById('nextpageform').submit();
+        }
+
+        document.querySelectorAll('.table-header').forEach(function (e) {
+            var path = e.innerText;
+            var paths = path.split('/');
+            if (paths <= 2)
+                return;
+            e.innerHTML = '/ ';
+            for (var i = 1; i < paths.length - 1; i++) {
+                var to = path_format(root + paths.slice(0, i + 1).join('/'));
+                e.innerHTML += '<a href="' + to + '">' + paths[i] + '</a> / '
+            }
+            e.innerHTML += paths[paths.length - 1];
+            e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
+        });
+        var $readme = document.getElementById('readme');
+        if ($readme) {
+            $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+        }
+        var $url = document.getElementById('url');
+        if ($url) {
+            $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
+            $url.style.height = $url.scrollHeight + 'px';
+        }
+        var $officearea=document.getElementById('office-a');
+        if ($officearea) {
+            $officearea.style.height = window.innerHeight + 'px';
+        }
+        var $textarea=document.getElementById('txt-a');
+        if ($textarea) {
+            $textarea.style.height = $textarea.scrollHeight + 'px';
+        }
+        <?php if (getenv('admin')!='') { ?>
+        function operatediv_close(operate)
+        {
+            document.getElementById(operate+'_div').style.display='none';
+            document.getElementById('mask').style.display='none';
+        }
+        <?php }
+        if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+            function base64upfile() {
+                var $file=document.getElementById('upload_file').files[0];
+                var $reader = new FileReader();
+                $reader.onloadend=function(e) {
+                    var $data=$reader.result;
+                    document.getElementById('upload_content').value=$data;
+                }
+                $reader.readAsDataURL($file);
+            }
+        <?php }
+        if ($config['admin']) { ?>
+            function uploadbuttonhide()
+            {
+                document.getElementById('upload_submit').disabled='disabled';
+                document.getElementById('upload_file').disabled='disabled';
+                //$("#upload_submit").hide();
+                //$("#upload_file").hide();
+                document.getElementById('upload_submit').style.display='none';
+                document.getElementById('upload_file').style.display='none';
+            }
+            function uploadbuttonshow()
+            {
+                document.getElementById('upload_file').disabled='';
+                document.getElementById('upload_submit').disabled='';
+                //$("#upload_submit").show();
+                //$("#upload_file").show();
+                document.getElementById('upload_submit').style.display='';
+                document.getElementById('upload_file').style.display='';
+            }
+            function preup()
+            {
+                uploadbuttonhide();
+                //$("#upload_res").text('获取链接 ...');
+                document.getElementById('upload_res').innerHTML='获取链接 ...';
+                var file=document.getElementById('upload_file').files[0];
+                if (file.size>15*1024*1024*1024) {
+                    document.getElementById('upload_res').innerHTML='大于15G，终止上传。<br>';
+                    uploadbuttonshow();
+                    return;
+                }
+                var xhr1 = new XMLHttpRequest();
+                xhr1.open("POST", '');
+                xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
+                xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
+                xhr1.onload = function(e){
+                    var html=JSON.parse(xhr1.responseText);
+                    document.getElementById('upload_res').innerHTML='开始上传 ...';
+                    if (!html['uploadUrl']) {
+                        document.getElementById('upload_res').innerHTML=xhr1.responseText+'<br>';
+                        uploadbuttonshow();
+                    } else {
+                        binupfile(html['uploadUrl']);
+                    }
+                }
+                /*$.ajax({
+                    type:'POST',
+                    url: "",
+                    cache: false,
+                    data: 'filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified ,
+                    dataType: 'json',
+                    success: function(html){
+                        $("#upload_res").text('开始上传 ...');
+                        if (!html['uploadUrl']) {
+                            $("#upload_res").text(JSON.stringify(html));
+                            uploadbuttonshow();
+                        } else {
+                            binupfile(html['uploadUrl']);
+                        }
+                    }
+                });*/
+            }
+            function size_format(num)
+            {
+                if (num>1024) {
+                    num=(num/1024).toFixed(2);
+                } else {
+                    return num.toFixed(2) +' B';
+                }
+                if (num>1024) {
+                    num=Number((num/1024).toFixed(2));
+                } else {
+                    return num+' KB';
+                }
+                if (num>1024) {
+                    num=Number((num/1024).toFixed(2));
+                } else {
+                    return num+' MB';
+                }
+                if (num>1024) {
+                    num=Number((num/1024).toFixed(2));
+                } else {
+                    return num+' GB';
+                }
+                return num+' TB';
+            }
+            function binupfile(url){
+                var file=document.getElementById('upload_file').files[0];
+                var reader = new FileReader();
+                var StartStr;
+                var StartTime;
+                var EndTime;
+                var newstart = 1;
+                if(!!file){
+                    var asize=0;
+                    var totalsize=file.size;
+                    var xhr2 = new XMLHttpRequest();
+                    xhr2.open("GET", url);
+                    xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
+                    xhr2.send(null);
+                    xhr2.onload = function(e){
+                        var html=JSON.parse(xhr2.responseText);
+                        var a=html['nextExpectedRanges'][0];
+                        asize=Number( a.slice(0,a.indexOf("-")) );
+                        StartTime = new Date();
+                        if (asize==0) {
+                            newstartsize = 0;
+                            StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        } else {
+                            newstartsize = asize;
+                            StartStr='上次上传'+size_format(asize)+ '，本次开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        }
+                        document.getElementById('upload_res').innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
+                    }
+                    /*$.ajax({
+                        type:'GET',
+                        url: url,
+                        cache: false,
+                        dataType: 'json',
+                        success: function(html){
+                            var a=html['nextExpectedRanges'][0];
+                            asize=Number( a.slice(0,a.indexOf("-")) );
+                            $("#upload_res").text('已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%');
+                        }
+                    });*/
+                    var chunksize=5*1024*1024; // 每次上传5M，最大60M，微软建议10M
+                    if (totalsize>200*1024*1024) chunksize=10*1024*1024;
+                    function readblob(start) {
+                        var end=start+chunksize;
+                        var blob = file.slice(start,end);
+                        reader.readAsArrayBuffer(blob);
+                    }
+                    readblob(asize);
+                    reader.onload = function(e){
+                        var binary = this.result;
+                        var xhr = new XMLHttpRequest();
+                        xhr.open("PUT", url);
+    //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+                        bsize=asize+e.loaded-1;
+                        xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize +'/'+ totalsize);
+                        //$("#upload_res").text('正在上传：' +size_format(bsize)+ '/'+size_format(totalsize) + '：' + (bsize*100/totalsize).toFixed(2) + '%');
+                        xhr.send(binary);
+                        var C_starttime = new Date();
+                        xhr.onload = function(e){
+                            //$("#upload_res").text(xhr.responseText);
+                            var response=JSON.parse(xhr.responseText);
+                            if (response['size']>0) {
+                                // 有size说明是最终返回
+                                //$("#upload_res").text('上传完成');
+                                var xhr3 = new XMLHttpRequest();
+                                xhr3.open("POST", '');
+                                xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
+                                xhr3.send('action=del_upload_cache&filename=.tmp_'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name));
+                                /*$.ajax({
+                                    type:'POST',
+                                    url: "",
+                                    cache: false,
+                                    data: 'action=del_upload_cache&filename=.tmp_'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name),
+                                    dataType: 'json',
+                                });*/
+                                EndTime=new Date();
+                                StartStr += '结束于：'+EndTime.toLocaleString()+'<br>';
+                                if (newstartsize==0) {
+                                    StartStr += '平均速度：'+size_format(totalsize*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                } else {
+                                    StartStr += '本次平均速度：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                }
+                                document.getElementById('upload_res').innerHTML=StartStr+ '上传完成<br>';
+                                uploadbuttonshow();
+                            } else {
+                                if (!response['nextExpectedRanges']) {
+                                    //$("#upload_res").text(xhr.responseText);
+                                    document.getElementById('upload_res').innerHTML=xhr.responseText+'<br>';
+                                } else {
+                                    var C_endtime = new Date();
+                                    var a=response['nextExpectedRanges'][0];
+                                    asize=Number( a.slice(0,a.indexOf("-")) );
+                                    //$("#upload_res").text('已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%');
+                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';;
+                                    document.getElementById('upload_res').innerHTML=StartStr+MiddleStr+'已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
+                                    readblob(asize);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        function logout() {
+            var expd = new Date();
+            expd.setTime(expd.getTime()-(60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="<?php echo $config['function_name'];?>='';"+expires;
+            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
+        }
+        function showdiv(event,action,str) {
+            /*var $operatediv=document.getElementsByName('operatediv');
+            for ($i=0;$i<$operatediv.length;$i++) {
+                $operatediv[$i].style.display='none';
+            }*/
+            document.getElementById('mask').style.display='';
+            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+            document.getElementById(action + '_div').style.display='';
+            document.getElementById(action + '_label').innerHTML=str.replace(/&/,'&amp;');
+            document.getElementById(action + '_hidden').value=str;
+            if (action=='rename') document.getElementById(action + '_input').value=str;
+
+            var $e = event || window.event;
+            var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
+            var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
+            var $x = $e.pageX || $e.clientX + $scrollX;
+            var $y = $e.pageY || $e.clientY + $scrollY;
+            if (action=='create') {
+                document.getElementById(action + '_div').style.left=(document.body.clientWidth-document.getElementById(action + '_div').offsetWidth)/2 +'px';
+                document.getElementById(action + '_div').style.top=(window.innerHeight-document.getElementById(action + '_div').offsetHeight)/2+$scrollY +'px';
+            } else {
+                if ($x + document.getElementById(action + '_div').offsetWidth > document.body.clientWidth) {
+                    document.getElementById(action + '_div').style.left=document.body.clientWidth-document.getElementById(action + '_div').offsetWidth+'px';
+                } else {
+                    document.getElementById(action + '_div').style.left=$x+'px';
+                }
+                document.getElementById(action + '_div').style.top=$y+'px';
+            }
+            document.getElementById(action + '_input').focus();
+        }
+        function enableedit(obj)
+        {
+            document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
+            //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+            obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+            document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
+        }
+        <?php } else { ?>
+        function login()
+        {
+            document.getElementById('mask').style.display='';
+            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+            document.getElementById('login_div').style.display='';
+            document.getElementById('login_div').style.left=(document.body.clientWidth-document.getElementById('login_div').offsetWidth)/2 +'px';
+            document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';
+            document.getElementById('login_input').focus();
+        }
+        <?php } ?>
+    </script>
+    <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
+    </html>
+    <?php
+    $html=ob_get_clean();
+    unset($config);
+    return output($html,$statusCode);
+}
