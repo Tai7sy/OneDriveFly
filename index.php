@@ -85,8 +85,8 @@ function main_handler($event, $context)
     }
     $cookiebody = explode("; ",$event['headers']['cookie']);
     foreach ($cookiebody as $cookievalues){
-        $tmp=explode("=",$cookievalues);
-        $_COOKIE[$tmp[0]]=$tmp[1];
+        $pos = strpos($cookievalues,"=");
+        $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
     }
 
     if (!$config['base_path']) {
@@ -328,7 +328,7 @@ function list_files($path)
         $cache->save('access_token', $config['access_token'], $ret['expires_in'] - 60);
     }
 
-    if ($config['ajax']&&$_POST['action']=='del_upload_cache'&&substr($_POST['filename'],0,4)=='.tmp') {
+    if ($config['ajax']&&$_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
         $tmp = MSAPI('DELETE',path_format(path_format($config['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$access_token);
         return output($tmp);
     } 
@@ -365,22 +365,6 @@ function list_files($path)
     }
     // return '<pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
     return render_list($path, $files);
-}
-
-function output($body, $statusCode = 200, $isBase64Encoded = false, $headers = ['Content-Type' => 'text/html'])
-{
-    //$headers['Access-Control-Allow-Origin']='*';
-    return [
-        'isBase64Encoded' => $isBase64Encoded,
-        'statusCode' => $statusCode,
-        'headers' => $headers,
-        'body' => $body
-    ];
-}
-
-function message($message, $title = 'Message', $statusCode = 200)
-{
-    return output('<html><meta charset=utf-8><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
 }
 
 function adminform($name = '', $pass = '', $path = '')
@@ -456,16 +440,18 @@ function adminoperate($path)
         $fileinfo['size'] = $_POST['filesize'];
         $fileinfo['lastModified'] = $_POST['lastModified'];
         $filename = spurlencode( $fileinfo['name'] );
-        $cachefilename = '.tmp_' . $fileinfo['lastModified'] . '_' . $fileinfo['size'] . '_' . $filename;
+        $cachefilename = '.' . $fileinfo['lastModified'] . '_' . $fileinfo['size'] . '_' . $filename . '.tmp';
         $getoldupinfo=fetch_files(path_format($path . '/' . $cachefilename));
         //echo json_encode($getoldupinfo, JSON_PRETTY_PRINT);
         if (isset($getoldupinfo['file'])&&$getoldupinfo['size']<5120) {
             $getoldupinfo_j = curl_request($getoldupinfo['@microsoft.graph.downloadUrl']);
             $getoldupinfo = json_decode($getoldupinfo_j , true);
-            if ($getoldupinfo['size']==$fileinfo['size'] && $getoldupinfo['lastModified']==$fileinfo['lastModified']) {
-                $expirationDateTime = ISO_format( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['expirationDateTime'] );
-                if (time() < strtotime($expirationDateTime)+8*60*60) return output($getoldupinfo_j);
-            }
+            //if ($getoldupinfo['size']==$fileinfo['size'] && $getoldupinfo['lastModified']==$fileinfo['lastModified']) {
+                /*$expirationDateTime = time_format( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['expirationDateTime'] );
+                if (time() < strtotime($expirationDateTime)) return output($getoldupinfo_j);*/
+                //微软的过期时间只有20分钟，其实不用看过期时间，我过了14个小时，用昨晚的链接还可以接着继续上传，微软临时文件只要还在就可以续
+                if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
+            //}
         }
         $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry = json_decode($response,true);
@@ -661,21 +647,6 @@ function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
     return $pageinfocache;
 }
 
-function spurlencode($str,$splite='') {
-    $str = str_replace(' ', '%20',$str);
-    $tmp='';
-    if ($splite!='') {
-        $tmparr=explode($splite,$str);
-        for($x=0;$x<count($tmparr);$x++) {
-            if ($tmparr[$x]!='') $tmp .= $splite . urlencode($tmparr[$x]);
-        }
-    } else {
-        $tmp = urlencode($str);
-    }
-    $tmp = str_replace('%2520', '%20',$tmp);
-    return $tmp;
-}
-
 function encode_str_replace($str)
 {
     $str = str_replace('&','&amp;',$str);
@@ -733,6 +704,7 @@ function render_list($path, $files)
     global $config;
     @ob_start();
     date_default_timezone_set('Asia/Shanghai');
+    if ($_COOKIE['timezone']!=' 0800') date_default_timezone_set(get_timezone($_COOKIE['timezone']));
     $path = str_replace('%20','%2520',$path);
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
@@ -751,12 +723,16 @@ function render_list($path, $files)
     <!DOCTYPE html>
     <html lang="zh-cn">
     <head>
+        <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
+        <!--
+            帖子 ： https://www.hostloc.com/thread-561971-1-1.html
+            github ： https://github.com/qkqpttgf/OneDrive_SCF
+        -->
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
         <link rel="icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
         <link rel="shortcut icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
-        <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
         <style type="text/css">
             body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
             a{color:#24292e;cursor:pointer;text-decoration:none}
@@ -941,7 +917,7 @@ function render_list($path, $files)
                                             </ul></li>
                                             <?php }?>
                                         </td>
-                                        <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
+                                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
                                     </tr>
                                 <?php }
@@ -973,7 +949,7 @@ function render_list($path, $files)
                                             </ul></li>
                                             <?php }?>
                                         </td>
-                                        <td class="updated_at"><?php echo ISO_format($file['lastModifiedDateTime']); ?></td>
+                                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
                                     </tr>
                                 <?php }
@@ -1157,6 +1133,20 @@ function render_list($path, $files)
             var expires = "expires="+expd.toGMTString();
             document.cookie="password="+$hiddenpass+";"+expires;
         }
+<?php if ($_COOKIE['timezone']=='') { ?>
+        var nowtime= new Date();
+        var timezone = nowtime.toString();
+        timezone = timezone.substr(timezone.indexOf('GMT')+3,5);
+        //alert(timezone);
+        var expd = new Date();
+        expd.setTime(expd.getTime()+(2*60*60*1000));
+        var expires = "expires="+expd.toGMTString();
+        document.cookie="timezone="+timezone+";"+expires;
+        if (timezone!='+0800') {
+            alert('Your timezone is '+timezone+', reload local timezone.');
+            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
+        } 
+<?php } ?>
         function path_format(path) {
             path = '/' + path + '/';
             while (path.indexOf('//') !== -1) {
@@ -1200,13 +1190,13 @@ function render_list($path, $files)
         if ($textarea) {
             $textarea.style.height = $textarea.scrollHeight + 'px';
         }
-        <?php if (getenv('admin')!='') { ?>
+<?php if (getenv('admin')!='') { ?>
         function operatediv_close(operate)
         {
             document.getElementById(operate+'_div').style.display='none';
             document.getElementById('mask').style.display='none';
         }
-        <?php }
+<?php }
         if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
             function base64upfile() {
                 var $file=document.getElementById('upload_file').files[0];
@@ -1217,7 +1207,7 @@ function render_list($path, $files)
                 }
                 $reader.readAsDataURL($file);
             }
-        <?php }
+<?php }
         if ($config['admin']) { ?>
             function uploadbuttonhide()
             {
@@ -1253,12 +1243,13 @@ function render_list($path, $files)
                 xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
                 xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
                 xhr1.onload = function(e){
+                    document.getElementById('upload_res').innerHTML=xhr1.responseText;
                     var html=JSON.parse(xhr1.responseText);
-                    document.getElementById('upload_res').innerHTML='开始上传 ...';
                     if (!html['uploadUrl']) {
                         document.getElementById('upload_res').innerHTML=xhr1.responseText+'<br>';
                         uploadbuttonshow();
                     } else {
+                        document.getElementById('upload_res').innerHTML='开始上传 ...';
                         binupfile(html['uploadUrl']);
                     }
                 }
@@ -1296,12 +1287,7 @@ function render_list($path, $files)
                 } else {
                     return num+' MB';
                 }
-                if (num>1024) {
-                    num=Number((num/1024).toFixed(2));
-                } else {
-                    return num+' GB';
-                }
-                return num+' TB';
+                return num+' GB';
             }
             function binupfile(url){
                 var file=document.getElementById('upload_file').files[0];
@@ -1309,7 +1295,7 @@ function render_list($path, $files)
                 var StartStr;
                 var StartTime;
                 var EndTime;
-                var newstart = 1;
+                var newstartsize = 0;
                 if(!!file){
                     var asize=0;
                     var totalsize=file.size;
@@ -1322,15 +1308,13 @@ function render_list($path, $files)
                         var a=html['nextExpectedRanges'][0];
                         asize=Number( a.slice(0,a.indexOf("-")) );
                         StartTime = new Date();
+                        newstartsize = asize;
                         if (asize==0) {
-                            newstartsize = 0;
                             StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
                         } else {
-                            newstartsize = asize;
-                            StartStr='上次上传'+size_format(asize)+ '，本次开始于：' +StartTime.toLocaleString()+'<br>' ;
+                            StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
                         }
                         document.getElementById('upload_res').innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
-                    }
                     /*$.ajax({
                         type:'GET',
                         url: url,
@@ -1362,6 +1346,7 @@ function render_list($path, $files)
                         var C_starttime = new Date();
                         xhr.onload = function(e){
                             //$("#upload_res").text(xhr.responseText);
+                            if (xhr.status<500) {
                             var response=JSON.parse(xhr.responseText);
                             if (response['size']>0) {
                                 // 有size说明是最终返回
@@ -1369,7 +1354,7 @@ function render_list($path, $files)
                                 var xhr3 = new XMLHttpRequest();
                                 xhr3.open("POST", '');
                                 xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
-                                xhr3.send('action=del_upload_cache&filename=.tmp_'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name));
+                                xhr3.send('action=del_upload_cache&filename=.'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name)+'.tmp');
                                 /*$.ajax({
                                     type:'POST',
                                     url: "",
@@ -1395,13 +1380,13 @@ function render_list($path, $files)
                                     var a=response['nextExpectedRanges'][0];
                                     asize=Number( a.slice(0,a.indexOf("-")) );
                                     //$("#upload_res").text('已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%');
-                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';;
+                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
                                     document.getElementById('upload_res').innerHTML=StartStr+MiddleStr+'已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
                                     readblob(asize);
                                 }
-                            }
+                            } } else readblob(asize);
                         }
-                    }
+                    } }
                 }
             }
         function logout() {
@@ -1449,7 +1434,7 @@ function render_list($path, $files)
             obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
             document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
-        <?php } else { ?>
+<?php } else { ?>
         function login()
         {
             document.getElementById('mask').style.display='';
@@ -1460,7 +1445,7 @@ function render_list($path, $files)
             document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';
             document.getElementById('login_input').focus();
         }
-        <?php } ?>
+<?php } ?>
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
     </html>
