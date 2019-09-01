@@ -342,6 +342,7 @@ function list_files($path)
             $cache->save('path_' . $path1, json_decode('{}',true), 1);
         }
     } else {
+        if ($config['ajax']) return output('请重新<a href="?admin"><font color="red">登录</font></a>',401);
         if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') {
             $html = guestupload($path);
             if ($html!='') return $html;
@@ -781,7 +782,7 @@ function render_list($path, $files)
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
-                <?php if ($path !== '/') {
+<?php if ($path !== '/') {
                     $current_url = $_SERVER['PHP_SELF'];
                     while (substr($current_url, -1) === '/') {
                         $current_url = substr($current_url, 0, -1);
@@ -792,28 +793,28 @@ function render_list($path, $files)
                         $parent_url = $current_url;
                     }
                     ?>
-                    <a href="<?php echo path_format($parent_url); ?>" class="back-link">
-                        <ion-icon name="arrow-back"></ion-icon>
-                    </a>
-                <?php } ?>
+                <a href="<?php echo path_format($parent_url); ?>" class="back-link">
+                    <ion-icon name="arrow-back"></ion-icon>
+                </a>
+<?php } ?>
                 <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
                 <div class="login">
-                    <?php if (getenv('admin')!='') if (!$config['admin']) {?>
+<?php if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a onclick="login();">登录</a>
-                <?php } else { ?>
+<?php } else { ?>
                         <li class="operate">管理<ul style="left:-15px">
                         <li><a onclick="logout()">登出</a></li>
                         <?php if (isset($files['folder'])) { ?>
                         <li><a onclick="showdiv(event,'create','');">新建</a></li>
                         <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
                         </ul></li>
-                    <?php } 
+<?php } 
                     } ?>
                 </div>
             </div>
             <div class="list-body-container">
-                <?php if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
-                        <div id="upload_div" style="margin:10px"><center>
+<?php if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+                <div id="upload_div" style="margin:10px"><center>
         <form action="" method="POST">
         <input id="upload_content" type="hidden" name="guest_upload_filecontent">
         <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
@@ -821,7 +822,7 @@ function render_list($path, $files)
         文件大小<4M，不然传输失败！
         </form><center>
     </div>
-                    <?php } else { 
+<?php } else { 
                 $ishidden=passhidden($path);
                 //if ($config['admin'] or $ishidden<4) {
                 if ($ishidden<4) {
@@ -880,7 +881,7 @@ function render_list($path, $files)
                         } ?>
                         </div>
                     </div>
-          <?php } else { ?>
+<?php } else { ?>
                     <table class="list-table">
                         <tr>
                             <!--<th class="updated_at" width="5%">序号</th>-->
@@ -889,7 +890,7 @@ function render_list($path, $files)
                             <th class="size" width="15%">大小</th>
                         </tr>
                         <!-- Dirs -->
-                        <?php
+<?php
                         $filenum = $_POST['filenum'];
                         if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
                         $readme = false;
@@ -908,19 +909,19 @@ function render_list($path, $files)
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>">
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
-                                            <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
+<?php                                       if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
                                             <li class="operate">管理<ul>
                                                 <li><a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a></li>
                                                 <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
                                                 <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
                                                 <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
                                             </ul></li>
-                                            <?php }?>
+<?php                                       }?>
                                         </td>
                                         <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
                                         <td class="size"><?php echo size_format($file['size']); ?></td>
                                     </tr>
-                                <?php }
+<?php                               }
                             }
                             foreach ($files['children'] as $file) {
                                 // Files
@@ -1077,13 +1078,13 @@ function render_list($path, $files)
         <form action="" method="POST">
             <input id="move_hidden" name="move_name" type="hidden" value="">
             <select id="move_input" name="move_folder">
-            <?php if ($path != '/') { ?>
+<?php if ($path != '/') { ?>
                 <option value="/../">上一级目录</option>
-            <?php }
-            foreach ($files['children'] as $file) {
+<?php }
+if (isset($files['children'])) foreach ($files['children'] as $file) {
                 if (isset($file['folder'])) { ?>
                 <option value="<?php echo str_replace('&','&amp;', $file['name']);?>"><?php echo str_replace('&','&amp;', $file['name']);?></option>
-            <?php }
+<?php }
             } ?>
             </select>
             <button name="operate_action" type=submit>移动</button>
@@ -1109,7 +1110,7 @@ function render_list($path, $files)
             <div style="margin:50px">
             <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
 	  <center><h4>输入管理密码</h4>
-	  <form action="<?php if ($_GET['preview']) {echo '?preview&';} else {echo '?';}?>admin" method="post">
+	  <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
 		    <label>密码</label>
 		    <input id="login_input" name="password1" type="password"/>
 		    <button type="submit">查看</button>
@@ -1125,28 +1126,6 @@ function render_list($path, $files)
     <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
     <script type="text/javascript">
         var root = '<?php echo $config["base_path"]; ?>';
-        var $ishidden = '<?php echo $ishidden; ?>';
-        var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
-        if ($ishidden==2) {
-            var expd = new Date();
-            expd.setTime(expd.getTime()+(12*60*60*1000));
-            var expires = "expires="+expd.toGMTString();
-            document.cookie="password="+$hiddenpass+";"+expires;
-        }
-<?php if ($_COOKIE['timezone']=='') { ?>
-        var nowtime= new Date();
-        var timezone = nowtime.toString();
-        timezone = timezone.substr(timezone.indexOf('GMT')+3,5);
-        //alert(timezone);
-        var expd = new Date();
-        expd.setTime(expd.getTime()+(2*60*60*1000));
-        var expires = "expires="+expd.toGMTString();
-        document.cookie="timezone="+timezone+";"+expires;
-        if (timezone!='+0800') {
-            alert('Your timezone is '+timezone+', reload local timezone.');
-            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
-        } 
-<?php } ?>
         function path_format(path) {
             path = '/' + path + '/';
             while (path.indexOf('//') !== -1) {
@@ -1155,11 +1134,6 @@ function render_list($path, $files)
             if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
             return path
         }
-        function nextpage(num) {
-            document.getElementById('pagenum').value=num;
-            document.getElementById('nextpageform').submit();
-        }
-
         document.querySelectorAll('.table-header').forEach(function (e) {
             var path = e.innerText;
             var paths = path.split('/');
@@ -1177,6 +1151,37 @@ function render_list($path, $files)
         if ($readme) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
         }
+<?php if ($_POST['password1']!='') { //有密码写目录密码 ?>
+        var $ishidden = '<?php echo $ishidden; ?>';
+        var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
+        if ($ishidden==2) {
+            var expd = new Date();
+            expd.setTime(expd.getTime()+(12*60*60*1000));
+            var expires = "expires="+expd.toGMTString();
+            document.cookie="password="+$hiddenpass+";"+expires;
+        }
+<?php }
+if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
+        var nowtime= new Date();
+        var timezone = nowtime.toString();
+        timezone = timezone.substr(timezone.indexOf('GMT')+3,5);
+        //alert(timezone);
+        var expd = new Date();
+        expd.setTime(expd.getTime()+(2*60*60*1000));
+        var expires = "expires="+expd.toGMTString();
+        document.cookie="timezone="+timezone+";"+expires;
+        if (timezone!='+0800') {
+            alert('Your timezone is '+timezone+', reload local timezone.');
+            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
+        } 
+<?php }
+if ($files['folder']['childCount']>200) { //有下一页 ?>
+        function nextpage(num) {
+            document.getElementById('pagenum').value=num;
+            document.getElementById('nextpageform').submit();
+        }
+<?php }
+if ($_GET['preview']) { //在预览时处理 ?>
         var $url = document.getElementById('url');
         if ($url) {
             $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
@@ -1190,14 +1195,15 @@ function render_list($path, $files)
         if ($textarea) {
             $textarea.style.height = $textarea.scrollHeight + 'px';
         }
-<?php if (getenv('admin')!='') { ?>
+<?php }
+if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
         function operatediv_close(operate)
         {
             document.getElementById(operate+'_div').style.display='none';
             document.getElementById('mask').style.display='none';
         }
 <?php }
-        if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { //当前是图床目录时 ?>
             function base64upfile() {
                 var $file=document.getElementById('upload_file').files[0];
                 var $reader = new FileReader();
@@ -1208,7 +1214,7 @@ function render_list($path, $files)
                 $reader.readAsDataURL($file);
             }
 <?php }
-        if ($config['admin']) { ?>
+if ($config['admin']) { //管理登录后 ?>
             function uploadbuttonhide()
             {
                 document.getElementById('upload_submit').disabled='disabled';
@@ -1244,6 +1250,7 @@ function render_list($path, $files)
                 xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
                 xhr1.onload = function(e){
                     document.getElementById('upload_res').innerHTML=xhr1.responseText;
+                    if (xhr1.status==200) {
                     var html=JSON.parse(xhr1.responseText);
                     if (!html['uploadUrl']) {
                         document.getElementById('upload_res').innerHTML=xhr1.responseText+'<br>';
@@ -1251,6 +1258,7 @@ function render_list($path, $files)
                     } else {
                         document.getElementById('upload_res').innerHTML='开始上传 ...';
                         binupfile(html['uploadUrl']);
+                    }
                     }
                 }
                 /*$.ajax({
@@ -1434,7 +1442,7 @@ function render_list($path, $files)
             obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
             document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
-<?php } else { ?>
+<?php } else if (getenv('admin')!='') { ?>
         function login()
         {
             document.getElementById('mask').style.display='';
