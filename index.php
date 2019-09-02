@@ -8,7 +8,7 @@ global $config;
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
 $oauth = [
-    'onedrive_ver' => 0, // 0默认 (1个人 ， 2世纪互联  #这两个还不会，没做)
+    'onedrive_ver' => 0, // 0默认 (支持商业版与个人版 ） #世纪互联:还不会
 ];
 $config = [
     'sitename' => getenv('sitename'),
@@ -24,7 +24,7 @@ private_path   ：使用自定义域名访问时，显示网盘文件的路径�
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面
 passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
-t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，不想再出现ctrl+c、ctrl+v把token也贴到github的事了
+t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本
 */
 
 function main_handler($event, $context)
@@ -99,7 +99,7 @@ function main_handler($event, $context)
         }
         return message('
 Please set a <code>refresh_token</code> in environments<br>
-<a target="_blank" href="'. $oauth['oauth_url'] .'authorize?response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] .'">Get a refresh_token</a><br><br>
+<a target="_blank" href="'. $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] .'">Get a refresh_token</a><br><br>
 When redirected, replace <code>http://localhost</code> with current host', 'Error', 500);
     }
     if ($_COOKIE[$function_name]==md5(getenv('admin')) && getenv('admin')!='' ) {
@@ -130,9 +130,9 @@ function config_oauth()
     global $oauth;
     if ($oauth['onedrive_ver']==0) {
         // 0默认
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/';
-        $oauth['client_id'] = '298004f7-c751-4d56-aba3-b058c0154fd2';
-        $oauth['client_secret'] = '-%5E%28%21BpF-l9%2Fz%23%5B%2B%2A5t%29alg%3B%5BV%40%3B%3B%29_%5D%3B%29%40j%23%5EE%3BT%28%26%5E4uD%3B%2A%26%3F%232%29%3EH%3F';
+        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
+        $oauth['client_secret'] = '7%2f%2bykq2xkfx%3a.DWjacuIRojIaaWL0QI6';
         $oauth['redirect_uri'] = 'http://localhost/authorization_code';
         $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
     }
@@ -143,7 +143,7 @@ function get_refresh_token($code)
     global $oauth;
     $ret = json_decode(curl_request(
         $oauth['oauth_url'] . 'token',
-        'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&resource=https://graph.microsoft.com/&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
+        'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
     if (isset($ret['refresh_token'])) {
         $tmptoken=$ret['refresh_token'];
         $str = 'split:<br>';
@@ -317,7 +317,7 @@ function list_files($path)
     if (!($access_token = $cache->fetch('access_token'))) {
         $ret = json_decode(curl_request(
             $oauth['oauth_url'] . 'token',
-            'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=refresh_token&resource=https://graph.microsoft.com/&redirect_uri='. $oauth['redirect_uri'] .'&refresh_token=' . $config['refresh_token']
+            'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $config['refresh_token']
         ), true);
         if (!isset($ret['access_token'])) {
             error_log('failed to get access_token. response' . json_encode($ret));
@@ -926,7 +926,7 @@ function render_list($path, $files)
                             foreach ($files['children'] as $file) {
                                 // Files
                                 if (isset($file['file'])) {
-                                    if (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile'] and $file['name'] !== ".".$config['passfile'].'.swp' and $file['name'] !== ".".$config['passfile'].".swx") {
+                                    if ($config['admin'] or (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile']) ) {
                                     if (strtolower($file['name']) === 'readme.md') $readme = $file;
                                     if (strtolower($file['name']) === 'index.html') {
                                         $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name']),'/'))['@microsoft.graph.downloadUrl']);
@@ -1328,7 +1328,7 @@ if ($config['admin']) { //管理登录后 ?>
                     var totalsize=file.size;
                     var xhr2 = new XMLHttpRequest();
                     xhr2.open("GET", url);
-                    xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
+                    //xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
                     xhr2.send(null);
                     xhr2.onload = function(e){
                         var html=JSON.parse(xhr2.responseText);
