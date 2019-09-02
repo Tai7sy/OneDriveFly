@@ -710,14 +710,22 @@ function render_list($path, $files)
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
     $path = str_replace('%20',' ',$path);
+    $p_path='';
     if ($path !== '/') {
         if (isset($files['file'])) {
             $pretitle = str_replace('&','&amp;', $files['name']);
+            $n_path=$pretitle;
         } else {
-            $pretitle = $path;
+            $pretitle = substr($path,-1)=='/'?substr($path,0,-1):$path;
+            $n_path=substr($pretitle,strrpos($pretitle,'/')+1);
+            if (strrpos($pretitle,'/')!=0) {
+                $p_path=substr($pretitle,0,strrpos($pretitle,'/'));
+                $p_path=substr($p_path,strrpos($p_path,'/')+1);
+            }
         }
     } else {
       $pretitle = '首页';
+      $n_path=$pretitle;
     }
     $statusCode=200;
     ?>
@@ -732,6 +740,7 @@ function render_list($path, $files)
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
+        <meta name="keywords" content="<?php echo $n_path;?>,<?php if ($p_path!='') echo $p_path.','; echo $config['sitename'];?>,OneDrive_SCF,auth_by_逸笙">
         <link rel="icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
         <link rel="shortcut icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
         <style type="text/css">
