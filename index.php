@@ -8,7 +8,7 @@ global $config;
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
 $oauth = [
-    'onedrive_ver' => 0, // 0默认 (支持商业版与个人版 ） #世纪互联:还不会
+    'onedrive_ver' => 0, // 0 默认(支持商业版与个人版 ） 1 世纪互联
 ];
 $config = [
     'sitename' => getenv('sitename'),
@@ -99,7 +99,7 @@ function main_handler($event, $context)
         }
         return message('
 Please set a <code>refresh_token</code> in environments<br>
-<a target="_blank" href="'. $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] .'">Get a refresh_token</a><br><br>
+<a target="_blank" href="'. $oauth['get_response_code'] .'">Get a refresh_token</a><br><br>
 When redirected, replace <code>http://localhost</code> with current host', 'Error', 500);
     }
     if ($_COOKIE[$function_name]==md5(getenv('admin')) && getenv('admin')!='' ) {
@@ -129,12 +129,22 @@ function config_oauth()
 {
     global $oauth;
     if ($oauth['onedrive_ver']==0) {
-        // 0默认
+        // 0 默认(支持商业版与个人版 ）
         $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
         $oauth['client_secret'] = '7%2f%2bykq2xkfx%3a.DWjacuIRojIaaWL0QI6';
         $oauth['redirect_uri'] = 'http://localhost/authorization_code';
         $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'];
+    }
+    if ($oauth['onedrive_ver']==1) {
+        // 1 世纪互联
+        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
+        $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
+        $oauth['client_secret'] = 'h8%40B7kFVOmj0%2b8HKBWeNTgl%40pU%2fz4yLB';
+        $oauth['redirect_uri'] = 'http://localhost/authorization_code';
+        $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
+        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All+offline_access&resource_id=00000002-0000-0000-c000-000000000000&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'];
     }
 }
 
@@ -718,10 +728,10 @@ function render_list($path, $files)
         } else {
             $pretitle = substr($path,-1)=='/'?substr($path,0,-1):$path;
             $n_path=substr($pretitle,strrpos($pretitle,'/')+1);
-            if (strrpos($pretitle,'/')!=0) {
-                $p_path=substr($pretitle,0,strrpos($pretitle,'/'));
-                $p_path=substr($p_path,strrpos($p_path,'/')+1);
-            }
+        }
+        if (strrpos($path,'/')!=0) {
+            $p_path=substr($path,0,strrpos($path,'/'));
+            $p_path=substr($p_path,strrpos($p_path,'/')+1);
         }
     } else {
       $pretitle = '首页';
