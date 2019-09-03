@@ -161,7 +161,7 @@ function get_refresh_token($code)
             $str .= 't' . $i . ':<textarea readonly style="width: 95%;height: 45px">' . substr($tmptoken,0,128) . '</textarea>';
             $tmptoken=substr($tmptoken,128);
         }
-        return '<table width=100%><tr><td width=50%>refresh_token:<textarea readonly style="width: 100%;height: 500px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
+        return '<table width=100%><tr><td width=50%>refresh_token:<textarea readonly style="width: 100%;height: 400px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
     }
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
@@ -573,7 +573,7 @@ function adminoperate($path)
         }
         if ($_POST['create_type']=='folder') {
             $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
-            $result = MSAPI('POST', $path1 . ':/children', $data, $config['access_token']);
+            $result = MSAPI('CreateFolder', $path1, $data, $config['access_token']);
             echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -596,6 +596,15 @@ function MSAPI($method, $path, $data = '', $access_token)
         $headers['Content-Length'] = $lenth;
         $lenth--;
         $headers['Content-Range'] = 'bytes 0-' . $lenth . '/' . $headers['Content-Length'];
+    } elseif ($method=='CreateFolder')  {
+        $method='POST';
+        $url = $oauth['api_url'];
+        if ($path=='' or $path=='/') {
+            $url.='/children';
+        } else {
+            $url.=':/children';
+        }
+        $headers['Content-Type'] = 'application/json';
     } else {
         $url = $oauth['api_url'];
         if ($path !== '/') {
