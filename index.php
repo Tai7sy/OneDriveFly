@@ -8,7 +8,7 @@ global $config;
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
 $oauth = [
-    'onedrive_ver' => 0, // 0 默认(支持商业版与个人版 ） 1 世纪互联
+    'onedrive_ver' => 0, // 0:默认（支持商业版与个人版） 1:世纪互联
 ];
 $config = [
     'sitename' => getenv('sitename'),
@@ -40,7 +40,6 @@ function main_handler($event, $context)
 ' . urldecode(json_encode($context)) . '
  
 ';
-    config_oauth();
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -78,6 +77,7 @@ function main_handler($event, $context)
     } else {
         $config['current_url'] = '';
     }
+    $config['host_url']='http://' . $host_name . path_format($config['base_path']);
     $_POSTbody = explode("&",$event['body']);
     foreach ($_POSTbody as $postvalues){
         $pos = strpos($postvalues,"=");
@@ -89,6 +89,7 @@ function main_handler($event, $context)
         $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
     }
 
+    config_oauth();
     if (!$config['base_path']) {
         return message('Missing env <code>base_path</code>');
     }
@@ -128,23 +129,24 @@ When redirected, replace <code>http://localhost</code> with current host', 'Erro
 function config_oauth()
 {
     global $oauth;
+    global $config;
     if ($oauth['onedrive_ver']==0) {
-        // 0 默认(支持商业版与个人版 ）
+        // 0 默认（支持商业版与个人版）
         $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
         $oauth['client_secret'] = '7%2f%2bykq2xkfx%3a.DWjacuIRojIaaWL0QI6';
-        $oauth['redirect_uri'] = 'http://localhost/authorization_code';
+        $oauth['redirect_uri'] = 'https://scfonedrive.github.io/';
         $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'];
+        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' . urlencode($config['host_url']);
     }
     if ($oauth['onedrive_ver']==1) {
         // 1 世纪互联
         $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
         $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
         $oauth['client_secret'] = 'h8%40B7kFVOmj0%2b8HKBWeNTgl%40pU%2fz4yLB';
-        $oauth['redirect_uri'] = 'http://localhost/authorization_code';
+        $oauth['redirect_uri'] = 'https://scfonedrive.github.io/';
         $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All+offline_access&resource_id=00000002-0000-0000-c000-000000000000&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'];
+        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All+offline_access&resource_id=00000002-0000-0000-c000-000000000000&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' . urlencode($config['host_url']);
     }
 }
 
@@ -1093,7 +1095,7 @@ function render_list($path, $files)
         <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
         <form action="" method="POST">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
-            <input id="encrypt_input" name="encrypt_newpass" type="text" value="">
+            <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="输入想要设置的密码">
             <?php if (getenv('passfile')!='') {?><button name="operate_action" type=submit value="加密">加密</button><?php } else { ?>
             <br><label>先在环境变量设置passfile才能加密</label><?php } ?>
         </form>
