@@ -102,12 +102,13 @@ function main_handler($event, $context)
         }
         return message('Please set the <code>refresh_token</code> in environments<br>
     <a href="" id="a1">Get a refresh_token</a>
+    <br><code>allow javascript</code>
     <script>
         url=window.location.href;
         if (url.substr(-1)!="/") url+="/";
         url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
         document.getElementById(\'a1\').href=url;
-        window.location=url;
+        window.open(url,"_blank");
     </script>
     ', 'Error', 500);
     }
@@ -170,7 +171,17 @@ function get_refresh_token($code)
             $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . substr($tmptoken,0,128) . '</textarea>';
             $tmptoken=substr($tmptoken,128);
         }
-        return '<table width=100%><tr><td>' . $str . '</td><td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td></tr></table><br><br>Please add t1-t'.--$i.' to environments<script>var texta=document.getElementsByTagName(\'textarea\');for(i=0;i<texta.length;i++){texta[i].style.height = texta[i].scrollHeight + \'px\';}</script>';
+        return '<table width=100%><tr>
+        <td>' . $str . '</td>
+        <td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td>
+        </tr></table><br><br>
+        Please add t1-t'.--$i.' to environments
+        <script>
+            var texta=document.getElementsByTagName(\'textarea\');
+            for(i=0;i<texta.length;i++) {
+                texta[i].style.height = texta[i].scrollHeight + \'px\';
+            }
+        </script>';
     }
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
@@ -425,7 +436,7 @@ function guestupload($path)
     global $config;
     $path1 = path_format($config['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
-    if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!=''&&$config['current_url']!='') {
+    if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!='') if ($config['current_url']!='') {
         $data = substr($_POST['guest_upload_filecontent'],strpos($_POST['guest_upload_filecontent'],'base64')+strlen('base64,'));
         $data = base64_decode($data);
             // 重命名为MD5加后缀
@@ -437,7 +448,7 @@ function guestupload($path)
         fclose($tmpfile);
         $filename = md5_file($tmpfilename) . $ext;
         $locationurl = $config['current_url'] . '/' . $filename . '?preview';
-        $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry=json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         $uploadurl=$responsearry['uploadUrl'];
@@ -475,7 +486,7 @@ function adminoperate($path)
                 if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
             //}
         }
-        $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry = json_decode($response,true);
         if (isset($responsearry['error'])) return output($response);
         $fileinfo['uploadUrl'] = $responsearry['uploadUrl'];
@@ -487,7 +498,7 @@ function adminoperate($path)
         $filename = spurlencode($_POST['upload_filename']);
         $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
         $data = base64_decode($data);
-        $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
         $responsearry = json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         $uploadurl=$responsearry['uploadUrl'];
@@ -531,9 +542,9 @@ function adminoperate($path)
         if ($config['passfile']=='') return message('先在环境变量设置passfile才能加密','',403);
         if ($_POST['encrypt_folder']=='/') $_POST['encrypt_folder']=='';
         $foldername = spurlencode($_POST['encrypt_folder']);
-        $foldername = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
+        $filename = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
                 //echo $foldername;
-        $result = MSAPI('PUT', $foldername, $_POST['encrypt_newpass'], $config['access_token']);
+        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token']);
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -584,7 +595,7 @@ function adminoperate($path)
         }
         if ($_POST['create_type']=='folder') {
             $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
-            $result = MSAPI('CreateFolder', $path1, $data, $config['access_token']);
+            $result = MSAPI('children', $path1, $data, $config['access_token']);
             echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -607,29 +618,30 @@ function MSAPI($method, $path, $data = '', $access_token)
         $headers['Content-Length'] = $lenth;
         $lenth--;
         $headers['Content-Range'] = 'bytes 0-' . $lenth . '/' . $headers['Content-Length'];
-    } elseif ($method=='CreateFolder')  {
-        $method='POST';
-        $url = $oauth['api_url'];
-        if ($path=='' or $path=='/') {
-            $url.='/children';
-        } else {
-            $url.=':/children';
-        }
-        $headers['Content-Type'] = 'application/json';
     } else {
         $url = $oauth['api_url'];
-        if ($path !== '/') {
+        if ($path=='' or $path=='/') {
+            $url .= '/';
+        } else {
             $url .= ':' . $path;
             if (substr($url,-1)=='/') $url=substr($url,0,-1);
         }
         if ($method=='PUT') {
             $url .= ':/content';
             $headers['Content-Type'] = 'text/plain';
-        }
-        if ($method=='PATCH') {
+        } elseif ($method=='PATCH') {
             $headers['Content-Type'] = 'application/json';
-        }
-        if ($method=='POST') {
+        } elseif ($method=='POST') {
+            $headers['Content-Type'] = 'application/json';
+        } elseif ($method=='DELETE') {
+            $headers['Content-Type'] = 'application/json';
+        } else {
+            if ($path=='' or $path=='/') {
+                $url .= $method;
+            } else {
+                $url .= ':/' . $method;
+            }
+            $method='POST';
             $headers['Content-Type'] = 'application/json';
         }
     }
