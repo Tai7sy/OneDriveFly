@@ -627,7 +627,11 @@ function MSAPI($method, $path, $data = '', $access_token)
             if (substr($url,-1)=='/') $url=substr($url,0,-1);
         }
         if ($method=='PUT') {
-            $url .= ':/content';
+            if ($path=='' or $path=='/') {
+                $url .= 'content';
+            } else {
+                $url .= ':/content';
+            }
             $headers['Content-Type'] = 'text/plain';
         } elseif ($method=='PATCH') {
             $headers['Content-Type'] = 'application/json';
@@ -881,7 +885,7 @@ function render_list($path, $files)
                     ?>
                     <div style="margin: 12px 4px 4px; text-align: center">
                     	<div style="margin: 24px">
-                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo path_format($config['base_path'] . '/' . $path); ?></textarea>
+                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo str_replace('%26amp%3B','&amp;',spurlencode(path_format($config['base_path'] . '/' . $path), '/')); ?></textarea>
                             <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
                         </div>
                         <div style="margin: 24px">
