@@ -7,13 +7,17 @@ global $config;
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
+$oauth='';
+$config='';
 $oauth = [
     'onedrive_ver' => 0, // 0:默认（支持商业版与个人版） 1:世纪互联
+    'redirect_uri' => 'https://scfonedrive.github.io',
+    'refresh_token' => '',
 ];
 $config = [
     'sitename' => getenv('sitename'),
     'passfile' => getenv('passfile'),
-    'refresh_token' => '',
+    'imgup_path' => getenv('imgup_path'),
 ];
 //在环境变量添加：
 /*
@@ -34,7 +38,7 @@ function main_handler($event, $context)
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
-    if (strlen(json_encode($event1['body']))>150) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+strlen('base64%2C')) . 'Too Long!...' . substr($event1['body'],-100);
+    if (strlen(json_encode($event1['body']))>150) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+10) . '...Too Long!...' . substr($event1['body'],-50);
     echo urldecode(json_encode($event1)) . '
  
 ' . urldecode(json_encode($context)) . '
@@ -61,9 +65,7 @@ function main_handler($event, $context)
         $config['list_path'] = spurlencode($config['list_path'],'/') ;
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
-    $config['imgup_path'] = getenv('imgup_path');
     $config['sourceIp'] = $event['requestContext']['sourceIp'];
-    unset($files);
     unset($_POST);
     unset($_GET);
     unset($_COOKIE);
@@ -73,11 +75,11 @@ function main_handler($event, $context)
     $tmpurl = substr($referer,strpos($referer,'//')+2);
     $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
     if ($refererhost==$host_name) {
+        // 仅游客上传用，referer不对就空值，无法上传
         $config['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
     } else {
         $config['current_url'] = '';
     }
-    $config['host_url']='http://' . $host_name . path_format($config['base_path']);
     $_POSTbody = explode("&",$event['body']);
     foreach ($_POSTbody as $postvalues){
         $pos = strpos($postvalues,"=");
@@ -93,15 +95,21 @@ function main_handler($event, $context)
     if (!$config['base_path']) {
         return message('Missing env <code>base_path</code>');
     }
-    if (!$config['refresh_token']) $config['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
-    if (!$config['refresh_token']) {
+    if (!$oauth['refresh_token']) $oauth['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
+    if (!$oauth['refresh_token']) {
         if (strpos($path, '/authorization_code') !== FALSE && isset($_GET['code'])) {
             return message(get_refresh_token($_GET['code']));
         }
-        return message('
-Please set a <code>refresh_token</code> in environments<br>
-<a target="_blank" href="'. $oauth['get_response_code'] .'">Get a refresh_token</a><br><br>
-When redirected, replace <code>http://localhost</code> with current host', 'Error', 500);
+        return message('Please set the <code>refresh_token</code> in environments<br>
+    <a href="" id="a1">Get a refresh_token</a>
+    <script>
+        url=window.location.href;
+        if (url.substr(-1)!="/") url+="/";
+        url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
+        document.getElementById(\'a1\').href=url;
+        window.location=url;
+    </script>
+    ', 'Error', 500);
     }
     if ($_COOKIE[$function_name]==md5(getenv('admin')) && getenv('admin')!='' ) {
         $config['admin']=1;
@@ -129,24 +137,23 @@ When redirected, replace <code>http://localhost</code> with current host', 'Erro
 function config_oauth()
 {
     global $oauth;
-    global $config;
     if ($oauth['onedrive_ver']==0) {
         // 0 默认（支持商业版与个人版）
+        // https://portal.azure.com
         $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
         $oauth['client_secret'] = '7%2f%2bykq2xkfx%3a.DWjacuIRojIaaWL0QI6';
-        $oauth['redirect_uri'] = 'https://scfonedrive.github.io/';
         $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All+offline_access&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' . urlencode($config['host_url']);
+        $oauth['scope'] = 'https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All%20offline_access';
     }
     if ($oauth['onedrive_ver']==1) {
         // 1 世纪互联
+        // https://portal.azure.cn
         $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
         $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
         $oauth['client_secret'] = 'h8%40B7kFVOmj0%2b8HKBWeNTgl%40pU%2fz4yLB';
-        $oauth['redirect_uri'] = 'https://scfonedrive.github.io/';
         $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $oauth['get_response_code'] = $oauth['oauth_url'] .'authorize?scope=https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All+offline_access&resource_id=00000002-0000-0000-c000-000000000000&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' . urlencode($config['host_url']);
+        $oauth['scope'] = 'https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All%20offline_access';
     }
 }
 
@@ -160,10 +167,10 @@ function get_refresh_token($code)
         $tmptoken=$ret['refresh_token'];
         $str = 'split:<br>';
         for ($i=1;strlen($tmptoken)>0;$i++) {
-            $str .= 't' . $i . ':<textarea readonly style="width: 95%;height: 45px">' . substr($tmptoken,0,128) . '</textarea>';
+            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . substr($tmptoken,0,128) . '</textarea>';
             $tmptoken=substr($tmptoken,128);
         }
-        return '<table width=100%><tr><td width=50%>refresh_token:<textarea readonly style="width: 100%;height: 400px">' . $ret['refresh_token'] . '</textarea></td><td>' . $str . '</td></tr></table>';
+        return '<table width=100%><tr><td>' . $str . '</td><td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td></tr></table><br><br>Please add t1-t'.--$i.' to environments<script>var texta=document.getElementsByTagName(\'textarea\');for(i=0;i<texta.length;i++){texta[i].style.height = texta[i].scrollHeight + \'px\';}</script>';
     }
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
@@ -329,7 +336,7 @@ function list_files($path)
     if (!($access_token = $cache->fetch('access_token'))) {
         $ret = json_decode(curl_request(
             $oauth['oauth_url'] . 'token',
-            'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $config['refresh_token']
+            'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $oauth['refresh_token']
         ), true);
         if (!isset($ret['access_token'])) {
             error_log('failed to get access_token. response' . json_encode($ret));
@@ -418,7 +425,7 @@ function guestupload($path)
     global $config;
     $path1 = path_format($config['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
-    if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!='') {
+    if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!=''&&$config['current_url']!='') {
         $data = substr($_POST['guest_upload_filecontent'],strpos($_POST['guest_upload_filecontent'],'base64')+strlen('base64,'));
         $data = base64_decode($data);
             // 重命名为MD5加后缀
@@ -429,7 +436,7 @@ function guestupload($path)
         fwrite($tmpfile,$data);
         fclose($tmpfile);
         $filename = md5_file($tmpfilename) . $ext;
-        if ($config['current_url']!='') $locationurl = $config['current_url'] . '/' . $filename . '?preview';
+        $locationurl = $config['current_url'] . '/' . $filename . '?preview';
         $response=MSAPI('POST',path_format($path1 . '/' . $filename) . ':/createUploadSession','{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry=json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -439,6 +446,8 @@ function guestupload($path)
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         return output('', 302, false, [ 'Location' => $locationurl ]);
+    } else {
+        return message('Please upload from source site!');
     }
 }
 
@@ -1508,6 +1517,5 @@ if ($config['admin']) { //管理登录后 ?>
     </html>
     <?php
     $html=ob_get_clean();
-    unset($config);
     return output($html,$statusCode);
 }
