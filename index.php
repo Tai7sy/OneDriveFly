@@ -141,21 +141,32 @@ function config_oauth()
     if ($oauth['onedrive_ver']==0) {
         // 0 默认（支持商业版与个人版）
         // https://portal.azure.com
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
-        $oauth['client_secret'] = '7%2f%2bykq2xkfx%3a.DWjacuIRojIaaWL0QI6';
+        $oauth['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
+        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
         $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['scope'] = 'https%3a%2f%2fgraph.microsoft.com%2fFiles.ReadWrite.All%20offline_access';
+        $oauth['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
     }
     if ($oauth['onedrive_ver']==1) {
         // 1 世纪互联
         // https://portal.azure.cn
-        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
         $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
-        $oauth['client_secret'] = 'h8%40B7kFVOmj0%2b8HKBWeNTgl%40pU%2fz4yLB';
+        $oauth['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
+        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
         $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $oauth['scope'] = 'https%3a%2f%2fmicrosoftgraph.chinacloudapi.cn%2fFiles.ReadWrite.All%20offline_access';
+        $oauth['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
     }
+    if ($oauth['onedrive_ver']==2) {
+        // 2 SharePoint
+        // https://portal.azure.com
+        $oauth['client_id'] = '4214169b-2f35-4ffd-95b0-1b05d55448e5';
+        $oauth['client_secret'] = 'iTsch4W@afSadYo.[VLLR[FdfKEri803';
+        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $oauth['scope'] = 'https://microsoft.sharepoint-df.com/MyFiles.Read https://microsoft.sharepoint-df.com/MyFiles.Write offline_access';
+    }
+    $oauth['client_secret'] = urlencode($oauth['client_secret']);
+    $oauth['scope'] = urlencode($oauth['scope']);
 }
 
 function get_refresh_token($code)
@@ -801,7 +812,7 @@ function render_list($path, $files)
             .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
             .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
-            .login{display: inline-table;position: absolute;font-size:16px;margin:30px 20px;vertical-align:middle;right:0px;top:0px}
+            .login{display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:0px;top:0px}
             .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
             .list-table{width:100%;padding:20px;border-spacing:0}
             .list-table tr{height:40px}
@@ -811,8 +822,8 @@ function render_list($path, $files)
             .list-table .size,.list-table .updated_at{text-align:right}
             .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
 <?php if ($config['admin']) { ?>
-            .operate{display: inline-table;margin:0 20px;list-style:none;}
-            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin: -17px 0 0 -1px;padding: 0;color:#205D67;}
+            .operate{display: inline-table;margin:0;list-style:none;}
+            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin:-17px 0 0 0;padding: 0;color:#205D67;}
             .operate:hover ul{position: absolute;display:inline-table;}
             .operate ul li{padding:1px;list-style:none;}
             .operatediv_close{position: absolute;right: 3px;top:3px;}
@@ -857,7 +868,7 @@ function render_list($path, $files)
 <?php if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a onclick="login();">登录</a>
 <?php } else { ?>
-                        <li class="operate">管理<ul style="left:-15px">
+                        <li class="operate">管理<ul style="margin:-17px 0 0 -66px;">
                         <li><a onclick="logout()">登出</a></li>
                         <?php if (isset($files['folder'])) { ?>
                         <li><a onclick="showdiv(event,'create','');">新建</a></li>
@@ -1094,6 +1105,7 @@ function render_list($path, $files)
     </div>
     <div id="mask" style="position:absolute;display:none;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5"></div>
     <?php if ($config['admin']) { ?>
+<div>    
     <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:16px">
         <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
@@ -1158,6 +1170,7 @@ if (isset($files['children'])) foreach ($files['children'] as $file) {
         </form>
         </div>
     </div>
+</div>
     <?php } else {
         if (getenv('admin')!='') { ?>
         <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
@@ -1217,17 +1230,15 @@ if (isset($files['children'])) foreach ($files['children'] as $file) {
 <?php }
 if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
         var nowtime= new Date();
-        var timezone = nowtime.toString();
-        timezone = timezone.substr(timezone.indexOf('GMT')+3,5);
-        //alert(timezone);
+        var timezone = 0-nowtime.getTimezoneOffset()/60;
         var expd = new Date();
         expd.setTime(expd.getTime()+(2*60*60*1000));
         var expires = "expires="+expd.toGMTString();
         document.cookie="timezone="+timezone+";"+expires;
-        if (timezone!='+0800') {
+        if (timezone!='8') {
             alert('Your timezone is '+timezone+', reload local timezone.');
             location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
-        } 
+        }
 <?php }
 if ($files['folder']['childCount']>200) { //有下一页 ?>
         function nextpage(num) {
@@ -1269,208 +1280,6 @@ if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==pat
             }
 <?php }
 if ($config['admin']) { //管理登录后 ?>
-            function uploadbuttonhide()
-            {
-                document.getElementById('upload_submit').disabled='disabled';
-                document.getElementById('upload_file').disabled='disabled';
-                //$("#upload_submit").hide();
-                //$("#upload_file").hide();
-                document.getElementById('upload_submit').style.display='none';
-                document.getElementById('upload_file').style.display='none';
-            }
-            function uploadbuttonshow()
-            {
-                document.getElementById('upload_file').disabled='';
-                document.getElementById('upload_submit').disabled='';
-                //$("#upload_submit").show();
-                //$("#upload_file").show();
-                document.getElementById('upload_submit').style.display='';
-                document.getElementById('upload_file').style.display='';
-            }
-            function preup()
-            {
-                uploadbuttonhide();
-                var files=document.getElementById('upload_file').files;
-                var table1=document.createElement('table');
-                document.getElementById('upload_div').appendChild(table1);
-                table1.setAttribute('class','list-table');
-                var i=0;
-                getuplink(i);
-                function getuplink(i) {
-                    var file=files[i];
-                    var tr1=document.createElement('tr');
-                    table1.appendChild(tr1);
-                    tr1.setAttribute('data-to',1);
-                    var td1=document.createElement('td');
-                    tr1.appendChild(td1);
-                    td1.setAttribute('width','30%');
-                    td1.innerHTML=file.name+'<br>'+size_format(file.size);
-                    var td2=document.createElement('td');
-                    tr1.appendChild(td2);
-                    td2.innerHTML='获取链接 ...';
-                if (file.size>15*1024*1024*1024) {
-                    td2.innerHTML='大于15G，终止上传。<br>';
-                    uploadbuttonshow();
-                    return;
-                }
-                var xhr1 = new XMLHttpRequest();
-                xhr1.open("POST", '');
-                xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
-                xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
-                xhr1.onload = function(e){
-                    td2.innerHTML=xhr1.responseText;
-                    if (xhr1.status==200) {
-                    var html=JSON.parse(xhr1.responseText);
-                    if (!html['uploadUrl']) {
-                        td2.innerHTML=xhr1.responseText+'<br>';
-                        uploadbuttonshow();
-                    } else {
-                        td2.innerHTML='开始上传 ...';
-                        binupfile(file,html['uploadUrl'],td2);
-                    }
-                    }
-                    if (i<files.length-1) {
-                        i++;
-                        getuplink(i);
-                    }
-                }
-                /*$.ajax({
-                    type:'POST',
-                    url: "",
-                    cache: false,
-                    data: 'filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified ,
-                    dataType: 'json',
-                    success: function(html){
-                        $("#upload_res").text('开始上传 ...');
-                        if (!html['uploadUrl']) {
-                            $("#upload_res").text(JSON.stringify(html));
-                            uploadbuttonshow();
-                        } else {
-                            binupfile(html['uploadUrl']);
-                        }
-                    }
-                });*/
-                }
-            }
-            function size_format(num)
-            {
-                if (num>1024) {
-                    num=(num/1024).toFixed(2);
-                } else {
-                    return num.toFixed(2) +' B';
-                }
-                if (num>1024) {
-                    num=Number((num/1024).toFixed(2));
-                } else {
-                    return num+' KB';
-                }
-                if (num>1024) {
-                    num=Number((num/1024).toFixed(2));
-                } else {
-                    return num+' MB';
-                }
-                return num+' GB';
-            }
-            function binupfile(file,url,label){
-                //var file=document.getElementById('upload_file').files[0];
-                var reader = new FileReader();
-                var StartStr;
-                var StartTime;
-                var EndTime;
-                var newstartsize = 0;
-                if(!!file){
-                    var asize=0;
-                    var totalsize=file.size;
-                    var xhr2 = new XMLHttpRequest();
-                    xhr2.open("GET", url);
-                    //xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
-                    xhr2.send(null);
-                    xhr2.onload = function(e){
-                        var html=JSON.parse(xhr2.responseText);
-                        var a=html['nextExpectedRanges'][0];
-                        asize=Number( a.slice(0,a.indexOf("-")) );
-                        StartTime = new Date();
-                        newstartsize = asize;
-                        if (asize==0) {
-                            StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
-                        } else {
-                            StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
-                        }
-                        label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
-                    /*$.ajax({
-                        type:'GET',
-                        url: url,
-                        cache: false,
-                        dataType: 'json',
-                        success: function(html){
-                            var a=html['nextExpectedRanges'][0];
-                            asize=Number( a.slice(0,a.indexOf("-")) );
-                            $("#upload_res").text('已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%');
-                        }
-                    });*/
-                    var chunksize=5*1024*1024; // 每次上传5M，最大60M，微软建议10M
-                    if (totalsize>200*1024*1024) chunksize=10*1024*1024;
-                    function readblob(start) {
-                        var end=start+chunksize;
-                        var blob = file.slice(start,end);
-                        reader.readAsArrayBuffer(blob);
-                    }
-                    readblob(asize);
-                    reader.onload = function(e){
-                        var binary = this.result;
-                        var xhr = new XMLHttpRequest();
-                        xhr.open("PUT", url);
-    //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
-                        bsize=asize+e.loaded-1;
-                        xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize +'/'+ totalsize);
-                        //$("#upload_res").text('正在上传：' +size_format(bsize)+ '/'+size_format(totalsize) + '：' + (bsize*100/totalsize).toFixed(2) + '%');
-                        xhr.send(binary);
-                        var C_starttime = new Date();
-                        xhr.onload = function(e){
-                            //$("#upload_res").text(xhr.responseText);
-                            if (xhr.status<500) {
-                            var response=JSON.parse(xhr.responseText);
-                            if (response['size']>0) {
-                                // 有size说明是最终返回
-                                //$("#upload_res").text('上传完成');
-                                var xhr3 = new XMLHttpRequest();
-                                xhr3.open("POST", '');
-                                xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
-                                xhr3.send('action=del_upload_cache&filename=.'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name)+'.tmp');
-                                /*$.ajax({
-                                    type:'POST',
-                                    url: "",
-                                    cache: false,
-                                    data: 'action=del_upload_cache&filename=.tmp_'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name),
-                                    dataType: 'json',
-                                });*/
-                                EndTime=new Date();
-                                StartStr += '结束于：'+EndTime.toLocaleString()+'<br>';
-                                if (newstartsize==0) {
-                                    StartStr += '平均速度：'+size_format(totalsize*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
-                                } else {
-                                    StartStr += '本次平均速度：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
-                                }
-                                label.innerHTML=StartStr+ '上传完成<br>';
-                                uploadbuttonshow();
-                            } else {
-                                if (!response['nextExpectedRanges']) {
-                                    //$("#upload_res").text(xhr.responseText);
-                                    label.innerHTML=xhr.responseText+'<br>';
-                                } else {
-                                    var C_endtime = new Date();
-                                    var a=response['nextExpectedRanges'][0];
-                                    asize=Number( a.slice(0,a.indexOf("-")) );
-                                    //$("#upload_res").text('已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%');
-                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
-                                    label.innerHTML=StartStr+MiddleStr+'已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
-                                    readblob(asize);
-                                }
-                            } } else readblob(asize);
-                        }
-                    } }
-                }
-            }
         function logout() {
             var expd = new Date();
             expd.setTime(expd.getTime()-(60*1000));
@@ -1479,10 +1288,10 @@ if ($config['admin']) { //管理登录后 ?>
             location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
         }
         function showdiv(event,action,str) {
-            /*var $operatediv=document.getElementsByName('operatediv');
+            var $operatediv=document.getElementsByName('operatediv');
             for ($i=0;$i<$operatediv.length;$i++) {
                 $operatediv[$i].style.display='none';
-            }*/
+            }
             document.getElementById('mask').style.display='';
             //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
             document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
@@ -1516,6 +1325,178 @@ if ($config['admin']) { //管理登录后 ?>
             obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
             document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
+            function uploadbuttonhide()
+            {
+                document.getElementById('upload_submit').disabled='disabled';
+                document.getElementById('upload_file').disabled='disabled';
+                //$("#upload_submit").hide();
+                //$("#upload_file").hide();
+                document.getElementById('upload_submit').style.display='none';
+                document.getElementById('upload_file').style.display='none';
+            }
+            function uploadbuttonshow()
+            {
+                document.getElementById('upload_file').disabled='';
+                document.getElementById('upload_submit').disabled='';
+                //$("#upload_submit").show();
+                //$("#upload_file").show();
+                document.getElementById('upload_submit').style.display='';
+                document.getElementById('upload_file').style.display='';
+            }
+            function preup()
+            {
+                uploadbuttonhide();
+                var files=document.getElementById('upload_file').files;
+                var table1=document.createElement('table');
+                document.getElementById('upload_div').appendChild(table1);
+                table1.setAttribute('class','list-table');
+                var timea=new Date().getTime();
+                var i=0;
+                getuplink(i);
+                function getuplink(i) {
+                    var file=files[i];
+                    var tr1=document.createElement('tr');
+                    table1.appendChild(tr1);
+                    tr1.setAttribute('data-to',1);
+                    var td1=document.createElement('td');
+                    tr1.appendChild(td1);
+                    td1.setAttribute('style','width:30%');
+                    td1.setAttribute('id','upfile_td1_'+timea+'_'+i);
+                    td1.innerHTML=file.name+'<br>'+size_format(file.size);
+                    var td2=document.createElement('td');
+                    tr1.appendChild(td2);
+                    td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
+                    td2.innerHTML='获取链接 ...';
+                if (file.size>15*1024*1024*1024) {
+                    td2.innerHTML='<font color="red">大于15G，终止上传。</font>';
+                    uploadbuttonshow();
+                    return;
+                }
+                var xhr1 = new XMLHttpRequest();
+                xhr1.open("POST", '');
+                xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
+                xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
+                xhr1.onload = function(e){
+                    td2.innerHTML='<font color="red">'+xhr1.responseText+'</font>';
+                    if (xhr1.status==200) {
+                    var html=JSON.parse(xhr1.responseText);
+                    if (!html['uploadUrl']) {
+                        td2.innerHTML='<font color="red">'+xhr1.responseText+'</font><br>';
+                        uploadbuttonshow();
+                    } else {
+                        td2.innerHTML='开始上传 ...';
+                        binupfile(file,html['uploadUrl'],timea+'_'+i);
+                    }
+                    }
+                    if (i<files.length-1) {
+                        i++;
+                        getuplink(i);
+                    }
+                }
+                }
+            }
+            function size_format(num)
+            {
+                if (num>1024) {
+                    num=(num/1024).toFixed(2);
+                } else {
+                    return num.toFixed(2) +' B';
+                }
+                if (num>1024) {
+                    num=Number((num/1024).toFixed(2));
+                } else {
+                    return num+' KB';
+                }
+                if (num>1024) {
+                    num=Number((num/1024).toFixed(2));
+                } else {
+                    return num+' MB';
+                }
+                return num+' GB';
+            }
+            function binupfile(file,url,tdnum){
+                var label=document.getElementById('upfile_td2_'+tdnum);
+                var reader = new FileReader();
+                var StartStr='';
+                var MiddleStr='';
+                var StartTime;
+                var EndTime;
+                var newstartsize = 0;
+                if(!!file){
+                    var asize=0;
+                    var totalsize=file.size;
+                    var xhr2 = new XMLHttpRequest();
+                    xhr2.open("GET", url);
+                    //xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
+                    xhr2.send(null);
+                    xhr2.onload = function(e){
+                        var html=JSON.parse(xhr2.responseText);
+                        var a=html['nextExpectedRanges'][0];
+                        asize=Number( a.slice(0,a.indexOf("-")) );
+                        StartTime = new Date();
+                        newstartsize = asize;
+                        if (asize==0) {
+                            StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        } else {
+                            StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        }
+                        label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
+                    var chunksize=5*1024*1024; // 每次上传5M，最大60M，微软建议10M
+                    if (totalsize>200*1024*1024) chunksize=10*1024*1024;
+                    function readblob(start) {
+                        var end=start+chunksize;
+                        var blob = file.slice(start,end);
+                        reader.readAsArrayBuffer(blob);
+                    }
+                    readblob(asize);
+                    reader.onload = function(e){
+                        var binary = this.result;
+                        var xhr = new XMLHttpRequest();
+                        xhr.open("PUT", url, true);
+    //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+                        bsize=asize+e.loaded-1;
+                        xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize +'/'+ totalsize);
+                        xhr.upload.onprogress = function(e){
+                            if (e.lengthComputable) {
+                                label.innerHTML=StartStr+MiddleStr+'已经上传：' +size_format(asize+e.loaded)+ '/'+size_format(totalsize) + '：' + ((asize+e.loaded)*100/totalsize).toFixed(2) + '%';
+                            }
+                        }
+                        var C_starttime = new Date();
+                        xhr.onload = function(e){
+                            if (xhr.status<500) {
+                            var response=JSON.parse(xhr.responseText);
+                            if (response['size']>0) {
+                                // 有size说明是最终返回，上传结束
+                                var xhr3 = new XMLHttpRequest();
+                                xhr3.open("POST", '');
+                                xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
+                                xhr3.send('action=del_upload_cache&filename=.'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name)+'.tmp');
+                                EndTime=new Date();
+                                MiddleStr = '结束于：'+EndTime.toLocaleString()+'<br>';
+                                if (newstartsize==0) {
+                                    MiddleStr += '平均速度：'+size_format(totalsize*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                } else {
+                                    MiddleStr += '本次平均速度：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                }
+                                document.getElementById('upfile_td1_'+tdnum).innerHTML+='<br><font color="green">上传完成</font>';
+                                label.innerHTML=StartStr+MiddleStr;
+                                uploadbuttonshow();
+                            } else {
+                                if (!response['nextExpectedRanges']) {
+                                    label.innerHTML='<font color="red">'+xhr.responseText+'</font><br>';
+                                } else {
+                                    var C_endtime = new Date();
+                                    var a=response['nextExpectedRanges'][0];
+                                    asize=Number( a.slice(0,a.indexOf("-")) );
+                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
+                                    readblob(asize);
+                                }
+                            } } else readblob(asize);
+                        }
+                        xhr.send(binary);
+                    } }
+                }
+            }
 <?php } else if (getenv('admin')!='') { ?>
         function login()
         {
