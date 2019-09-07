@@ -61,40 +61,40 @@ function time_format($ISO)
     return date('Y-m-d H:i:s',strtotime($ISO . " UTC"));
 }
 
-function get_timezone($timezone = ' 0800')
+function get_timezone($timezone = '8')
 {
     $timezones = array( 
-        '-1200'=>'Pacific/Kwajalein', 
-        '-1100'=>'Pacific/Samoa', 
-        '-1000'=>'Pacific/Honolulu', 
-        '-0900'=>'America/Anchorage', 
-        '-0800'=>'America/Los_Angeles', 
-        '-0700'=>'America/Denver', 
-        '-0600'=>'America/Mexico_City', 
-        '-0500'=>'America/New_York', 
-        '-0400'=>'America/Caracas', 
-        '-0330'=>'America/St_Johns', 
-        '-0300'=>'America/Argentina/Buenos_Aires', 
-        '-0200'=>'America/Noronha',
-        '-0100'=>'Atlantic/Azores', 
-        ' 0000'=>'UTC', 
-        ' 0100'=>'Europe/Paris', 
-        ' 0200'=>'Europe/Helsinki', 
-        ' 0300'=>'Europe/Moscow', 
-        ' 0330'=>'Asia/Tehran', 
-        ' 0400'=>'Asia/Baku', 
-        ' 0430'=>'Asia/Kabul', 
-        ' 0500'=>'Asia/Karachi', 
-        ' 0530'=>'Asia/Calcutta', //Asia/Colombo
-        ' 0600'=>'Asia/Dhaka',
-        ' 0630'=>'Asia/Rangoon', 
-        ' 0700'=>'Asia/Bangkok', 
-        ' 0800'=>'Asia/Shanghai', 
-        ' 0900'=>'Asia/Tokyo', 
-        ' 0930'=>'Australia/Darwin', 
-        ' 1000'=>'Pacific/Guam', 
-        ' 1100'=>'Asia/Magadan', 
-        ' 1200'=>'Asia/Kamchatka'
+        '-12'=>'Pacific/Kwajalein', 
+        '-11'=>'Pacific/Samoa', 
+        '-10'=>'Pacific/Honolulu', 
+        '-9'=>'America/Anchorage', 
+        '-8'=>'America/Los_Angeles', 
+        '-7'=>'America/Denver', 
+        '-6'=>'America/Mexico_City', 
+        '-5'=>'America/New_York', 
+        '-4'=>'America/Caracas', 
+        '-3.5'=>'America/St_Johns', 
+        '-3'=>'America/Argentina/Buenos_Aires', 
+        '-2'=>'America/Noronha',
+        '-1'=>'Atlantic/Azores', 
+        '0'=>'UTC', 
+        '1'=>'Europe/Paris', 
+        '2'=>'Europe/Helsinki', 
+        '3'=>'Europe/Moscow', 
+        '3.5'=>'Asia/Tehran', 
+        '4'=>'Asia/Baku', 
+        '4.5'=>'Asia/Kabul', 
+        '5'=>'Asia/Karachi', 
+        '5.5'=>'Asia/Calcutta', //Asia/Colombo
+        '6'=>'Asia/Dhaka',
+        '6.5'=>'Asia/Rangoon', 
+        '7'=>'Asia/Bangkok', 
+        '8'=>'Asia/Shanghai', 
+        '9'=>'Asia/Tokyo', 
+        '9.5'=>'Australia/Darwin', 
+        '10'=>'Pacific/Guam', 
+        '11'=>'Asia/Magadan', 
+        '12'=>'Asia/Kamchatka'
     ); 
     return $timezones[$timezone];
 }
