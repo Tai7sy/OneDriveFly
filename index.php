@@ -25,7 +25,7 @@ sitename       ：网站的名称，不添加会显示为‘请在环境变量�
 admin          ：管理密码，不添加时不显示登录页面且无法登录
 public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
-imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面
+imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）
 passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本
@@ -900,16 +900,17 @@ function render_list($path, $files)
                             <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
                         </div>
                         <div style="margin: 24px">
-                        <?php
+<?php
                         $ext = strtolower(substr($path, strrpos($path, '.') + 1));
+                        $DPvideo='';
                         if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
                             echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
                         ';
                         } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
-                            echo '
-                        <video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>
-                        ';
+                            //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
+                            $DPvideo=$files['@microsoft.graph.downloadUrl'];
+                            echo '<div id="video-a0"></div>';
                         } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
@@ -923,13 +924,13 @@ function render_list($path, $files)
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
                         } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
-                            if ($files['name']==='当前demo的index.php') {
+                            /*if ($files['name']==='当前demo的index.php') {
                                 $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
 ';
                                 $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
-                            } else {
+                            } else {*/
                                 $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
-                            } ?>
+                            //} ?>
                         <div id="txt">
                         <?php if ($config['admin']) { ?><form id="txt-form" action="" method="POST">
                             <a onclick="enableedit(this);" id="txt-editbutton">点击后编辑</a>
@@ -1260,7 +1261,73 @@ if ($_GET['preview']) { //在预览时处理 ?>
         if ($textarea) {
             $textarea.style.height = $textarea.scrollHeight + 'px';
         }
+<?php if (!!$DPvideo) { ?>
+        function loadResources(type, src, callback) {
+                let script = document.createElement(type);
+                let loaded = false;
+                if (typeof callback === 'function') {
+                    script.onload = script.onreadystatechange = () => {
+                        if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
+                            script.onload = script.onreadystatechange = null;
+                            loaded = true;
+                            callback();
+                        }
+                    }
+                }
+                if (type === 'link') {
+                    script.href = src;
+                    script.rel = 'stylesheet';
+                } else {
+                    script.src = src;
+                }
+                document.getElementsByTagName('head')[0].appendChild(script);
+            }
+            function addVideos(videos) {
+                let host = 'https://s0.pstatp.com/cdn/expire-1-M';
+                let unloadedResourceCount = 4;
+                let callback = (() => {
+                    return () => {
+                        if (!--unloadedResourceCount) {
+                            createDplayers(videos);
+                        }
+                    };
+                })(unloadedResourceCount, videos);
+                loadResources(
+                    'link',
+                    host + '/dplayer/1.25.0/DPlayer.min.css',
+                    callback
+                );
+                loadResources(
+                    'script',
+                    host + '/dplayer/1.25.0/DPlayer.min.js',
+                    callback
+                );
+                loadResources(
+                    'script',
+                    host + '/hls.js/0.12.4/hls.light.min.js',
+                    callback
+                );
+                loadResources(
+                    'script',
+                    host + '/flv.js/1.5.0/flv.min.js',
+                    callback
+                );
+            }
+            function createDplayers(videos) {
+                for (i = 0; i < videos.length; i++) {
+                    console.log(videos[i]);
+                    new DPlayer({
+                        container: document.getElementById('video-a' + i),
+                        screenshot: true,
+                        video: {
+                            url: videos[i]
+                        }
+                    });
+                }
+            }
+        addVideos(['<?php echo $DPvideo;?>']);
 <?php }
+}
 if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
         function operatediv_close(operate)
         {
@@ -1398,21 +1465,21 @@ if ($config['admin']) { //管理登录后 ?>
             function size_format(num)
             {
                 if (num>1024) {
-                    num=(num/1024).toFixed(2);
+                    num=(num/1024);
                 } else {
-                    return num.toFixed(2) +' B';
+                    return num.toFixed(2) + ' B';
                 }
                 if (num>1024) {
                     num=Number((num/1024).toFixed(2));
                 } else {
-                    return num+' KB';
+                    return num.toFixed(2) + ' KB';
                 }
                 if (num>1024) {
                     num=Number((num/1024).toFixed(2));
                 } else {
-                    return num+' MB';
+                    return num.toFixed(2) + ' MB';
                 }
-                return num+' GB';
+                return num.toFixed(2) + ' GB';
             }
             function binupfile(file,url,tdnum){
                 var label=document.getElementById('upfile_td2_'+tdnum);
@@ -1440,8 +1507,8 @@ if ($config['admin']) { //管理登录后 ?>
                         } else {
                             StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
                         }
-                        label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
-                    var chunksize=5*1024*1024; // 每次上传5M，最大60M，微软建议10M
+                        //label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
+                    var chunksize=5*1024*1024; // 每小块上传大小，最大60M，微软建议10M
                     if (totalsize>200*1024*1024) chunksize=10*1024*1024;
                     function readblob(start) {
                         var end=start+chunksize;
@@ -1458,7 +1525,10 @@ if ($config['admin']) { //管理登录后 ?>
                         xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize +'/'+ totalsize);
                         xhr.upload.onprogress = function(e){
                             if (e.lengthComputable) {
-                                label.innerHTML=StartStr+MiddleStr+'已经上传：' +size_format(asize+e.loaded)+ '/'+size_format(totalsize) + '：' + ((asize+e.loaded)*100/totalsize).toFixed(2) + '%';
+                                var tmptime = new Date();
+                                var tmpspeed = e.loaded*1000/(tmptime.getTime()-C_starttime.getTime());
+                                var remaintime = (totalsize-asize-e.loaded)/tmpspeed;
+                                label.innerHTML=StartStr+'已经上传 ' +size_format(asize+e.loaded)+ ' / '+size_format(totalsize) + ' = ' + ((asize+e.loaded)*100/totalsize).toFixed(2) + '% 平均速度：'+size_format((asize+e.loaded-newstartsize)*1000/(tmptime.getTime()-StartTime.getTime()))+'/s<br>即时速度 '+size_format(tmpspeed)+'/s 预计还要 '+remaintime.toFixed(1)+'s';
                             }
                         }
                         var C_starttime = new Date();
@@ -1485,10 +1555,10 @@ if ($config['admin']) { //管理登录后 ?>
                                 if (!response['nextExpectedRanges']) {
                                     label.innerHTML='<font color="red">'+xhr.responseText+'</font><br>';
                                 } else {
-                                    var C_endtime = new Date();
+                                    //var C_endtime = new Date();
                                     var a=response['nextExpectedRanges'][0];
                                     asize=Number( a.slice(0,a.indexOf("-")) );
-                                    MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
+                                    //MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
                                     readblob(asize);
                                 }
                             } } else readblob(asize);
