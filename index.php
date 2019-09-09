@@ -51,7 +51,7 @@ function main_handler($event, $context)
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
         $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
         $config['list_path'] = getenv('public_path');
-        $path = substr($event['path'], strlen('/'.$function_name));
+        $path = substr($event['path'], strlen('/'.$function_name.'/'));
     } else {
         $config['base_path'] = getenv('base_path');
         if (empty($config['base_path'])) $config['base_path'] = '/';
@@ -97,7 +97,7 @@ function main_handler($event, $context)
     }
     if (!$oauth['refresh_token']) $oauth['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
     if (!$oauth['refresh_token']) {
-        if (strpos($path, '/authorization_code') !== FALSE && isset($_GET['code'])) {
+        if ($path=='authorization_code' && isset($_GET['code'])) {
             return message(get_refresh_token($_GET['code']));
         }
         return message('Please set the <code>refresh_token</code> in environments<br>
@@ -303,7 +303,7 @@ function fetch_files_children($files, $path, $page, $cache)
                     $pageinfocache['dirsize'] = $files['size'];
                     $pageinfocache['cachesize'] = $cachefile['size'];
                     $pageinfocache['size'] = $files['size']-$cachefile['size'];
-                    if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $config['access_token']);
+                    if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $config['access_token'])['body'];
                     return $files;
                 }
             } else {
@@ -329,7 +329,7 @@ function fetch_files_children($files, $path, $page, $cache)
                 $pageinfocache['dirsize'] = $files['size'];
                 $pageinfocache['cachesize'] = $cachefile['size'];
                 $pageinfocache['size'] = $files['size']-$cachefile['size'];
-                if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $config['access_token']);
+                if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path.'/'.$cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $config['access_token'])['body'];
                 return $files;
             }
         }
@@ -371,7 +371,7 @@ function list_files($path)
 
     if ($config['ajax']&&$_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
         $tmp = MSAPI('DELETE',path_format(path_format($config['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$access_token);
-        return output($tmp);
+        return output($tmp['body'],$tmp['stat']);
     } 
     if ($config['admin']) {
         $tmp = adminoperate($path);
@@ -459,11 +459,11 @@ function guestupload($path)
         fclose($tmpfile);
         $filename = md5_file($tmpfilename) . $ext;
         $locationurl = $config['current_url'] . '/' . $filename . '?preview';
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token'])['body'];
         $responsearry=json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         $uploadurl=$responsearry['uploadUrl'];
-        $result = MSAPI('PUT',$uploadurl,$data,$config['access_token']);
+        $result = MSAPI('PUT',$uploadurl,$data,$config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -497,11 +497,11 @@ function adminoperate($path)
                 if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
             //}
         }
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token'])['body'];
         $responsearry = json_decode($response,true);
         if (isset($responsearry['error'])) return output($response);
         $fileinfo['uploadUrl'] = $responsearry['uploadUrl'];
-        echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token']);
+        echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token'])['body'];
         return output($response);
     }
     if ($_POST['upload_filename']!='') {
@@ -509,7 +509,7 @@ function adminoperate($path)
         $filename = spurlencode($_POST['upload_filename']);
         $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
         $data = base64_decode($data);
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token']);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token'])['body'];
         $responsearry = json_decode($response,true);
         if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         $uploadurl=$responsearry['uploadUrl'];
@@ -519,7 +519,7 @@ function adminoperate($path)
                         $datasplit=substr($datasplit,1024000);
                         echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
                     }//大文件循环PUT，SCF用不上*/
-        $result = MSAPI('PUT',$uploadurl,$data,$config['access_token']);
+        $result = MSAPI('PUT',$uploadurl,$data,$config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -531,7 +531,7 @@ function adminoperate($path)
         $oldname = path_format($path1 . '/' . $oldname);
         $data = '{"name":"' . $_POST['rename_newname'] . '"}';
                 //echo $oldname;
-        $result = MSAPI('PATCH',$oldname,$data,$config['access_token']);
+        $result = MSAPI('PATCH',$oldname,$data,$config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -542,7 +542,7 @@ function adminoperate($path)
         $filename = spurlencode($_POST['delete_name']);
         $filename = path_format($path1 . '/' . $filename);
                 //echo $filename;
-        $result = MSAPI('DELETE', $filename, '', $config['access_token']);
+        $result = MSAPI('DELETE', $filename, '', $config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message'] . '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -555,7 +555,7 @@ function adminoperate($path)
         $foldername = spurlencode($_POST['encrypt_folder']);
         $filename = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
                 //echo $foldername;
-        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token']);
+        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -573,7 +573,7 @@ function adminoperate($path)
             $foldername = path_format('/'.urldecode($path1).'/'.$_POST['move_folder']);
             $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
                 // echo $data;
-            $result = MSAPI('PATCH', $filename, $data, $config['access_token']);
+            $result = MSAPI('PATCH', $filename, $data, $config['access_token'])['body'];
             echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -588,7 +588,7 @@ function adminoperate($path)
         $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "replace"  }}',$config['access_token']);
         $uploadurl=json_decode($response,true)['uploadUrl'];
         echo MSAPI('PUT',$uploadurl,$data,$config['access_token']);*/
-        $result = MSAPI('PUT', $path1, $data, $config['access_token']);
+        $result = MSAPI('PUT', $path1, $data, $config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -599,14 +599,14 @@ function adminoperate($path)
         if ($_POST['create_type']=='file') {
             $filename = spurlencode($_POST['create_name']);
             $filename = path_format($path1 . '/' . $filename);
-            $result = MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token']);
+            $result = MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token'])['body'];
             echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         }
         if ($_POST['create_type']=='folder') {
             $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
-            $result = MSAPI('children', $path1, $data, $config['access_token']);
+            $result = MSAPI('children', $path1, $data, $config['access_token'])['body'];
             echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
@@ -690,9 +690,10 @@ function MSAPI($method, $path, $data = '', $access_token)
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
-    $response = curl_exec($ch);
+    $response['body'] = curl_exec($ch);
+    $response['stat'] = curl_getinfo($ch,CURLINFO_HTTP_CODE);
     curl_close($ch);
-    echo '
+    echo $response['stat'].'
 ';
     return $response;
 }
@@ -1327,6 +1328,7 @@ if ($_GET['preview']) { //在预览时处理 ?>
             }
         addVideos(['<?php echo $DPvideo;?>']);
 <?php }
+
 }
 if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
         function operatediv_close(operate)
@@ -1541,6 +1543,9 @@ if ($config['admin']) { //管理登录后 ?>
                                 xhr3.open("POST", '');
                                 xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
                                 xhr3.send('action=del_upload_cache&filename=.'+file.lastModified+ '_' +file.size+ '_' +encodeURIComponent(file.name)+'.tmp');
+                                xhr3.onload = function(e){
+                                    console.log(xhr3.responseText+','+xhr3.status);
+                                }
                                 EndTime=new Date();
                                 MiddleStr = '结束于：'+EndTime.toLocaleString()+'<br>';
                                 if (newstartsize==0) {
