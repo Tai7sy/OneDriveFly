@@ -375,12 +375,13 @@ function list_files($path)
     } 
     if ($config['admin']) {
         $tmp = adminoperate($path);
-        if ($tmp['statusCode'] == 403 || $tmp['statusCode'] == 200) {
+        /*if ($tmp['statusCode'] == 403 || $tmp['statusCode'] == 200) {
             return $tmp;
-        }
-        if ($tmp['statusCode'] == 201) {
+        }*/
+        if ($tmp['statusCode'] > 0) {
             $path1 = path_format($config['list_path'] . path_format($path));
             $cache->save('path_' . $path1, json_decode('{}',true), 1);
+            return $tmp;
         }
     } else {
         if ($config['ajax']) return output('请重新<a href="?admin"><font color="red">登录</font></a>',401);
@@ -389,17 +390,20 @@ function list_files($path)
             if ($html!='') return $html;
         }
     }
+    $config['ishidden'] = 4;
+    $config['ishidden'] = passhidden($path);
     if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) {
         // 是图床目录且不是管理
+        $files = json_decode('{"folder":{}}', true);
+    } elseif ($config['ishidden']==4) {
         $files = json_decode('{"folder":{}}', true);
     } else {
         $files = fetch_files($path);
     }
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
-        $ishidden=passhidden(substr($path,0,strrpos($path,'/')));
         //if ($config['admin'] or $ishidden<4) {
-        if ($ishidden<4) {
+        if ($config['ishidden']<4) {
             return output('', 302, false, [
                 'Location' => $files['@microsoft.graph.downloadUrl']
             ]);
@@ -479,8 +483,8 @@ function adminoperate($path)
     $path1 = path_format($config['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     $tmparr['statusCode'] = 0;
-    if ($config['ajax']) {
-        $fileinfo['name'] = $_POST['filename'];
+    if ($_POST['upbigfilename']!=''&&$_POST['filesize']>0) {
+        $fileinfo['name'] = $_POST['upbigfilename'];
         $fileinfo['size'] = $_POST['filesize'];
         $fileinfo['lastModified'] = $_POST['lastModified'];
         $filename = spurlencode( $fileinfo['name'] );
@@ -504,7 +508,7 @@ function adminoperate($path)
         echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token'])['body'];
         return output($response);
     }
-    if ($_POST['upload_filename']!='') {
+    /*if ($_POST['upload_filename']!='') {
         // 上传
         $filename = spurlencode($_POST['upload_filename']);
         $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
@@ -518,35 +522,37 @@ function adminoperate($path)
                         $tmpdata=substr($datasplit,0,1024000);
                         $datasplit=substr($datasplit,1024000);
                         echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
-                    }//大文件循环PUT，SCF用不上*/
+                    }//大文件循环PUT，SCF用不上*
         $result = MSAPI('PUT',$uploadurl,$data,$config['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
         $tmparr['statusCode'] = 201;
-    }
+    }*/
     if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
         // 重命名
         $oldname = spurlencode($_POST['rename_oldname']);
         $oldname = path_format($path1 . '/' . $oldname);
         $data = '{"name":"' . $_POST['rename_newname'] . '"}';
                 //echo $oldname;
-        $result = MSAPI('PATCH',$oldname,$data,$config['access_token'])['body'];
-        echo $result;
+        $result = MSAPI('PATCH',$oldname,$data,$config['access_token']);
+        /*echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;
+        $tmparr['statusCode'] = 201;*/
+        return output($result['body'], $result['stat']);
     }
     if ($_POST['delete_name']!='') {
         // 删除
         $filename = spurlencode($_POST['delete_name']);
         $filename = path_format($path1 . '/' . $filename);
                 //echo $filename;
-        $result = MSAPI('DELETE', $filename, '', $config['access_token'])['body'];
-        echo $result;
+        $result = MSAPI('DELETE', $filename, '', $config['access_token']);
+        /*echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message'] . '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;
+        $tmparr['statusCode'] = 201;*/
+        return output($result['body'], $result['stat']);
     }
     if ($_POST['operate_action']=='加密') {
         // 加密
@@ -555,11 +561,13 @@ function adminoperate($path)
         $foldername = spurlencode($_POST['encrypt_folder']);
         $filename = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
                 //echo $foldername;
-        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token'])['body'];
-        echo $result;
+        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token']);
+        /*echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;
+        $tmparr['statusCode'] = 201;*/
+        //echo $result['body'];
+        return output($result['body'], $result['stat']);
     }
     if ($_POST['move_folder']!='') {
         // 移动
@@ -573,11 +581,14 @@ function adminoperate($path)
             $foldername = path_format('/'.urldecode($path1).'/'.$_POST['move_folder']);
             $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
                 // echo $data;
-            $result = MSAPI('PATCH', $filename, $data, $config['access_token'])['body'];
-            echo $result;
+            $result = MSAPI('PATCH', $filename, $data, $config['access_token']);
+            /*echo $result;
             $resultarry = json_decode($result,true);
             if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-            $tmparr['statusCode'] = 201;
+            $tmparr['statusCode'] = 201;*/
+            return output($result['body'], $result['stat']);
+        } else {
+            return output('{"error":"无法移动"}', 403);
         }
     }
     if ($_POST['editfile']!='') {
@@ -599,19 +610,20 @@ function adminoperate($path)
         if ($_POST['create_type']=='file') {
             $filename = spurlencode($_POST['create_name']);
             $filename = path_format($path1 . '/' . $filename);
-            $result = MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token'])['body'];
-            echo $result;
+            $result = MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token']);
+            /*echo $result;
             $resultarry = json_decode($result,true);
-            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
+            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);*/
         }
         if ($_POST['create_type']=='folder') {
             $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
-            $result = MSAPI('children', $path1, $data, $config['access_token'])['body'];
-            echo $result;
+            $result = MSAPI('children', $path1, $data, $config['access_token']);
+            /*echo $result;
             $resultarry = json_decode($result,true);
-            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
+            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);*/
         }
-        $tmparr['statusCode'] = 201;
+        //$tmparr['statusCode'] = 201;
+        return output($result['body'], $result['stat']);
     }
     return $tmparr;
 }
@@ -711,51 +723,6 @@ function encode_str_replace($str)
     $str = str_replace('&','&amp;',$str);
     $str = str_replace('+','%2B',$str);
     return $str;
-}
-
-function passhidden($path)
-{
-    global $config;
-    $path = str_replace('+','%2B',$path);
-    $path = str_replace('&amp;','&', path_format(urldecode($path)));
-    if ($config['passfile'] != '') {
-        if (substr($path,-1)=='/') $path=substr($path,0,-1);
-        $hiddenpass=gethiddenpass($path,$config['passfile']);
-        if ($hiddenpass != '') {
-            return comppass($hiddenpass);
-        } else {
-            return 1;
-        }
-    } else {
-        return 0;
-    }
-    return 4;
-}
-
-function gethiddenpass($path,$passfile)
-{
-    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile),'/'));
-    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
-    if (isset($ispassfile['file'])) {
-        $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
-        $password=$passwordf[0];
-        $password=md5($password);
-        return $password;
-    } else {
-        if ($path !== '' ) {
-            $path = substr($path,0,strrpos($path,'/'));
-            return gethiddenpass($path,$passfile);
-        } else {
-            return '';
-        }
-    }
-    return '';
-}
-
-function comppass($pass) {
-    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) return 2;    
-    if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
-    return 4;
 }
 
 function render_list($path, $files)
@@ -890,9 +857,8 @@ function render_list($path, $files)
         </form><center>
     </div>
 <?php } else { 
-                $ishidden=passhidden($path);
                 //if ($config['admin'] or $ishidden<4) {
-                if ($ishidden<4) {
+                if ($config['ishidden']<4) {
                 if (isset($files['file'])) {
                     ?>
                     <div style="margin: 12px 4px 4px; text-align: center">
@@ -916,11 +882,11 @@ function render_list($path, $files)
                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
                         ';
-                        } /*elseif (in_array($ext, ['pdf'])) {
+                        } elseif (in_array($ext, ['pdf'])) {
                             echo '
                         <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
                         ';
-                        }*/ elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
+                        } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
                             echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
                         ';
@@ -950,8 +916,8 @@ function render_list($path, $files)
                         </div>
                     </div>
 <?php } else { ?>
-                    <table class="list-table">
-                        <tr>
+                    <table class="list-table" id="list-table">
+                        <tr id="tr0">
                             <!--<th class="updated_at" width="5%">序号</th>-->
                             <th class="file" width="60%">文件</th>
                             <th class="updated_at" width="25%">修改时间</th>
@@ -969,20 +935,21 @@ function render_list($path, $files)
                             #echo json_encode($files['children'], JSON_PRETTY_PRINT);
                             foreach ($files['children'] as $file) {
                                 // Folders
-                                if (isset($file['folder'])) { ?>
-                                    <tr data-to>
-                                        <!--<td class="updated_at"><?php $filenum++; echo $filenum;?></td>-->
+                                if (isset($file['folder'])) { 
+                                    $filenum++; ?>
+                                    <tr data-to id="tr<?php echo $filenum;?>">
+                                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
                                         <td class="file">
                                             <ion-icon name="folder"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>">
+                                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>">
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
 <?php                                       if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
                                             <li class="operate">管理<ul>
-                                                <li><a onclick="showdiv(event,'encrypt','<?php echo str_replace('&','&amp;', $file['name']);?>');">加密</a></li>
-                                                <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
-                                                <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
-                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
+                                                <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);">加密</a></li>
+                                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
+                                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
+                                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
                                             </ul></li>
 <?php                                       }?>
                                         </td>
@@ -999,12 +966,13 @@ function render_list($path, $files)
                                     if (strtolower($file['name']) === 'index.html') {
                                         $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name']),'/'))['@microsoft.graph.downloadUrl']);
                                         return output($html,200);
-                                    } ?>
-                                    <tr data-to>
-                                        <!--<td class="updated_at"><?php $filenum++; echo $filenum;?></td>-->
+                                    }
+                                    $filenum++; ?>
+                                    <tr data-to id="tr<?php echo $filenum;?>">
+                                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
                                         <td class="file">
                                             <ion-icon name="document"></ion-icon>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank>
+                                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank>
                                                 <?php echo str_replace('&','&amp;', $file['name']); ?>
                                             </a>
                                             <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>">
@@ -1012,9 +980,9 @@ function render_list($path, $files)
                                             </a>
                                             <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
                                             <li class="operate">管理<ul>
-                                                <li><a onclick="showdiv(event, 'rename','<?php echo str_replace('&','&amp;', $file['name']);?>');">重命名</a></li>
-                                                <li><a onclick="showdiv(event, 'move','<?php echo str_replace('&','&amp;', $file['name']);?>');">移动</a></li>
-                                                <li><a onclick="showdiv(event, 'delete','<?php echo str_replace('&','&amp;', $file['name']);?>');">删除</a></li>
+                                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
+                                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
+                                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
                                             </ul></li>
                                             <?php }?>
                                         </td>
@@ -1090,7 +1058,7 @@ function render_list($path, $files)
                 }
                 } else {
                     echo '
-<div>
+<div style="padding:20px">
 	<center><h4>输入密码进行查看</h4>
 	  <form action="" method="post">
 		    <label>密码</label>
@@ -1111,31 +1079,34 @@ function render_list($path, $files)
     <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:16px">
         <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
-        <form action="" method="POST">
+        <form id="rename_form" onsubmit="return submit_operate('rename');">
+        <input id="rename_sid" name="rename_sid" type="hidden" value="">
             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
             <input id="rename_input" name="rename_newname" type="text" value="">
-            <button name="operate_action" type="submit">重命名</button>
+            <input name="operate_action" type="submit" value="重命名">
         </form>
         </div>
     </div>
     <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:16px">
         <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
-        <form action="" method="POST">
-            <label id="delete_label"></label>
+        <label id="delete_label"></label>
+        <form id="delete_form" onsubmit="return submit_operate('delete');">
             <label id="delete_input"></label>
+        <input id="delete_sid" name="delete_sid" type="hidden" value="">
             <input id="delete_hidden" name="delete_name" type="hidden" value="">
-            <button name="operate_action" type=submit>确定删除</button>
+            <input name="operate_action" type="submit" value="确定删除">
         </form>
         </div>
     </div>
     <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:16px">
         <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
-        <form action="" method="POST">
+        <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
+        <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
             <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="输入想要设置的密码">
-            <?php if (getenv('passfile')!='') {?><button name="operate_action" type=submit value="加密">加密</button><?php } else { ?>
+            <?php if (getenv('passfile')!='') {?><input name="operate_action" type="submit" value="加密"><?php } else { ?>
             <br><label>先在环境变量设置passfile才能加密</label><?php } ?>
         </form>
         </div>
@@ -1143,7 +1114,8 @@ function render_list($path, $files)
     <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:16px">
         <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
-        <form action="" method="POST">
+        <form id="move_form" onsubmit="return submit_operate('move');">
+        <input id="move_sid" name="move_sid" type="hidden" value="">
             <input id="move_hidden" name="move_name" type="hidden" value="">
             <select id="move_input" name="move_folder">
 <?php if ($path != '/') { ?>
@@ -1155,20 +1127,21 @@ if (isset($files['children'])) foreach ($files['children'] as $file) {
 <?php }
             } ?>
             </select>
-            <button name="operate_action" type=submit>移动</button>
+            <input name="operate_action" type="submit" value="移动">
         </form>
         </div>
     </div>
     <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:50px">
         <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
-        <form action="" method="POST">
+        <form id="create_form" onsubmit="return submit_operate('create');">
+            <input id="create_sid" name="create_sid" type="hidden" value="">
                 <input id="create_hidden" type="hidden" value="">
-                　　　<input id="create_type" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
-                <input id="create_type" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
+                　　　<input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
+                <input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
                 名字：<input id="create_input" name="create_name" type="text" value=""><br>
                 <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
-                　　　<button name="operate_action" type=submit>新建</button>
+                　　　<input name="operate_action" type="submit" value="新建">
         </form>
         </div>
     </div>
@@ -1200,7 +1173,7 @@ if (isset($files['children'])) foreach ($files['children'] as $file) {
             while (path.indexOf('//') !== -1) {
                 path = path.replace('//', '/')
             }
-            if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
+            //if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
             return path
         }
         document.querySelectorAll('.table-header').forEach(function (e) {
@@ -1221,7 +1194,7 @@ if (isset($files['children'])) foreach ($files['children'] as $file) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
         }
 <?php if ($_POST['password1']!='') { //有密码写目录密码 ?>
-        var $ishidden = '<?php echo $ishidden; ?>';
+        var $ishidden = '<?php echo $config['ishidden']; ?>';
         var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
         if ($ishidden==2) {
             var expd = new Date();
@@ -1327,8 +1300,7 @@ if ($_GET['preview']) { //在预览时处理 ?>
                 }
             }
         addVideos(['<?php echo $DPvideo;?>']);
-<?php }
-
+<?php } 
 }
 if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
         function operatediv_close(operate)
@@ -1356,7 +1328,7 @@ if ($config['admin']) { //管理登录后 ?>
             document.cookie="<?php echo $config['function_name'];?>='';"+expires;
             location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
         }
-        function showdiv(event,action,str) {
+        function showdiv(event,action,num) {
             var $operatediv=document.getElementsByName('operatediv');
             for ($i=0;$i<$operatediv.length;$i++) {
                 $operatediv[$i].style.display='none';
@@ -1364,8 +1336,15 @@ if ($config['admin']) { //管理登录后 ?>
             document.getElementById('mask').style.display='';
             //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
             document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+            if (num=='') {
+                var str='';
+            } else {
+                var str=document.getElementById('file_a'+num).innerText;
+                if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
+            }
             document.getElementById(action + '_div').style.display='';
-            document.getElementById(action + '_label').innerHTML=str.replace(/&/,'&amp;');
+            document.getElementById(action + '_label').innerText=str;//.replace(/&/,'&amp;');
+            document.getElementById(action + '_sid').value=num;
             document.getElementById(action + '_hidden').value=str;
             if (action=='rename') document.getElementById(action + '_input').value=str;
 
@@ -1394,6 +1373,131 @@ if ($config['admin']) { //管理登录后 ?>
             obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
             document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
         }
+        function submit_operate(str)
+        {
+            var num=document.getElementById(str+'_sid').value;
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '', true);
+            xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+            xhr.send(serializeForm(str+'_form'));
+            xhr.onload = function(e){
+                var html;
+                if (xhr.status<300) {
+                    if (str=='rename') {
+                        //if (xhr.status==200) 
+                        html=JSON.parse(xhr.responseText);
+                        var file_a = document.getElementById('file_a'+num);
+                        file_a.innerText=html.name;
+                        file_a.href = (file_a.href.substr(-8)=='?preview')?(html.name+'?preview'):(html.name+'/');
+                    }
+                    if (str=='move'||str=='delete') document.getElementById('tr'+num).parentNode.removeChild(document.getElementById('tr'+num));
+                    if (str=='create') {
+                        html=JSON.parse(xhr.responseText);
+                        addelement(html);
+                    }
+                } else alert(xhr.status+'\n'+xhr.responseText);
+                    //var $operatediv=document.getElementsByName('operatediv');
+                    //for ($i=0;$i<$operatediv.length;$i++) {
+                    //    $operatediv[$i].style.display='none';
+                    //}
+                document.getElementById(str+'_div').style.display='none';
+                document.getElementById('mask').style.display='none';
+            }
+            return false;
+        }
+        function addelement(html) {
+            var tr1=document.createElement('tr');
+            tr1.setAttribute('data-to',1);
+            var td1=document.createElement('td');
+            td1.setAttribute('class','file');
+            var a1=document.createElement('a');
+            a1.innerText=html.name;
+            var td2=document.createElement('td');
+            td2.setAttribute('class','updated_at');
+            td2.innerText=html.lastModifiedDateTime;
+            var td3=document.createElement('td');
+            td3.setAttribute('class','size');
+            td3.innerText=size_format(html.size);
+            if (!!html.folder) {
+                a1.href=html.name;
+                document.getElementById('tr0').parentNode.insertBefore(tr1,document.getElementById('tr0').nextSibling);
+            }
+            if (!!html.file) {
+                a1.href=html.name+'?preview';
+                document.getElementById('tr0').parentNode.appendChild(tr1);
+            }
+            tr1.appendChild(td1);
+            td1.appendChild(a1);
+            tr1.appendChild(td2);
+            tr1.appendChild(td3);
+        }
+        //获取指定form中的所有的<input>对象 
+function getElements(formId) { 
+  var form = document.getElementById(formId); 
+  var elements = new Array(); 
+  var tagElements = form.getElementsByTagName('input'); 
+  for (var j = 0; j < tagElements.length; j++){ 
+    elements.push(tagElements[j]); 
+  } 
+  var tagElements = form.getElementsByTagName('select'); 
+  for (var j = 0; j < tagElements.length; j++){ 
+    elements.push(tagElements[j]); 
+  } 
+  var tagElements = form.getElementsByTagName('textarea'); 
+  for (var j = 0; j < tagElements.length; j++){ 
+    elements.push(tagElements[j]); 
+  }
+  return elements; 
+} 
+//组合URL 
+function serializeElement(element) { 
+  var method = element.tagName.toLowerCase(); 
+  var parameter; 
+  if(method == 'select'){
+    parameter = [element.name, element.value]; 
+  }
+  switch (element.type.toLowerCase()) { 
+    case 'submit': 
+    case 'hidden': 
+    case 'password': 
+    case 'text':
+    case 'date':
+    case 'textarea': 
+       parameter = [element.name, element.value];
+       break;
+    case 'checkbox': 
+    case 'radio': 
+      if (element.checked){
+        parameter = [element.name, element.value]; 
+      }
+      break;    
+  } 
+  if (parameter) { 
+    var key = encodeURIComponent(parameter[0]); 
+    if (key.length == 0) 
+      return; 
+    if (parameter[1].constructor != Array) 
+      parameter[1] = [parameter[1]]; 
+    var values = parameter[1]; 
+    var results = []; 
+    for (var i = 0; i < values.length; i++) { 
+      results.push(key + '=' + encodeURIComponent(values[i])); 
+    } 
+    return results.join('&'); 
+  } 
+} 
+//调用方法  
+function serializeForm(formId) { 
+  var elements = getElements(formId); 
+  var queryComponents = new Array(); 
+  for (var i = 0; i < elements.length; i++) { 
+    var queryComponent = serializeElement(elements[i]); 
+    if (queryComponent) {
+      queryComponents.push(queryComponent); 
+    } 
+  } 
+  return queryComponents.join('&'); 
+} 
             function uploadbuttonhide()
             {
                 document.getElementById('upload_submit').disabled='disabled';
@@ -1444,7 +1548,7 @@ if ($config['admin']) { //管理登录后 ?>
                 var xhr1 = new XMLHttpRequest();
                 xhr1.open("POST", '');
                 xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
-                xhr1.send('filename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
+                xhr1.send('upbigfilename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
                 xhr1.onload = function(e){
                     td2.innerHTML='<font color="red">'+xhr1.responseText+'</font>';
                     if (xhr1.status==200) {
@@ -1556,6 +1660,7 @@ if ($config['admin']) { //管理登录后 ?>
                                 document.getElementById('upfile_td1_'+tdnum).innerHTML+='<br><font color="green">上传完成</font>';
                                 label.innerHTML=StartStr+MiddleStr;
                                 uploadbuttonshow();
+                                addelement(response);
                             } else {
                                 if (!response['nextExpectedRanges']) {
                                     label.innerHTML='<font color="red">'+xhr.responseText+'</font><br>';
