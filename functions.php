@@ -129,3 +129,48 @@ function spurlencode($str,$splite='') {
     $tmp = str_replace('%2520', '%20',$tmp);
     return $tmp;
 }
+
+function passhidden($path)
+{
+    global $config;
+    $path = str_replace('+','%2B',$path);
+    $path = str_replace('&amp;','&', path_format(urldecode($path)));
+    if ($config['passfile'] != '') {
+        if (substr($path,-1)=='/') $path=substr($path,0,-1);
+        $hiddenpass=gethiddenpass($path,$config['passfile']);
+        if ($hiddenpass != '') {
+            return comppass($hiddenpass);
+        } else {
+            return 1;
+        }
+    } else {
+        return 0;
+    }
+    return 4;
+}
+
+function gethiddenpass($path,$passfile)
+{
+    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile),'/'));
+    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
+    if (isset($ispassfile['file'])) {
+        $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
+        $password=$passwordf[0];
+        $password=md5($password);
+        return $password;
+    } else {
+        if ($path !== '' ) {
+            $path = substr($path,0,strrpos($path,'/'));
+            return gethiddenpass($path,$passfile);
+        } else {
+            return '';
+        }
+    }
+    return '';
+}
+
+function comppass($pass) {
+    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) return 2;    
+    if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
+    return 4;
+}
