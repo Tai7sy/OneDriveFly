@@ -1,5 +1,6 @@
 # OneDrive_SCF
-OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
+OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)  
+最新更新：(https://github.com/qkqpttgf/OneDrive_SCF)  
 
 # 安装
 安装时，在环境变量里什么都不用添加，获得token后，可以复制粘贴到config的refresh_token字段，也可以按128字节分开，添加到环境变量的t1-t7。  
@@ -14,11 +15,11 @@ passfile       ：自定义密码文件的名字，可以是'.password'，也可
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本  
 
 # 更新记录：  
-20190910，管理操作全部转用ajax。  
+20190910，管理操作全部转用ajax（请来个前端）。  
 20190909，解决直接用自定义域名获取token时无限循环的bug；调整MSAPI函数，准备把管理操作做成xhr。  
 20190908，小改上传进度显示，视频播放尝试一下DPlayer。  
 20190907，会onprogress了，上传过程有进度了，不用等每小块传完才有进度。  
-20190905，在检测到没有token后javascript直接跳微软登录授权，简化操作；在预览页面，把url框编码，方便复制到QQ微信直接点。  
+20190905，在检测到没有token后javascript直接跳微软登录授权，简化操作；在预览页面，把url框编码，复制到聊天框后不会断开可以直接点击。  
 20190904，修改安装时微软回调uri为scfonedrive.github.io，简化安装操作。  
 20190903，支持世纪互联版本。  
 20190902，重新申请注册微软应用，更改安装时的URL，以同时支持商业版与个人版，更新到此版本需要重新获取token。  
