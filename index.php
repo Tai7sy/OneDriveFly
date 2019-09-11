@@ -722,6 +722,7 @@ function encode_str_replace($str)
 {
     $str = str_replace('&','&amp;',$str);
     $str = str_replace('+','%2B',$str);
+    $str = str_replace('#','%23',$str);
     return $str;
 }
 
@@ -735,6 +736,7 @@ function render_list($path, $files)
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
     $path = str_replace('%20',' ',$path);
+    $path = str_replace('#','%23',$path);
     $p_path='';
     if ($path !== '/') {
         if (isset($files['file'])) {
@@ -743,6 +745,7 @@ function render_list($path, $files)
         } else {
             $pretitle = substr($path,-1)=='/'?substr($path,0,-1):$path;
             $n_path=substr($pretitle,strrpos($pretitle,'/')+1);
+            $pretitle = substr($pretitle,1);
         }
         if (strrpos($path,'/')!=0) {
             $p_path=substr($path,0,strrpos($path,'/'));
@@ -752,6 +755,8 @@ function render_list($path, $files)
       $pretitle = '首页';
       $n_path=$pretitle;
     }
+    $n_path=str_replace('&amp;','&',$n_path);
+    $p_path=str_replace('&amp;','&',$p_path);
     $statusCode=200;
     ?>
     <!DOCTYPE html>
@@ -831,7 +836,7 @@ function render_list($path, $files)
                     <ion-icon name="arrow-back"></ion-icon>
                 </a>
 <?php } ?>
-                <h3 class="table-header"><?php echo str_replace('&','&amp;', $path); ?></h3>
+                <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&','&amp;', $path)); ?></h3>
                 <div class="login">
 <?php if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a onclick="login();">登录</a>
@@ -1411,7 +1416,9 @@ if ($config['admin']) { //管理登录后 ?>
             var td1=document.createElement('td');
             td1.setAttribute('class','file');
             var a1=document.createElement('a');
+            a1.href=html.name.replace(/#/,'%23');
             a1.innerText=html.name;
+            a1.target='_blank';
             var td2=document.createElement('td');
             td2.setAttribute('class','updated_at');
             td2.innerText=html.lastModifiedDateTime;
@@ -1419,11 +1426,11 @@ if ($config['admin']) { //管理登录后 ?>
             td3.setAttribute('class','size');
             td3.innerText=size_format(html.size);
             if (!!html.folder) {
-                a1.href=html.name;
+                a1.href+='/';
                 document.getElementById('tr0').parentNode.insertBefore(tr1,document.getElementById('tr0').nextSibling);
             }
             if (!!html.file) {
-                a1.href=html.name+'?preview';
+                a1.href+='?preview';
                 document.getElementById('tr0').parentNode.appendChild(tr1);
             }
             tr1.appendChild(td1);
