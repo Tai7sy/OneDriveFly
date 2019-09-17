@@ -23,8 +23,10 @@ $config = [
 /*
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
 admin          ：管理密码，不添加时不显示登录页面且无法登录
-public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录
+public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；
+           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
+domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）
 passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
@@ -38,24 +40,37 @@ function main_handler($event, $context)
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
-    if (strlen(json_encode($event1['body']))>150) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+10) . '...Too Long!...' . substr($event1['body'],-50);
+    if (strlen(json_encode($event1['body']))>500) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+10) . '...Too Long!...' . substr($event1['body'],-50);
     echo urldecode(json_encode($event1)) . '
  
 ' . urldecode(json_encode($context)) . '
  
 ';
+    unset($event1);
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
+    $public_path = path_format(getenv('public_path'));
+    $private_path = path_format(getenv('private_path'));
+    $domain_path = getenv('domain_path');
+    if ($domain_path!='') {
+        $tmp = explode("&",$domain_path);
+        foreach ($tmp as $multidomain_paths){
+            $pos = strpos($multidomain_paths,"=");
+            if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=path_format(substr($multidomain_paths,$pos+1));
+        }
+    }
+    // public_path 不能是 private_path 的上级目录。
+    if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
         $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
-        $config['list_path'] = getenv('public_path');
+        $config['list_path'] = $public_path;
         $path = substr($event['path'], strlen('/'.$function_name.'/'));
     } else {
-        $config['base_path'] = getenv('base_path');
+        $config['base_path'] = '/';
         if (empty($config['base_path'])) $config['base_path'] = '/';
-        $config['list_path'] = getenv('private_path');
+        $config['list_path'] = $private_path;
         $path = substr($event['path'], strlen($event['requestContext']['path']));
     }
     if (substr($path,-1)=='/') $path=substr($path,0,-1);
@@ -112,7 +127,7 @@ function main_handler($event, $context)
     </script>
     ', 'Error', 500);
     }
-    if ($_COOKIE[$function_name]==md5(getenv('admin')) && getenv('admin')!='' ) {
+    if ($_COOKIE[$function_name.'admin']==md5(getenv('admin')) && getenv('admin')!='' ) {
         $config['admin']=1;
     } else {
         $config['admin']=0;
@@ -121,7 +136,7 @@ function main_handler($event, $context)
         $url=$_SERVER['PHP_SELF'];
         if ($_GET['preview']) $url .= '?preview';
         if (getenv('admin')!='') {
-            if ($_POST['password1']==getenv('admin')) return adminform($function_name,md5($_POST['password1']),$url);
+            if ($_POST['password1']==getenv('admin')) return adminform($function_name.'admin',md5($_POST['password1']),$url);
             return adminform();
         } else {
             return output('', 302, false, [ 'Location' => $url ]);
@@ -398,6 +413,7 @@ function list_files($path)
     } elseif ($config['ishidden']==4) {
         $files = json_decode('{"folder":{}}', true);
     } else {
+        if ($_GET['thumbnails']) if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) return get_thumbnails_url($path);
         $files = fetch_files($path);
     }
     if (isset($files['file']) && !$is_preview) {
@@ -417,7 +433,7 @@ function adminform($name = '', $pass = '', $path = '')
 {
     $statusCode = 401;
     $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
-    if ($name!='') {
+    if ($name!=''&&$pass!='') {
         $html .= '<script type="text/javascript">
             var expd = new Date();
             expd.setTime(expd.getTime()+(1*60*60*1000));
@@ -436,7 +452,7 @@ function adminform($name = '', $pass = '', $path = '')
 		  <div>
 		    <label>密码</label>
 		    <input name="password1" type="password"/>
-		    <button type="submit">查看</button>
+		    <input type="submit" value="查看">
           </div>
 	  </form>
       </center>
@@ -501,12 +517,12 @@ function adminoperate($path)
                 if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
             //}
         }
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token'])['body'];
-        $responsearry = json_decode($response,true);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $responsearry = json_decode($response['body'],true);
         if (isset($responsearry['error'])) return output($response);
         $fileinfo['uploadUrl'] = $responsearry['uploadUrl'];
         echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token'])['body'];
-        return output($response);
+        return output($response['body'], $response['stat']);
     }
     /*if ($_POST['upload_filename']!='') {
         // 上传
@@ -603,7 +619,8 @@ function adminoperate($path)
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;
+        //$tmparr['statusCode'] = 201;
+        //return output($result['body'], $result['stat']);
     }
     if ($_POST['create_name']!='') {
         // 新建
@@ -710,6 +727,24 @@ function MSAPI($method, $path, $data = '', $access_token)
     return $response;
 }
 
+function get_thumbnails_url($path = '/')
+{
+    global $oauth;
+    global $config;
+    $path1 = path_format($path);
+    $path = path_format($config['list_path'] . path_format($path));
+    $url = $oauth['api_url'];
+    if ($path !== '/') {
+        $url .= ':' . $path;
+        if (substr($url,-1)=='/') $url=substr($url,0,-1);
+    }
+    $url .= ':/thumbnails/0/medium';
+    $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $config['access_token']]), true);
+    //return message( $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>');
+    if (isset($files['url'])) return output($files['url']);
+    return output('');
+}
+
 function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
 {
     for ($page=$page1+1;$page<$maxpage;$page++) {
@@ -757,808 +792,862 @@ function render_list($path, $files)
     }
     $n_path=str_replace('&amp;','&',$n_path);
     $p_path=str_replace('&amp;','&',$p_path);
+    $pretitle = str_replace('%23','#',$pretitle);
     $statusCode=200;
-    ?>
-    <!DOCTYPE html>
-    <html lang="zh-cn">
-    <head>
-        <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
-        <!--
-            帖子 ： https://www.hostloc.com/thread-561971-1-1.html
-            github ： https://github.com/qkqpttgf/OneDrive_SCF
-        -->
-        <meta charset=utf-8>
-        <meta http-equiv=X-UA-Compatible content="IE=edge">
-        <meta name=viewport content="width=device-width,initial-scale=1">
-        <meta name="keywords" content="<?php echo $n_path;?>,<?php if ($p_path!='') echo $p_path.','; echo $config['sitename'];?>,OneDrive_SCF,auth_by_逸笙">
-        <link rel="icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
-        <link rel="shortcut icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
-        <style type="text/css">
-            body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
-            a{color:#24292e;cursor:pointer;text-decoration:none}
-            a:hover{color:#24292e}
-            .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
-            .title a{color:#333;text-decoration:none}
-            .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
-            .list-container{position:relative;overflow:hidden}
-            .list-header-container{position:relative}
-            .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
-            .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
-            .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
-            .login{display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:0px;top:0px}
-            .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
-            .list-table{width:100%;padding:20px;border-spacing:0}
-            .list-table tr{height:40px}
-            .list-table tr[data-to]:hover{background:#f1f1f1}
-            .list-table tr:first-child{background:#fff}
-            .list-table td,.list-table th{padding:0 10px;text-align:left}
-            .list-table .size,.list-table .updated_at{text-align:right}
-            .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
+?>
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <title><?php echo $pretitle;?> - <?php echo $config['sitename'];?></title>
+    <!--
+        帖子 ： https://www.hostloc.com/thread-561971-1-1.html
+        github ： https://github.com/qkqpttgf/OneDrive_SCF
+    -->
+    <meta charset=utf-8>
+    <meta http-equiv=X-UA-Compatible content="IE=edge">
+    <meta name=viewport content="width=device-width,initial-scale=1">
+    <meta name="keywords" content="<?php echo $n_path;?>,<?php if ($p_path!='') echo $p_path.','; echo $config['sitename'];?>,OneDrive_SCF,auth_by_逸笙">
+    <link rel="icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
+    <link rel="shortcut icon" href="<?php echo $config['base_path'];?>favicon.ico" type="image/x-icon" />
+    <style type="text/css">
+        body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
+        a{color:#24292e;cursor:pointer;text-decoration:none}
+        a:hover{color:#24292e}
+        .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
+        .title a{color:#333;text-decoration:none}
+        .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
+        .list-container{position:relative;overflow:hidden}
+        .list-header-container{position:relative}
+        .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
+        .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
+        .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
+        .login{display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:0px;top:0px}
+        .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
+        .list-table{width:100%;padding:20px;border-spacing:0}
+        .list-table tr{height:40px}
+        .list-table tr[data-to]:hover{background:#f1f1f1}
+        .list-table tr:first-child{background:#fff}
+        .list-table td,.list-table th{padding:0 10px;text-align:left}
+        .list-table .size,.list-table .updated_at{text-align:right}
+        .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
 <?php if ($config['admin']) { ?>
-            .operate{display: inline-table;margin:0;list-style:none;}
-            .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin:-17px 0 0 0;padding: 0;color:#205D67;}
-            .operate:hover ul{position: absolute;display:inline-table;}
-            .operate ul li{padding:1px;list-style:none;}
-            .operatediv_close{position: absolute;right: 3px;top:3px;}
+        .operate{display: inline-table;margin:0;list-style:none;}
+        .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin:-17px 0 0 0;padding: 0;color:#205D67;}
+        .operate:hover ul{position: absolute;display:inline-table;}
+        .operate ul li{padding:1px;list-style:none;}
+        .operatediv_close{position: absolute;right: 3px;top:3px;}
 <?php } ?>
-            .readme{padding:8px;background-color: #fff;}
-            #readme{padding: 20px;text-align: left}
+        .readme{padding:8px;background-color: #fff;}
+        #readme{padding: 20px;text-align: left}
 
-            @media only screen and (max-width:480px){
-                .title{margin-bottom: 24px}
-                .list-wrapper{width:95%; margin-bottom:24px;}
-                .list-table {padding: 8px}
-                .list-table td, .list-table th{padding:0 10px;text-align:left;white-space:nowrap;overflow:auto;max-width:80px}
-            }
-        </style>
-    </head>
+        @media only screen and (max-width:480px){
+            .title{margin-bottom: 24px}
+            .list-wrapper{width:95%; margin-bottom:24px;}
+            .list-table {padding: 8px}
+            .list-table td, .list-table th{padding:0 10px;text-align:left;white-space:nowrap;overflow:auto;max-width:80px}
+        }
+    </style>
+</head>
 
-    <body>
+<body>
     <h1 class="title">
         <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'] ;?></a>
     </h1>
-    
+
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
-<?php if ($path !== '/') {
-                    $current_url = $_SERVER['PHP_SELF'];
-                    while (substr($current_url, -1) === '/') {
-                        $current_url = substr($current_url, 0, -1);
-                    }
-                    if (strpos($current_url, '/') !== FALSE) {
-                        $parent_url = substr($current_url, 0, strrpos($current_url, '/'));
-                    } else {
-                        $parent_url = $current_url;
-                    }
-                    ?>
-                <a href="<?php echo path_format($parent_url); ?>" class="back-link">
+<?php
+    if ($path !== '/') {
+        $current_url = $_SERVER['PHP_SELF'];
+        while (substr($current_url, -1) === '/') {
+            $current_url = substr($current_url, 0, -1);
+        }
+        if (strpos($current_url, '/') !== FALSE) {
+            $parent_url = substr($current_url, 0, strrpos($current_url, '/'));
+        } else {
+            $parent_url = $current_url;
+        }
+?>
+                <a href="<?php echo $parent_url.'/'; ?>" class="back-link">
                     <ion-icon name="arrow-back"></ion-icon>
                 </a>
 <?php } ?>
                 <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&','&amp;', $path)); ?></h3>
                 <div class="login">
-<?php if (getenv('admin')!='') if (!$config['admin']) {?>
+<?php
+    if (getenv('admin')!='') if (!$config['admin']) {?>
                     <a onclick="login();">登录</a>
-<?php } else { ?>
-                        <li class="operate">管理<ul style="margin:-17px 0 0 -66px;">
-                        <li><a onclick="logout()">登出</a></li>
-                        <?php if (isset($files['folder'])) { ?>
-                        <li><a onclick="showdiv(event,'create','');">新建</a></li>
-                        <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
-                        </ul></li>
-<?php } 
-                    } ?>
+<?php
+    } else { ?>
+                    <li class="operate">管理<ul style="margin:-17px 0 0 -66px;">
+                    <li><a onclick="logout()">登出</a></li>
+<?php   if (isset($files['folder'])) { ?>
+                    <li><a onclick="showdiv(event,'create','');">新建</a></li>
+                    <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
+                    </ul></li>
+<?php   }
+    } ?>
                 </div>
             </div>
             <div class="list-body-container">
-<?php if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
-                <div id="upload_div" style="margin:10px"><center>
-        <form action="" method="POST">
-        <input id="upload_content" type="hidden" name="guest_upload_filecontent">
-        <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
-        <button type=submit>上传</button>
-        文件大小<4M，不然传输失败！
-        </form><center>
-    </div>
-<?php } else { 
-                //if ($config['admin'] or $ishidden<4) {
-                if ($config['ishidden']<4) {
-                if (isset($files['file'])) {
-                    ?>
-                    <div style="margin: 12px 4px 4px; text-align: center">
-                    	<div style="margin: 24px">
-                            <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo str_replace('%26amp%3B','&amp;',spurlencode(path_format($config['base_path'] . '/' . $path), '/')); ?></textarea>
-                            <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
-                        </div>
-                        <div style="margin: 24px">
 <?php
-                        $ext = strtolower(substr($path, strrpos($path, '.') + 1));
-                        $DPvideo='';
-                        if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
-                            echo '
+    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+                <div id="upload_div" style="margin:10px">
+                <center>
+                    <form action="" method="POST">
+                    <input id="upload_content" type="hidden" name="guest_upload_filecontent">
+                    <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
+                    <input type="submit" value="上传">文件大小<4M，不然传输失败！
+                    </form>
+                <center>
+                </div>
+<?php } else { 
+        //if ($config['admin'] or $ishidden<4) {
+        if ($config['ishidden']<4) {
+            if (isset($files['file'])) {
+?>
+                <div style="margin: 12px 4px 4px; text-align: center">
+                    <div style="margin: 24px">
+                        <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo str_replace('%2523', '%23', str_replace('%26amp%3B','&amp;',spurlencode(path_format($config['base_path'] . '/' . $path), '/'))); ?></textarea>
+                        <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
+                    </div>
+                    <div style="margin: 24px">
+<?php
+                $ext = strtolower(substr($path, strrpos($path, '.') + 1));
+                $DPvideo='';
+                if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                    echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
-                        ';
-                        } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
-                            //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
-                            $DPvideo=$files['@microsoft.graph.downloadUrl'];
-                            echo '<div id="video-a0"></div>';
-                        } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
-                            echo '
-                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
-                        ';
-                        } elseif (in_array($ext, ['pdf'])) {
-                            echo '
-                        <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
-                        ';
-                        } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
-                            echo '
-                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
-                        ';
-                        } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
-                            /*if ($files['name']==='当前demo的index.php') {
-                                $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
 ';
-                                $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
-                            } else {*/
-                                $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
-                            //} ?>
+                } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
+                    //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
+                    $DPvideo=$files['@microsoft.graph.downloadUrl'];
+                    echo '<div id="video-a0"></div>';
+                } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
+                    echo '
+                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
+';
+                } elseif (in_array($ext, ['pdf'])) {
+                    echo '
+                        <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
+';
+                } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
+                    echo '
+                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
+';
+                } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
+                    /*if ($files['name']==='当前demo的index.php') {
+                        $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
+';
+                        $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
+                    } else {*/
+                        $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
+                    //} ?>
                         <div id="txt">
-                        <?php if ($config['admin']) { ?><form id="txt-form" action="" method="POST">
+<?php               if ($config['admin']) { ?>
+                        <form id="txt-form" action="" method="POST">
                             <a onclick="enableedit(this);" id="txt-editbutton">点击后编辑</a>
                             <a id="txt-save" style="display:none">保存</a>
-                         <?php } ?>
+<?php               } ?>
                             <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;" <?php if ($config['admin']) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"';?> ><?php echo $txtstr;?></textarea>
-                        <?php if ($config['admin']) echo '</form>';?>
+<?php               if ($config['admin']) echo '</form>';?>
                         </div>
-                        <?php } elseif (in_array($ext, ['md'])) {
-                            echo '
-                        <div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea></div>
-                        ';
-                        } else {
-                            echo '<span>文件格式不支持预览</span>';
-                        } ?>
+<?php           } elseif (in_array($ext, ['md'])) {
+                    echo '
+                        <div class="markdown-body" id="readme">
+                            <textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea>
                         </div>
+';
+                } else {
+                    echo '<span>文件格式不支持预览</span>';
+                } ?>
                     </div>
-<?php } else { ?>
-                    <table class="list-table" id="list-table">
-                        <tr id="tr0">
-                            <!--<th class="updated_at" width="5%">序号</th>-->
-                            <th class="file" width="60%">文件</th>
-                            <th class="updated_at" width="25%">修改时间</th>
-                            <th class="size" width="15%">大小</th>
-                        </tr>
-                        <!-- Dirs -->
-<?php
-                        $filenum = $_POST['filenum'];
-                        if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
-                        $readme = false;
-                        if (isset($files['error'])) {
-                            echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
-                            $statusCode=404;
-                        } else {
-                            #echo json_encode($files['children'], JSON_PRETTY_PRINT);
-                            foreach ($files['children'] as $file) {
-                                // Folders
-                                if (isset($file['folder'])) { 
-                                    $filenum++; ?>
-                                    <tr data-to id="tr<?php echo $filenum;?>">
-                                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
-                                        <td class="file">
-                                            <ion-icon name="folder"></ion-icon>
-                                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>">
-                                                <?php echo str_replace('&','&amp;', $file['name']); ?>
-                                            </a>
-<?php                                       if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
-                                            <li class="operate">管理<ul>
-                                                <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);">加密</a></li>
-                                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
-                                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
-                                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
-                                            </ul></li>
-<?php                                       }?>
-                                        </td>
-                                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                        <td class="size"><?php echo size_format($file['size']); ?></td>
-                                    </tr>
-<?php                               }
-                            }
-                            foreach ($files['children'] as $file) {
-                                // Files
-                                if (isset($file['file'])) {
-                                    if ($config['admin'] or (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile']) ) {
-                                    if (strtolower($file['name']) === 'readme.md') $readme = $file;
-                                    if (strtolower($file['name']) === 'index.html') {
-                                        $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name']),'/'))['@microsoft.graph.downloadUrl']);
-                                        return output($html,200);
-                                    }
-                                    $filenum++; ?>
-                                    <tr data-to id="tr<?php echo $filenum;?>">
-                                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
-                                        <td class="file">
-                                            <ion-icon name="document"></ion-icon>
-                                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank>
-                                                <?php echo str_replace('&','&amp;', $file['name']); ?>
-                                            </a>
-                                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>">
-                                                <ion-icon name="download"></ion-icon>
-                                            </a>
-                                            <?php if ($config['admin']) {?>&nbsp;&nbsp;&nbsp;
-                                            <li class="operate">管理<ul>
-                                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
-                                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
-                                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
-                                            </ul></li>
-                                            <?php }?>
-                                        </td>
-                                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                        <td class="size"><?php echo size_format($file['size']); ?></td>
-                                    </tr>
-                                <?php }
+                </div>
+<?php       } else {
+                $filenum = $_POST['filenum'];
+                if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
+                $readme = false;
+                if (isset($files['error'])) {
+                    echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
+                    $statusCode=404;
+                } else { ?>
+                <div id="thumbnailsbutton" style="position:absolute;"><input type="button" value="图片缩略图" onclick="showthumbnails(this);"></div>
+                <table class="list-table" id="list-table">
+                    <tr id="tr0">
+                        <!--<th class="updated_at" width="5%">序号</th>-->
+                        <th class="file" width="60%">文件</th>
+                        <th class="updated_at" width="25%">修改时间</th>
+                        <th class="size" width="15%">大小</th>
+                    </tr>
+                    <!-- Dirs -->
+<?php               //echo json_encode($files['children'], JSON_PRETTY_PRINT);
+                    foreach ($files['children'] as $file) {
+                        // Folders
+                        if (isset($file['folder'])) { 
+                            $filenum++; ?>
+                    <tr data-to id="tr<?php echo $filenum;?>">
+                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
+                        <td class="file">
+                            <ion-icon name="folder"></ion-icon>
+                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&','&amp;', $file['name']);?></a>
+<?php                       if ($config['admin']) {?>
+                            &nbsp;&nbsp;&nbsp;
+                            <li class="operate">管理
+                            <ul>
+                                <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);">加密</a></li>
+                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
+                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
+                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
+                            </ul>
+                            </li>
+<?php                       }?>
+                        </td>
+                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                    </tr>
+<?php                   }
+                    }
+                    foreach ($files['children'] as $file) {
+                        // Files
+                        if (isset($file['file'])) {
+                            if ($config['admin'] or (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile']) ) {
+                                if (strtolower($file['name']) === 'readme.md') $readme = $file;
+                                if (strtolower($file['name']) === 'index.html') {
+                                    $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name']),'/'))['@microsoft.graph.downloadUrl']);
+                                    return output($html,200);
                                 }
-                            }
-                        } ?>
-                    </table>
-                    <?php
-                    if ($files['folder']['childCount']>200) {
+                                $filenum++; ?>
+                    <tr data-to id="tr<?php echo $filenum;?>">
+                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
+                        <td class="file">
+                            <ion-icon name="document"></ion-icon>
+                            <a id="file_a<?php echo $filenum;?>" name="filelist" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank><?php echo str_replace('&','&amp;', $file['name']); ?></a>
+                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>"><ion-icon name="download"></ion-icon></a>
+<?php                           if ($config['admin']) {?>
+                            &nbsp;&nbsp;&nbsp;
+                            <li class="operate">管理
+                            <ul>
+                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
+                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
+                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
+                            </ul>
+                            </li>
+<?php                           }?>
+                        </td>
+                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                    </tr>
+<?php                       }
+                        }
+                    } ?>
+                </table>
+<?php               if ($files['folder']['childCount']>200) {
                         //echo json_encode($files['folder'], JSON_PRETTY_PRINT);
                         $pagenum = $files['folder']['page'];
                         $maxpage = ceil($files['folder']['childCount']/200);
-                        $prepagenext = '<form action="" method="POST" id="nextpageform">
-                        <input type="hidden" id="pagenum" name="pagenum" value="'. $pagenum .'">
-                        <table width=100% border=0>
-                            <tr>
-                                <td width=60px align=center>';
+                        $prepagenext = '
+                <form action="" method="POST" id="nextpageform">
+                    <input type="hidden" id="pagenum" name="pagenum" value="'. $pagenum .'">
+                    <table width=100% border=0>
+                        <tr>
+                            <td width=60px align=center>';
                         //if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
                         if ($pagenum!=1) {
                             $prepagenum = $pagenum-1;
                             $prepagenext .= '
-                            <a onclick="nextpage('.$prepagenum.');">上一页</a>
-                            ';
+                                <a onclick="nextpage('.$prepagenum.');">上一页</a>';
                         }
-                        $prepagenext .= '</td>
-                                <td class="updated_at">
-                                ';
+                        $prepagenext .= '
+                            </td>
+                            <td class="updated_at">';
                         //$pathpage = path_format($config['list_path'].$path).'_'.$page;
                         for ($page=1;$page<=$maxpage;$page++) {
-                            /*if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">
-                                    ';*/
+                            //if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">';
                             if ($page == $pagenum) {
-                                $prepagenext .= '<font color=red>' . $page . '</font> 
-                                ';
+                                $prepagenext .= '
+                                <font color=red>' . $page . '</font> ';
                             } else {
-                                $prepagenext .= '<a onclick="nextpage('.$page.');">' . $page . '</a> 
-                                ';
+                                $prepagenext .= '
+                                <a onclick="nextpage('.$page.');">' . $page . '</a> ';
                             }
                         }
                         $prepagenext = substr($prepagenext,0,-1);
-                        $prepagenext .= '</td>
-                                <td width=60px align=center>';
+                        $prepagenext .= '
+                            </td>
+                            <td width=60px align=center>';
                         if ($pagenum!=$maxpage) {
                             $nextpagenum = $pagenum+1;
                             $prepagenext .= '
-                            <a onclick="nextpage('.$nextpagenum.');">下一页</a>
-                            ';
+                                <a onclick="nextpage('.$nextpagenum.');">下一页</a>';
                         }
-                            $prepagenext .= '</td>
-                            </tr></table>
-                            </form>';
-                            echo $prepagenext;
+                        $prepagenext .= '
+                            </td>
+                        </tr>
+                    </table>
+                </form>';
+                        echo $prepagenext;
                     }
                     //<script src="//cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
                     if ($config['admin']) { ?>
-    <div id="upload_div" style="margin:0 0 16px 0"><center>
-        <input id="upload_file" type="file" name="upload_filename" multiple="multiple">
-        <button id="upload_submit" onclick="preup();">上传</button>
-        </center>
-    </div>
-    <?php }
-                    if ($readme) {
-                        echo '</div></div></div><div class="list-wrapper"><div class="list-container"><div class="list-header-container"><div class="readme">
-<svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
-<span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
-<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name']),'/'))['@microsoft.graph.downloadUrl'])
-                            . '</textarea></div></div>';
-                    }
+                <div id="upload_div" style="margin:0 0 16px 0">
+                <center>
+                    <input id="upload_file" type="file" name="upload_filename" multiple="multiple">
+                    <input id="upload_submit" onclick="preup();" value="上传" type="button">
+                </center>
+                </div>
+<?php               }
                 }
-                } else {
+                if ($readme) {
                     echo '
-<div style="padding:20px">
-	<center><h4>输入密码进行查看</h4>
-	  <form action="" method="post">
-		    <label>密码</label>
-		    <input name="password1" type="password"/>
-		    <button type="submit">查看</button>
-	  </form>
-    </center>
-</div>';
-                    $statusCode = 401;
-                } }
-                ?>
+            </div>
+        </div>
+    </div>
+    <div class="list-wrapper">
+        <div class="list-container">
+            <div class="list-header-container">
+                <div class="readme">
+                    <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
+                    <span style="line-height: 16px;vertical-align: top;">'.$readme['name'].'</span>
+                    <div class="markdown-body" id="readme">
+                        <textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name']),'/'))['@microsoft.graph.downloadUrl']). '
+                        </textarea>
+                    </div>
+                </div>';
+                }
+            }
+        } else {
+            echo '
+                <div style="padding:20px">
+	            <center>
+                    <h4>输入密码进行查看</h4>
+	                <form action="" method="post">
+		            <label>密码</label>
+		            <input name="password1" type="password"/>
+		            <input type="submit" value="查看">
+	                </form>
+                </center>
+                </div>';
+            $statusCode = 401;
+        }
+    }?>
             </div>
         </div>
     </div>
     <div id="mask" style="position:absolute;display:none;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5"></div>
-    <?php if ($config['admin']) { ?>
-<div>    
-    <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <div style="margin:16px">
-        <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
-        <form id="rename_form" onsubmit="return submit_operate('rename');">
-        <input id="rename_sid" name="rename_sid" type="hidden" value="">
-            <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
-            <input id="rename_input" name="rename_newname" type="text" value="">
-            <input name="operate_action" type="submit" value="重命名">
-        </form>
+<?php
+    if ($config['admin']&&!$_GET['preview']) { ?>
+    <div>
+        <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:16px">
+                <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
+                <form id="rename_form" onsubmit="return submit_operate('rename');">
+                <input id="rename_sid" name="rename_sid" type="hidden" value="">
+                <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
+                <input id="rename_input" name="rename_newname" type="text" value="">
+                <input name="operate_action" type="submit" value="重命名">
+                </form>
+            </div>
         </div>
-    </div>
-    <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <div style="margin:16px">
-        <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
-        <label id="delete_label"></label>
-        <form id="delete_form" onsubmit="return submit_operate('delete');">
-            <label id="delete_input"></label>
-        <input id="delete_sid" name="delete_sid" type="hidden" value="">
-            <input id="delete_hidden" name="delete_name" type="hidden" value="">
-            <input name="operate_action" type="submit" value="确定删除">
-        </form>
+        <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:16px">
+                <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
+                <label id="delete_label"></label>
+                <form id="delete_form" onsubmit="return submit_operate('delete');">
+                <label id="delete_input"></label>
+                <input id="delete_sid" name="delete_sid" type="hidden" value="">
+                <input id="delete_hidden" name="delete_name" type="hidden" value="">
+                <input name="operate_action" type="submit" value="确定删除">
+                </form>
+            </div>
         </div>
-    </div>
-    <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <div style="margin:16px">
-        <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
-        <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
-        <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
-            <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
-            <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="输入想要设置的密码">
-            <?php if (getenv('passfile')!='') {?><input name="operate_action" type="submit" value="加密"><?php } else { ?>
-            <br><label>先在环境变量设置passfile才能加密</label><?php } ?>
-        </form>
+        <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:16px">
+                <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
+                <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
+                <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
+                <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
+                <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="输入想要设置的密码">
+                <?php if (getenv('passfile')!='') {?><input name="operate_action" type="submit" value="加密"><?php } else { ?><br><label>先在环境变量设置passfile才能加密</label><?php } ?>
+                </form>
+            </div>
         </div>
-    </div>
-    <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-        <div style="margin:16px">
-        <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
-        <form id="move_form" onsubmit="return submit_operate('move');">
-        <input id="move_sid" name="move_sid" type="hidden" value="">
-            <input id="move_hidden" name="move_name" type="hidden" value="">
-            <select id="move_input" name="move_folder">
-<?php if ($path != '/') { ?>
-                <option value="/../">上一级目录</option>
-<?php }
-if (isset($files['children'])) foreach ($files['children'] as $file) {
-                if (isset($file['folder'])) { ?>
-                <option value="<?php echo str_replace('&','&amp;', $file['name']);?>"><?php echo str_replace('&','&amp;', $file['name']);?></option>
-<?php }
-            } ?>
-            </select>
-            <input name="operate_action" type="submit" value="移动">
-        </form>
+        <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:16px">
+                <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
+                <form id="move_form" onsubmit="return submit_operate('move');">
+                <input id="move_sid" name="move_sid" type="hidden" value="">
+                <input id="move_hidden" name="move_name" type="hidden" value="">
+                <select id="move_input" name="move_folder">
+<?php   if ($path != '/') { ?>
+                    <option value="/../">上一级目录</option>
+<?php   }
+        if (isset($files['children'])) foreach ($files['children'] as $file) {
+            if (isset($file['folder'])) { ?>
+                    <option value="<?php echo str_replace('&','&amp;', $file['name']);?>"><?php echo str_replace('&','&amp;', $file['name']);?></option>
+<?php       }
+        } ?>
+                </select>
+                <input name="operate_action" type="submit" value="移动">
+                </form>
+            </div>
         </div>
-    </div>
-    <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
-        <div style="margin:50px">
-        <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
-        <form id="create_form" onsubmit="return submit_operate('create');">
-            <input id="create_sid" name="create_sid" type="hidden" value="">
+        <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+            <div style="margin:50px">
+                <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
+                <form id="create_form" onsubmit="return submit_operate('create');">
+                <input id="create_sid" name="create_sid" type="hidden" value="">
                 <input id="create_hidden" type="hidden" value="">
                 　　　<input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
                 <input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
                 名字：<input id="create_input" name="create_name" type="text" value=""><br>
                 <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
-                　　　<input name="operate_action" type="submit" value="新建">
-        </form>
+                <input name="operate_action" type="submit" value="新建">
+                </form>
+            </div>
         </div>
     </div>
-</div>
-    <?php } else {
+<?php
+    } else {
         if (getenv('admin')!='') { ?>
-        <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:50px">
+    <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+        <div style="margin:50px">
             <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
-	  <center><h4>输入管理密码</h4>
-	  <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
-		    <label>密码</label>
-		    <input id="login_input" name="password1" type="password"/>
-		    <button type="submit">查看</button>
-	  </form>
-      </center>
-      </div>
+	        <center>
+                <h4>输入管理密码</h4>
+	            <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
+		        <label>密码</label>
+		        <input id="login_input" name="password1" type="password"/>
+		        <input type="submit" value="查看">
+	            </form>
+            </center>
+        </div>
 	</div>
-    <?php }
+<?php   }
     } ?>
     <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$config['sourceIp'];?></font>
-    </body>
-    <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
-    <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
-    <script type="text/javascript">
-        var root = '<?php echo $config["base_path"]; ?>';
-        function path_format(path) {
-            path = '/' + path + '/';
-            while (path.indexOf('//') !== -1) {
-                path = path.replace('//', '/')
+</body>
+
+<link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
+<script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
+<script type="text/javascript">
+    var root = '<?php echo $config["base_path"]; ?>';
+    function path_format(path) {
+        path = '/' + path + '/';
+        while (path.indexOf('//') !== -1) {
+            path = path.replace('//', '/')
+        }
+        //if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
+        return path
+    }
+    document.querySelectorAll('.table-header').forEach(function (e) {
+        var path = e.innerText;
+        var paths = path.split('/');
+        if (paths <= 2) return;
+        e.innerHTML = '/ ';
+        for (var i = 1; i < paths.length - 1; i++) {
+            var to = path_format(root + paths.slice(0, i + 1).join('/'));
+            e.innerHTML += '<a href="' + to + '">' + paths[i] + '</a> / '
+        }
+        e.innerHTML += paths[paths.length - 1];
+        e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
+    });
+    var $readme = document.getElementById('readme');
+    if ($readme) {
+        $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+    }
+    function showthumbnails(obj) {
+        var files=document.getElementsByName('filelist');
+        for ($i=0;$i<files.length;$i++) {
+            str=files[$i].innerText;
+            if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
+            if (!str) return;
+            strarry=str.split('.');
+            ext=strarry[strarry.length-1];
+            images= 'ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp';
+            if (images.indexOf(ext)>-1) {
+                filea=files[$i];
+                get_thumbnails_url(str, filea);
             }
-            //if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
-            return path
         }
-        document.querySelectorAll('.table-header').forEach(function (e) {
-            var path = e.innerText;
-            var paths = path.split('/');
-            if (paths <= 2)
-                return;
-            e.innerHTML = '/ ';
-            for (var i = 1; i < paths.length - 1; i++) {
-                var to = path_format(root + paths.slice(0, i + 1).join('/'));
-                e.innerHTML += '<a href="' + to + '">' + paths[i] + '</a> / '
-            }
-            e.innerHTML += paths[paths.length - 1];
-            e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
-        });
-        var $readme = document.getElementById('readme');
-        if ($readme) {
-            $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+        obj.disabled='disabled';
+    }
+    function get_thumbnails_url(str, filea) {
+        if (!str) return;
+        var nurl=window.location.href;
+        if (nurl.substr(-1)!="/") nurl+="/";
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", nurl+str+'?thumbnails', true);
+                //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+        xhr.send('');
+        xhr.onload = function(e){
+            if (xhr.status==200) {
+                if (xhr.responseText!='') filea.innerHTML='<img src="'+xhr.responseText+'" alt="'+str+'">';
+            } else console.log(xhr.status+'\n'+xhr.responseText);
         }
-<?php if ($_POST['password1']!='') { //有密码写目录密码 ?>
-        var $ishidden = '<?php echo $config['ishidden']; ?>';
-        var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
-        if ($ishidden==2) {
-            var expd = new Date();
-            expd.setTime(expd.getTime()+(12*60*60*1000));
-            var expires = "expires="+expd.toGMTString();
-            document.cookie="password="+$hiddenpass+";"+expires;
-        }
-<?php }
-if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
-        var nowtime= new Date();
-        var timezone = 0-nowtime.getTimezoneOffset()/60;
+    }
+<?php
+    if ($config['ishidden']==2) { //有密码写目录密码 ?>
+    var $ishidden = '<?php echo $config['ishidden']; ?>';
+    var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
+    if ($ishidden==2) {
         var expd = new Date();
         expd.setTime(expd.getTime()+(2*60*60*1000));
         var expires = "expires="+expd.toGMTString();
-        document.cookie="timezone="+timezone+";"+expires;
-        if (timezone!='8') {
-            alert('Your timezone is '+timezone+', reload local timezone.');
-            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
-        }
+        document.cookie="password="+$hiddenpass+";"+expires;
+    }
 <?php }
-if ($files['folder']['childCount']>200) { //有下一页 ?>
-        function nextpage(num) {
-            document.getElementById('pagenum').value=num;
-            document.getElementById('nextpageform').submit();
-        }
+    if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
+    var nowtime= new Date();
+    var timezone = 0-nowtime.getTimezoneOffset()/60;
+    var expd = new Date();
+    expd.setTime(expd.getTime()+(2*60*60*1000));
+    var expires = "expires="+expd.toGMTString();
+    document.cookie="timezone="+timezone+";"+expires;
+    if (timezone!='8') {
+        alert('Your timezone is '+timezone+', reload local timezone.');
+        location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
+    }
 <?php }
-if ($_GET['preview']) { //在预览时处理 ?>
-        var $url = document.getElementById('url');
-        if ($url) {
-            $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
-            $url.style.height = $url.scrollHeight + 'px';
-        }
-        var $officearea=document.getElementById('office-a');
-        if ($officearea) {
-            $officearea.style.height = window.innerHeight + 'px';
-        }
-        var $textarea=document.getElementById('txt-a');
-        if ($textarea) {
-            $textarea.style.height = $textarea.scrollHeight + 'px';
-        }
-<?php if (!!$DPvideo) { ?>
-        function loadResources(type, src, callback) {
-                let script = document.createElement(type);
-                let loaded = false;
-                if (typeof callback === 'function') {
-                    script.onload = script.onreadystatechange = () => {
-                        if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
-                            script.onload = script.onreadystatechange = null;
-                            loaded = true;
-                            callback();
-                        }
-                    }
-                }
-                if (type === 'link') {
-                    script.href = src;
-                    script.rel = 'stylesheet';
-                } else {
-                    script.src = src;
-                }
-                document.getElementsByTagName('head')[0].appendChild(script);
-            }
-            function addVideos(videos) {
-                let host = 'https://s0.pstatp.com/cdn/expire-1-M';
-                let unloadedResourceCount = 4;
-                let callback = (() => {
-                    return () => {
-                        if (!--unloadedResourceCount) {
-                            createDplayers(videos);
-                        }
-                    };
-                })(unloadedResourceCount, videos);
-                loadResources(
-                    'link',
-                    host + '/dplayer/1.25.0/DPlayer.min.css',
-                    callback
-                );
-                loadResources(
-                    'script',
-                    host + '/dplayer/1.25.0/DPlayer.min.js',
-                    callback
-                );
-                loadResources(
-                    'script',
-                    host + '/hls.js/0.12.4/hls.light.min.js',
-                    callback
-                );
-                loadResources(
-                    'script',
-                    host + '/flv.js/1.5.0/flv.min.js',
-                    callback
-                );
-            }
-            function createDplayers(videos) {
-                for (i = 0; i < videos.length; i++) {
-                    console.log(videos[i]);
-                    new DPlayer({
-                        container: document.getElementById('video-a' + i),
-                        screenshot: true,
-                        video: {
-                            url: videos[i]
-                        }
-                    });
+    if ($files['folder']['childCount']>200) { //有下一页 ?>
+    function nextpage(num) {
+        document.getElementById('pagenum').value=num;
+        document.getElementById('nextpageform').submit();
+    }
+<?php }
+    if ($_GET['preview']) { //在预览时处理 ?>
+    var $url = document.getElementById('url');
+    if ($url) {
+        $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
+        $url.style.height = $url.scrollHeight + 'px';
+    }
+    var $officearea=document.getElementById('office-a');
+    if ($officearea) {
+        $officearea.style.height = window.innerHeight + 'px';
+    }
+    var $textarea=document.getElementById('txt-a');
+    if ($textarea) {
+        $textarea.style.height = $textarea.scrollHeight + 'px';
+    }
+<?php   if (!!$DPvideo) { ?>
+    function loadResources(type, src, callback) {
+        let script = document.createElement(type);
+        let loaded = false;
+        if (typeof callback === 'function') {
+            script.onload = script.onreadystatechange = () => {
+                if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
+                    script.onload = script.onreadystatechange = null;
+                    loaded = true;
+                    callback();
                 }
             }
-        addVideos(['<?php echo $DPvideo;?>']);
-<?php } 
-}
-if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
-        function operatediv_close(operate)
-        {
-            document.getElementById(operate+'_div').style.display='none';
-            document.getElementById('mask').style.display='none';
         }
-<?php }
-if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { //当前是图床目录时 ?>
-            function base64upfile() {
-                var $file=document.getElementById('upload_file').files[0];
-                var $reader = new FileReader();
-                $reader.onloadend=function(e) {
-                    var $data=$reader.result;
-                    document.getElementById('upload_content').value=$data;
+        if (type === 'link') {
+            script.href = src;
+            script.rel = 'stylesheet';
+        } else {
+            script.src = src;
+        }
+        document.getElementsByTagName('head')[0].appendChild(script);
+    }
+    function addVideos(videos) {
+        let host = 'https://s0.pstatp.com/cdn/expire-1-M';
+        let unloadedResourceCount = 4;
+        let callback = (() => {
+            return () => {
+                if (!--unloadedResourceCount) {
+                    createDplayers(videos);
                 }
-                $reader.readAsDataURL($file);
-            }
-<?php }
-if ($config['admin']) { //管理登录后 ?>
-        function logout() {
-            var expd = new Date();
-            expd.setTime(expd.getTime()-(60*1000));
-            var expires = "expires="+expd.toGMTString();
-            document.cookie="<?php echo $config['function_name'];?>='';"+expires;
-            location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
+            };
+        })(unloadedResourceCount, videos);
+        loadResources(
+            'link',
+            host + '/dplayer/1.25.0/DPlayer.min.css',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/dplayer/1.25.0/DPlayer.min.js',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/hls.js/0.12.4/hls.light.min.js',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/flv.js/1.5.0/flv.min.js',
+            callback
+        );
+    }
+    function createDplayers(videos) {
+        for (i = 0; i < videos.length; i++) {
+            console.log(videos[i]);
+            new DPlayer({
+                container: document.getElementById('video-a' + i),
+                screenshot: true,
+                video: {
+                    url: videos[i]
+                }
+            });
         }
-        function showdiv(event,action,num) {
-            var $operatediv=document.getElementsByName('operatediv');
-            for ($i=0;$i<$operatediv.length;$i++) {
-                $operatediv[$i].style.display='none';
+    }
+    addVideos(['<?php echo $DPvideo;?>']);
+<?php   } 
+    }
+    if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
+    function operatediv_close(operate) {
+        document.getElementById(operate+'_div').style.display='none';
+        document.getElementById('mask').style.display='none';
+    }
+<?php }
+    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { //当前是图床目录时 ?>
+    function base64upfile() {
+        var $file=document.getElementById('upload_file').files[0];
+        var $reader = new FileReader();
+        $reader.onloadend=function(e) {
+            var $data=$reader.result;
+            document.getElementById('upload_content').value=$data;
+        }
+        $reader.readAsDataURL($file);
+    }
+<?php }
+    if ($config['admin']) { //管理登录后 ?>
+    function logout() {
+        var expd = new Date();
+        expd.setTime(expd.getTime()-(60*1000));
+        var expires = "expires="+expd.toGMTString();
+        document.cookie="<?php echo $config['function_name'];?>='';"+expires;
+        location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
+    }
+    function enableedit(obj) {
+        document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
+        //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+        obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+        document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
+    }
+<?php   if (!$_GET['preview']) {?>
+    function showdiv(event,action,num) {
+        var $operatediv=document.getElementsByName('operatediv');
+        for ($i=0;$i<$operatediv.length;$i++) {
+            $operatediv[$i].style.display='none';
+        }
+        document.getElementById('mask').style.display='';
+        //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+        document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+        if (num=='') {
+            var str='';
+        } else {
+            var str=document.getElementById('file_a'+num).innerText;
+            if (str=='') {
+                str=document.getElementById('file_a'+num).getElementsByTagName("img")[0].alt;
+                if (str=='') {
+                    alert('获取文件名失败！');
+                    return;
+                }
             }
-            document.getElementById('mask').style.display='';
-            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
-            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
-            if (num=='') {
-                var str='';
-            } else {
-                var str=document.getElementById('file_a'+num).innerText;
-                if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
-            }
-            document.getElementById(action + '_div').style.display='';
-            document.getElementById(action + '_label').innerText=str;//.replace(/&/,'&amp;');
-            document.getElementById(action + '_sid').value=num;
-            document.getElementById(action + '_hidden').value=str;
-            if (action=='rename') document.getElementById(action + '_input').value=str;
+            if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
+        }
+        document.getElementById(action + '_div').style.display='';
+        document.getElementById(action + '_label').innerText=str;//.replace(/&/,'&amp;');
+        document.getElementById(action + '_sid').value=num;
+        document.getElementById(action + '_hidden').value=str;
+        if (action=='rename') document.getElementById(action + '_input').value=str;
 
-            var $e = event || window.event;
-            var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
-            var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
-            var $x = $e.pageX || $e.clientX + $scrollX;
-            var $y = $e.pageY || $e.clientY + $scrollY;
-            if (action=='create') {
-                document.getElementById(action + '_div').style.left=(document.body.clientWidth-document.getElementById(action + '_div').offsetWidth)/2 +'px';
-                document.getElementById(action + '_div').style.top=(window.innerHeight-document.getElementById(action + '_div').offsetHeight)/2+$scrollY +'px';
+        var $e = event || window.event;
+        var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
+        var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
+        var $x = $e.pageX || $e.clientX + $scrollX;
+        var $y = $e.pageY || $e.clientY + $scrollY;
+        if (action=='create') {
+            document.getElementById(action + '_div').style.left=(document.body.clientWidth-document.getElementById(action + '_div').offsetWidth)/2 +'px';
+            document.getElementById(action + '_div').style.top=(window.innerHeight-document.getElementById(action + '_div').offsetHeight)/2+$scrollY +'px';
+        } else {
+            if ($x + document.getElementById(action + '_div').offsetWidth > document.body.clientWidth) {
+                document.getElementById(action + '_div').style.left=document.body.clientWidth-document.getElementById(action + '_div').offsetWidth+'px';
             } else {
-                if ($x + document.getElementById(action + '_div').offsetWidth > document.body.clientWidth) {
-                    document.getElementById(action + '_div').style.left=document.body.clientWidth-document.getElementById(action + '_div').offsetWidth+'px';
-                } else {
-                    document.getElementById(action + '_div').style.left=$x+'px';
-                }
-                document.getElementById(action + '_div').style.top=$y+'px';
+                document.getElementById(action + '_div').style.left=$x+'px';
             }
-            document.getElementById(action + '_input').focus();
+            document.getElementById(action + '_div').style.top=$y+'px';
         }
-        function enableedit(obj)
-        {
-            document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
-            //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-            obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-            document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
-        }
-        function submit_operate(str)
-        {
-            var num=document.getElementById(str+'_sid').value;
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", '', true);
-            xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
-            xhr.send(serializeForm(str+'_form'));
-            xhr.onload = function(e){
-                var html;
-                if (xhr.status<300) {
-                    if (str=='rename') {
-                        //if (xhr.status==200) 
-                        html=JSON.parse(xhr.responseText);
-                        var file_a = document.getElementById('file_a'+num);
-                        file_a.innerText=html.name;
-                        file_a.href = (file_a.href.substr(-8)=='?preview')?(html.name+'?preview'):(html.name+'/');
-                    }
-                    if (str=='move'||str=='delete') document.getElementById('tr'+num).parentNode.removeChild(document.getElementById('tr'+num));
-                    if (str=='create') {
-                        html=JSON.parse(xhr.responseText);
-                        addelement(html);
-                    }
-                } else alert(xhr.status+'\n'+xhr.responseText);
+        document.getElementById(action + '_input').focus();
+    }
+    function submit_operate(str) {
+        var num=document.getElementById(str+'_sid').value;
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", '', true);
+        xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+        xhr.send(serializeForm(str+'_form'));
+        xhr.onload = function(e){
+            var html;
+            if (xhr.status<300) {
+                if (str=='rename') {
+                    //if (xhr.status==200) 
+                    html=JSON.parse(xhr.responseText);
+                    var file_a = document.getElementById('file_a'+num);
+                    file_a.innerText=html.name;
+                    file_a.href = (file_a.href.substr(-8)=='?preview')?(html.name.replace(/#/,'%23')+'?preview'):(html.name.replace(/#/,'%23')+'/');
+                }
+                if (str=='move'||str=='delete') document.getElementById('tr'+num).parentNode.removeChild(document.getElementById('tr'+num));
+                if (str=='create') {
+                    html=JSON.parse(xhr.responseText);
+                    addelement(html);
+                }
+            } else alert(xhr.status+'\n'+xhr.responseText);
                     //var $operatediv=document.getElementsByName('operatediv');
                     //for ($i=0;$i<$operatediv.length;$i++) {
                     //    $operatediv[$i].style.display='none';
                     //}
-                document.getElementById(str+'_div').style.display='none';
-                document.getElementById('mask').style.display='none';
-            }
-            return false;
+            document.getElementById(str+'_div').style.display='none';
+            document.getElementById('mask').style.display='none';
         }
-        function addelement(html) {
-            var tr1=document.createElement('tr');
-            tr1.setAttribute('data-to',1);
-            var td1=document.createElement('td');
-            td1.setAttribute('class','file');
-            var a1=document.createElement('a');
-            a1.href=html.name.replace(/#/,'%23');
-            a1.innerText=html.name;
-            a1.target='_blank';
-            var td2=document.createElement('td');
-            td2.setAttribute('class','updated_at');
-            td2.innerText=html.lastModifiedDateTime;
-            var td3=document.createElement('td');
-            td3.setAttribute('class','size');
-            td3.innerText=size_format(html.size);
-            if (!!html.folder) {
-                a1.href+='/';
-                document.getElementById('tr0').parentNode.insertBefore(tr1,document.getElementById('tr0').nextSibling);
-            }
-            if (!!html.file) {
-                a1.href+='?preview';
-                document.getElementById('tr0').parentNode.appendChild(tr1);
-            }
-            tr1.appendChild(td1);
-            td1.appendChild(a1);
-            tr1.appendChild(td2);
-            tr1.appendChild(td3);
+        return false;
+    }
+    function addelement(html) {
+        var tr1=document.createElement('tr');
+        tr1.setAttribute('data-to',1);
+        var td1=document.createElement('td');
+        td1.setAttribute('class','file');
+        var a1=document.createElement('a');
+        a1.href=html.name.replace(/#/,'%23');
+        a1.innerText=html.name;
+        a1.target='_blank';
+        var td2=document.createElement('td');
+        td2.setAttribute('class','updated_at');
+        td2.innerText=html.lastModifiedDateTime.replace(/T/,' ').replace(/Z/,'');
+        var td3=document.createElement('td');
+        td3.setAttribute('class','size');
+        td3.innerText=size_format(html.size);
+        if (!!html.folder) {
+            a1.href+='/';
+            document.getElementById('tr0').parentNode.insertBefore(tr1,document.getElementById('tr0').nextSibling);
         }
-        //获取指定form中的所有的<input>对象 
-function getElements(formId) { 
-  var form = document.getElementById(formId); 
-  var elements = new Array(); 
-  var tagElements = form.getElementsByTagName('input'); 
-  for (var j = 0; j < tagElements.length; j++){ 
-    elements.push(tagElements[j]); 
-  } 
-  var tagElements = form.getElementsByTagName('select'); 
-  for (var j = 0; j < tagElements.length; j++){ 
-    elements.push(tagElements[j]); 
-  } 
-  var tagElements = form.getElementsByTagName('textarea'); 
-  for (var j = 0; j < tagElements.length; j++){ 
-    elements.push(tagElements[j]); 
-  }
-  return elements; 
-} 
-//组合URL 
-function serializeElement(element) { 
-  var method = element.tagName.toLowerCase(); 
-  var parameter; 
-  if(method == 'select'){
-    parameter = [element.name, element.value]; 
-  }
-  switch (element.type.toLowerCase()) { 
-    case 'submit': 
-    case 'hidden': 
-    case 'password': 
-    case 'text':
-    case 'date':
-    case 'textarea': 
-       parameter = [element.name, element.value];
-       break;
-    case 'checkbox': 
-    case 'radio': 
-      if (element.checked){
-        parameter = [element.name, element.value]; 
-      }
-      break;    
-  } 
-  if (parameter) { 
-    var key = encodeURIComponent(parameter[0]); 
-    if (key.length == 0) 
-      return; 
-    if (parameter[1].constructor != Array) 
-      parameter[1] = [parameter[1]]; 
-    var values = parameter[1]; 
-    var results = []; 
-    for (var i = 0; i < values.length; i++) { 
-      results.push(key + '=' + encodeURIComponent(values[i])); 
+        if (!!html.file) {
+            a1.href+='?preview';
+            document.getElementById('tr0').parentNode.appendChild(tr1);
+        }
+        tr1.appendChild(td1);
+        td1.appendChild(a1);
+        tr1.appendChild(td2);
+        tr1.appendChild(td3);
+    }
+    //获取指定form中的所有的<input>对象 
+    function getElements(formId) { 
+        var form = document.getElementById(formId); 
+        var elements = new Array(); 
+        var tagElements = form.getElementsByTagName('input'); 
+        for (var j = 0; j < tagElements.length; j++){ 
+            elements.push(tagElements[j]); 
+        } 
+        var tagElements = form.getElementsByTagName('select'); 
+        for (var j = 0; j < tagElements.length; j++){ 
+            elements.push(tagElements[j]); 
+        } 
+        var tagElements = form.getElementsByTagName('textarea'); 
+        for (var j = 0; j < tagElements.length; j++){ 
+            elements.push(tagElements[j]); 
+        }
+        return elements; 
     } 
-    return results.join('&'); 
-  } 
-} 
-//调用方法  
-function serializeForm(formId) { 
-  var elements = getElements(formId); 
-  var queryComponents = new Array(); 
-  for (var i = 0; i < elements.length; i++) { 
-    var queryComponent = serializeElement(elements[i]); 
-    if (queryComponent) {
-      queryComponents.push(queryComponent); 
+    //组合URL 
+    function serializeElement(element) { 
+        var method = element.tagName.toLowerCase(); 
+        var parameter; 
+        if (method == 'select') {
+            parameter = [element.name, element.value]; 
+        }
+        switch (element.type.toLowerCase()) { 
+            case 'submit': 
+            case 'hidden': 
+            case 'password': 
+            case 'text':
+            case 'date':
+            case 'textarea': 
+                parameter = [element.name, element.value];
+                break;
+            case 'checkbox': 
+            case 'radio': 
+                if (element.checked){
+                    parameter = [element.name, element.value]; 
+                }
+                break;    
+        } 
+        if (parameter) { 
+            var key = encodeURIComponent(parameter[0]); 
+            if (key.length == 0) return; 
+            if (parameter[1].constructor != Array) parameter[1] = [parameter[1]]; 
+            var values = parameter[1]; 
+            var results = []; 
+            for (var i = 0; i < values.length; i++) { 
+                results.push(key + '=' + encodeURIComponent(values[i])); 
+            } 
+            return results.join('&'); 
+        } 
     } 
-  } 
-  return queryComponents.join('&'); 
-} 
-            function uploadbuttonhide()
-            {
-                document.getElementById('upload_submit').disabled='disabled';
-                document.getElementById('upload_file').disabled='disabled';
+    //调用方法  
+    function serializeForm(formId) { 
+        var elements = getElements(formId); 
+        var queryComponents = new Array(); 
+        for (var i = 0; i < elements.length; i++) { 
+            var queryComponent = serializeElement(elements[i]); 
+            if (queryComponent) {
+                queryComponents.push(queryComponent); 
+            } 
+        } 
+        return queryComponents.join('&'); 
+    } 
+    function uploadbuttonhide() {
+        document.getElementById('upload_submit').disabled='disabled';
+        document.getElementById('upload_file').disabled='disabled';
                 //$("#upload_submit").hide();
                 //$("#upload_file").hide();
-                document.getElementById('upload_submit').style.display='none';
-                document.getElementById('upload_file').style.display='none';
-            }
-            function uploadbuttonshow()
-            {
-                document.getElementById('upload_file').disabled='';
-                document.getElementById('upload_submit').disabled='';
+        document.getElementById('upload_submit').style.display='none';
+        document.getElementById('upload_file').style.display='none';
+    }
+    function uploadbuttonshow() {
+        document.getElementById('upload_file').disabled='';
+        document.getElementById('upload_submit').disabled='';
                 //$("#upload_submit").show();
                 //$("#upload_file").show();
-                document.getElementById('upload_submit').style.display='';
-                document.getElementById('upload_file').style.display='';
+        document.getElementById('upload_submit').style.display='';
+        document.getElementById('upload_file').style.display='';
+    }
+    function preup() {
+        uploadbuttonhide();
+        var files=document.getElementById('upload_file').files;
+        var table1=document.createElement('table');
+        document.getElementById('upload_div').appendChild(table1);
+        table1.setAttribute('class','list-table');
+        var timea=new Date().getTime();
+        var i=0;
+        getuplink(i);
+        function getuplink(i) {
+            var file=files[i];
+            var tr1=document.createElement('tr');
+            table1.appendChild(tr1);
+            tr1.setAttribute('data-to',1);
+            var td1=document.createElement('td');
+            tr1.appendChild(td1);
+            td1.setAttribute('style','width:30%');
+            td1.setAttribute('id','upfile_td1_'+timea+'_'+i);
+            td1.innerHTML=file.name+'<br>'+size_format(file.size);
+            var td2=document.createElement('td');
+            tr1.appendChild(td2);
+            td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
+            td2.innerHTML='获取链接 ...';
+            if (file.size>15*1024*1024*1024) {
+                td2.innerHTML='<font color="red">大于15G，终止上传。</font>';
+                uploadbuttonshow();
+                return;
             }
-            function preup()
-            {
-                uploadbuttonhide();
-                var files=document.getElementById('upload_file').files;
-                var table1=document.createElement('table');
-                document.getElementById('upload_div').appendChild(table1);
-                table1.setAttribute('class','list-table');
-                var timea=new Date().getTime();
-                var i=0;
-                getuplink(i);
-                function getuplink(i) {
-                    var file=files[i];
-                    var tr1=document.createElement('tr');
-                    table1.appendChild(tr1);
-                    tr1.setAttribute('data-to',1);
-                    var td1=document.createElement('td');
-                    tr1.appendChild(td1);
-                    td1.setAttribute('style','width:30%');
-                    td1.setAttribute('id','upfile_td1_'+timea+'_'+i);
-                    td1.innerHTML=file.name+'<br>'+size_format(file.size);
-                    var td2=document.createElement('td');
-                    tr1.appendChild(td2);
-                    td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
-                    td2.innerHTML='获取链接 ...';
-                if (file.size>15*1024*1024*1024) {
-                    td2.innerHTML='<font color="red">大于15G，终止上传。</font>';
-                    uploadbuttonshow();
-                    return;
-                }
-                var xhr1 = new XMLHttpRequest();
-                xhr1.open("POST", '');
-                xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
-                xhr1.send('upbigfilename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
-                xhr1.onload = function(e){
-                    td2.innerHTML='<font color="red">'+xhr1.responseText+'</font>';
-                    if (xhr1.status==200) {
+            var xhr1 = new XMLHttpRequest();
+            xhr1.open("POST", '');
+            xhr1.setRequestHeader('x-requested-with','XMLHttpRequest');
+            xhr1.send('upbigfilename='+ encodeURIComponent(file.name) +'&filesize='+ file.size +'&lastModified='+ file.lastModified);
+            xhr1.onload = function(e){
+                td2.innerHTML='<font color="red">'+xhr1.responseText+'</font>';
+                if (xhr1.status==200) {
                     var html=JSON.parse(xhr1.responseText);
                     if (!html['uploadUrl']) {
                         td2.innerHTML='<font color="red">'+xhr1.responseText+'</font><br>';
@@ -1567,59 +1656,59 @@ function serializeForm(formId) {
                         td2.innerHTML='开始上传 ...';
                         binupfile(file,html['uploadUrl'],timea+'_'+i);
                     }
-                    }
-                    if (i<files.length-1) {
-                        i++;
-                        getuplink(i);
-                    }
                 }
+                if (i<files.length-1) {
+                    i++;
+                    getuplink(i);
                 }
             }
-            function size_format(num)
-            {
-                if (num>1024) {
-                    num=(num/1024);
-                } else {
-                    return num.toFixed(2) + ' B';
-                }
-                if (num>1024) {
-                    num=Number((num/1024).toFixed(2));
-                } else {
-                    return num.toFixed(2) + ' KB';
-                }
-                if (num>1024) {
-                    num=Number((num/1024).toFixed(2));
-                } else {
-                    return num.toFixed(2) + ' MB';
-                }
-                return num.toFixed(2) + ' GB';
-            }
-            function binupfile(file,url,tdnum){
-                var label=document.getElementById('upfile_td2_'+tdnum);
-                var reader = new FileReader();
-                var StartStr='';
-                var MiddleStr='';
-                var StartTime;
-                var EndTime;
-                var newstartsize = 0;
-                if(!!file){
-                    var asize=0;
-                    var totalsize=file.size;
-                    var xhr2 = new XMLHttpRequest();
-                    xhr2.open("GET", url);
+        }
+    }
+    function size_format(num) {
+        if (num>1024) {
+            num=num/1024;
+        } else {
+            return num.toFixed(2) + ' B';
+        }
+        if (num>1024) {
+            num=num/1024;
+        } else {
+            return num.toFixed(2) + ' KB';
+        }
+        if (num>1024) {
+            num=num/1024;
+        } else {
+            return num.toFixed(2) + ' MB';
+        }
+        return num.toFixed(2) + ' GB';
+    }
+    function binupfile(file,url,tdnum){
+        var label=document.getElementById('upfile_td2_'+tdnum);
+        var reader = new FileReader();
+        var StartStr='';
+        var MiddleStr='';
+        var StartTime;
+        var EndTime;
+        var newstartsize = 0;
+        if(!!file){
+            var asize=0;
+            var totalsize=file.size;
+            var xhr2 = new XMLHttpRequest();
+            xhr2.open("GET", url);
                     //xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
-                    xhr2.send(null);
-                    xhr2.onload = function(e){
-                        var html=JSON.parse(xhr2.responseText);
-                        var a=html['nextExpectedRanges'][0];
-                        asize=Number( a.slice(0,a.indexOf("-")) );
-                        StartTime = new Date();
-                        newstartsize = asize;
-                        if (asize==0) {
-                            StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
-                        } else {
-                            StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
-                        }
+            xhr2.send(null);
+            xhr2.onload = function(e){
+                if (xhr2.status==200) {
+                    var html=JSON.parse(xhr2.responseText);
+                    var a=html['nextExpectedRanges'][0];
+                    asize=Number( a.slice(0,a.indexOf("-")) );
+                    StartTime = new Date();
+                    newstartsize = asize;
+                    if (asize==0) {
+                        StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
+                    } else {
+                        StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
+                    }
                         //label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
                     var chunksize=5*1024*1024; // 每小块上传大小，最大60M，微软建议10M
                     if (totalsize>200*1024*1024) chunksize=10*1024*1024;
@@ -1664,7 +1753,7 @@ function serializeForm(formId) {
                                 } else {
                                     MiddleStr += '本次平均速度：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
                                 }
-                                document.getElementById('upfile_td1_'+tdnum).innerHTML+='<br><font color="green">上传完成</font>';
+                                document.getElementById('upfile_td1_'+tdnum).innerHTML='<font color="green">'+document.getElementById('upfile_td1_'+tdnum).innerHTML+'<br>上传完成</font>';
                                 label.innerHTML=StartStr+MiddleStr;
                                 uploadbuttonshow();
                                 addelement(response);
@@ -1681,25 +1770,34 @@ function serializeForm(formId) {
                             } } else readblob(asize);
                         }
                         xhr.send(binary);
-                    } }
+                    }
+                } else {
+                    if (window.location.pathname.indexOf('%23')>0||file.name.indexOf('%23')>0) {
+                        label.innerHTML='<font color="red">目录或文件名含有#，上传失败。</font>';
+                    } else {
+                        label.innerHTML='<font color="red">'+xhr2.responseText+'</font>';
+                    }
+                    uploadbuttonshow();
                 }
             }
-<?php } else if (getenv('admin')!='') { ?>
-        function login()
-        {
-            document.getElementById('mask').style.display='';
-            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
-            document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
-            document.getElementById('login_div').style.display='';
-            document.getElementById('login_div').style.left=(document.body.clientWidth-document.getElementById('login_div').offsetWidth)/2 +'px';
-            document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';
-            document.getElementById('login_input').focus();
         }
+    }
+<?php   }
+    } else if (getenv('admin')!='') { ?>
+    function login() {
+        document.getElementById('mask').style.display='';
+            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
+        document.getElementById('mask').style.height=document.documentElement.scrollHeight<window.innerHeight?window.innerHeight:document.documentElement.scrollHeight+'px';
+        document.getElementById('login_div').style.display='';
+        document.getElementById('login_div').style.left=(document.body.clientWidth-document.getElementById('login_div').offsetWidth)/2 +'px';
+        document.getElementById('login_div').style.top=(window.innerHeight-document.getElementById('login_div').offsetHeight)/2+document.body.scrollTop +'px';
+        document.getElementById('login_input').focus();
+    }
 <?php } ?>
-    </script>
-    <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
-    </html>
-    <?php
+</script>
+<script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
+</html>
+<?php
     $html=ob_get_clean();
     return output($html,$statusCode);
 }
