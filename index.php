@@ -47,6 +47,10 @@ function main_handler($event, $context)
  
 ';
     unset($event1);
+    unset($_POST);
+    unset($_GET);
+    unset($_COOKIE);
+    unset($_SERVER);
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -54,14 +58,17 @@ function main_handler($event, $context)
     $public_path = path_format(getenv('public_path'));
     $private_path = path_format(getenv('private_path'));
     $domain_path = getenv('domain_path');
+    $tmp_path='';
     if ($domain_path!='') {
         $tmp = explode("&",$domain_path);
         foreach ($tmp as $multidomain_paths){
             $pos = strpos($multidomain_paths,"=");
-            if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=path_format(substr($multidomain_paths,$pos+1));
+            $tmp_path = path_format(substr($multidomain_paths,$pos+1));
+            if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=$tmp_path;
         }
     }
     // public_path 不能是 private_path 的上级目录。
+    if ($tmp_path!='') if ($public_path == substr($tmp_path,0,strlen($public_path))) $public_path=$tmp_path;
     if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
         $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
@@ -80,12 +87,19 @@ function main_handler($event, $context)
         $config['list_path'] = spurlencode($config['list_path'],'/') ;
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
-    $config['sourceIp'] = $event['requestContext']['sourceIp'];
-    unset($_POST);
-    unset($_GET);
-    unset($_COOKIE);
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = path_format($config['base_path'] . $path);
+    $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
+    $_POSTbody = explode("&",$event['body']);
+    foreach ($_POSTbody as $postvalues) {
+        $pos = strpos($postvalues,"=");
+        $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
+    }
+    $cookiebody = explode("; ",$event['headers']['cookie']);
+    foreach ($cookiebody as $cookievalues) {
+        $pos = strpos($cookievalues,"=");
+        $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
+    }
     $referer = $event['headers']['referer'];
     $tmpurl = substr($referer,strpos($referer,'//')+2);
     $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
@@ -94,16 +108,6 @@ function main_handler($event, $context)
         $config['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
     } else {
         $config['current_url'] = '';
-    }
-    $_POSTbody = explode("&",$event['body']);
-    foreach ($_POSTbody as $postvalues){
-        $pos = strpos($postvalues,"=");
-        $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
-    }
-    $cookiebody = explode("; ",$event['headers']['cookie']);
-    foreach ($cookiebody as $cookievalues){
-        $pos = strpos($cookievalues,"=");
-        $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
     }
 
     config_oauth();
@@ -385,6 +389,7 @@ function list_files($path)
     }
 
     if ($config['ajax']&&$_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
+        // 无需登录即可删除.tmp后缀文件
         $tmp = MSAPI('DELETE',path_format(path_format($config['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$access_token);
         return output($tmp['body'],$tmp['stat']);
     } 
@@ -413,7 +418,9 @@ function list_files($path)
     } elseif ($config['ishidden']==4) {
         $files = json_decode('{"folder":{}}', true);
     } else {
-        if ($_GET['thumbnails']) if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) return get_thumbnails_url($path);
+        if ($_GET['thumbnails']) if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+            return get_thumbnails_url($path);
+        } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',500);
         $files = fetch_files($path);
     }
     if (isset($files['file']) && !$is_preview) {
@@ -853,7 +860,6 @@ function render_list($path, $files)
     <h1 class="title">
         <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'] ;?></a>
     </h1>
-
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
@@ -1113,7 +1119,8 @@ function render_list($path, $files)
                         <textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' .$readme['name']),'/'))['@microsoft.graph.downloadUrl']). '
                         </textarea>
                     </div>
-                </div>';
+                </div>
+';
                 }
             }
         } else {
@@ -1130,7 +1137,7 @@ function render_list($path, $files)
                 </div>';
             $statusCode = 401;
         }
-    }?>
+    } ?>
             </div>
         </div>
     </div>
@@ -1225,7 +1232,7 @@ function render_list($path, $files)
 	</div>
 <?php   }
     } ?>
-    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$config['sourceIp'];?></font>
+    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$_SERVER['REMOTE_ADDR'];?></font>
 </body>
 
 <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
@@ -1264,11 +1271,8 @@ function render_list($path, $files)
             if (!str) return;
             strarry=str.split('.');
             ext=strarry[strarry.length-1];
-            images= 'ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp';
-            if (images.indexOf(ext)>-1) {
-                filea=files[$i];
-                get_thumbnails_url(str, filea);
-            }
+            images = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
+            if (images.indexOf(ext)>-1) get_thumbnails_url(str, files[$i]);
         }
         obj.disabled='disabled';
     }
@@ -1513,6 +1517,7 @@ function render_list($path, $files)
         a1.href=html.name.replace(/#/,'%23');
         a1.innerText=html.name;
         a1.target='_blank';
+        a1.name='filelist';
         var td2=document.createElement('td');
         td2.setAttribute('class','updated_at');
         td2.innerText=html.lastModifiedDateTime.replace(/T/,' ').replace(/Z/,'');
