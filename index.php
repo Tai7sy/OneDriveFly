@@ -1009,8 +1009,8 @@ function render_list($path, $files)
                             </li>
 <?php                       }?>
                         </td>
-                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                        <td class="updated_at" id="folder_time<?php echo $filenum;?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                        <td class="size" id="folder_size<?php echo $filenum;?>"><?php echo size_format($file['size']); ?></td>
                     </tr>
 <?php                   }
                     }
@@ -1299,18 +1299,29 @@ function render_list($path, $files)
         var a=[];
         for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) {
             a[i]=i;
+            if (!!document.getElementById('folder_'+string+i)) {
+                var td1=document.getElementById('folder_'+string+i);
+                for (j = 1; j < i; j++) {
+                    if (!!document.getElementById('folder_'+string+a[j])) {
+                        var c=false;
+                        if (string=='time') c=(td1.innerText < document.getElementById('folder_'+string+a[j]).innerText);
+                        if (string=='size') c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('folder_'+string+a[j]).innerText));
+                        if (c) {
+                            document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]));
+                            for (k = i; k > j; k--) {
+                                a[k]=a[k-1];
+                            }
+                            a[j]=i;
+                            break;
+                        }
+                    }
+                }
+            }
             if (!!document.getElementById('file_'+string+i)) {
                 var td1=document.getElementById('file_'+string+i);
                 for (j = 1; j < i; j++) {
                     if (!!document.getElementById('file_'+string+a[j])) {
                         var c=false;
-                        /*if (string=='a') {
-                            var n1=td1.innerText;
-                            if (n1=='') n1=td1.getElementsByTagName("img")[0].alt;
-                            var n2=document.getElementById('file_'+string+a[j]).innerText;
-                            if (n2=='') n2=document.getElementById('file_'+string+a[j]).getElementsByTagName("img")[0].alt;
-                            c=(n1 < n2);
-                        }*/
                         if (string=='time') c=(td1.innerText < document.getElementById('file_'+string+a[j]).innerText);
                         if (string=='size') c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('file_'+string+a[j]).innerText));
                         if (c) {
@@ -1319,12 +1330,11 @@ function render_list($path, $files)
                                 a[k]=a[k-1];
                             }
                             a[j]=i;
-                            //console.log(JSON.stringify(a));
                             break;
-                        } //else document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]).nextSibling);
+                        }
                     }
                 }
-            } 
+            }
         }
     }
     function size_reformat(str) {
