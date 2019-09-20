@@ -982,9 +982,9 @@ function render_list($path, $files)
                 <table class="list-table" id="list-table">
                     <tr id="tr0">
                         <!--<th class="updated_at" width="5%">序号</th>-->
-                        <th class="file" width="60%">文件</th>
-                        <th class="updated_at" width="25%">修改时间</th>
-                        <th class="size" width="15%">大小</th>
+                        <th class="file" width="60%" onclick="sortby('a');">文件</th>
+                        <th class="updated_at" width="25%" onclick="sortby('time');">修改时间</th>
+                        <th class="size" width="15%" onclick="sortby('size');">大小</th>
                     </tr>
                     <!-- Dirs -->
 <?php               //echo json_encode($files['children'], JSON_PRETTY_PRINT);
@@ -1041,8 +1041,8 @@ function render_list($path, $files)
                             </li>
 <?php                           }?>
                         </td>
-                        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                        <td class="size"><?php echo size_format($file['size']); ?></td>
+                        <td class="updated_at" id="file_time<?php echo $filenum;?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                        <td class="size" id="file_size<?php echo $filenum;?>"><?php echo size_format($file['size']); ?></td>
                     </tr>
 <?php                       }
                         }
@@ -1290,6 +1290,51 @@ function render_list($path, $files)
             } else console.log(xhr.status+'\n'+xhr.responseText);
         }
     }
+    function sortby(string) {
+        if (string=='a') {
+            for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+(i-1)).nextSibling);
+            return;
+        }
+        sortby('a');
+        var a=[];
+        for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) {
+            a[i]=i;
+            if (!!document.getElementById('file_'+string+i)) {
+                var td1=document.getElementById('file_'+string+i);
+                for (j = 1; j < i; j++) {
+                    if (!!document.getElementById('file_'+string+a[j])) {
+                        var c=false;
+                        /*if (string=='a') {
+                            var n1=td1.innerText;
+                            if (n1=='') n1=td1.getElementsByTagName("img")[0].alt;
+                            var n2=document.getElementById('file_'+string+a[j]).innerText;
+                            if (n2=='') n2=document.getElementById('file_'+string+a[j]).getElementsByTagName("img")[0].alt;
+                            c=(n1 < n2);
+                        }*/
+                        if (string=='time') c=(td1.innerText < document.getElementById('file_'+string+a[j]).innerText);
+                        if (string=='size') c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('file_'+string+a[j]).innerText));
+                        if (c) {
+                            document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]));
+                            for (k = i; k > j; k--) {
+                                a[k]=a[k-1];
+                            }
+                            a[j]=i;
+                            //console.log(JSON.stringify(a));
+                            break;
+                        } //else document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]).nextSibling);
+                    }
+                }
+            } 
+        }
+    }
+    function size_reformat(str) {
+        if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
+        if (str.substr(-2)=='GB') num=str.substr(0,str.length-3)*1024*1024*1024;
+        if (str.substr(-2)=='MB') num=str.substr(0,str.length-3)*1024*1024;
+        if (str.substr(-2)=='KB') num=str.substr(0,str.length-3)*1024;
+        if (str.substr(-2)==' B') num=str.substr(0,str.length-2);
+        return num;
+    }
 <?php
     if ($config['ishidden']==2) { //有密码写目录密码 ?>
     var $ishidden = '<?php echo $config['ishidden']; ?>';
@@ -1448,6 +1493,7 @@ function render_list($path, $files)
                 str=document.getElementById('file_a'+num).getElementsByTagName("img")[0].alt;
                 if (str=='') {
                     alert('获取文件名失败！');
+                    operatediv_close(action);
                     return;
                 }
             }
@@ -1517,7 +1563,6 @@ function render_list($path, $files)
         a1.href=html.name.replace(/#/,'%23');
         a1.innerText=html.name;
         a1.target='_blank';
-        a1.name='filelist';
         var td2=document.createElement('td');
         td2.setAttribute('class','updated_at');
         td2.innerText=html.lastModifiedDateTime.replace(/T/,' ').replace(/Z/,'');
@@ -1530,6 +1575,7 @@ function render_list($path, $files)
         }
         if (!!html.file) {
             a1.href+='?preview';
+            a1.name='filelist';
             document.getElementById('tr0').parentNode.appendChild(tr1);
         }
         tr1.appendChild(td1);
