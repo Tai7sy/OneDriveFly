@@ -1239,6 +1239,7 @@ function render_list($path, $files)
 <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
 <script type="text/javascript">
     var root = '<?php echo $config["base_path"]; ?>';
+    var sort=0;
     function path_format(path) {
         path = '/' + path + '/';
         while (path.indexOf('//') !== -1) {
@@ -1291,10 +1292,13 @@ function render_list($path, $files)
         }
     }
     function sortby(string) {
-        if (string=='a') {
+        if (string=='a') if (sort!=0) {
             for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+(i-1)).nextSibling);
+            sort=0;
             return;
-        }
+        } else return;
+        if (string=='time' && sort==1) return;
+        if (string=='size' && sort==2) return;
         sortby('a');
         var a=[];
         for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) {
@@ -1336,6 +1340,8 @@ function render_list($path, $files)
                 }
             }
         }
+        if (string=='time') sort=1;
+        if (string=='size') sort=2;
     }
     function size_reformat(str) {
         if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
