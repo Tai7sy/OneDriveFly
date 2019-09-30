@@ -1,12 +1,12 @@
 <?php
-include 'vendor/autoload.php';
-include 'functions.php';
-global $oauth;
-global $config;
 /*
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
+include 'vendor/autoload.php';
+include 'functions.php';
+global $oauth;
+global $config;
 $oauth='';
 $config='';
 $oauth = [
@@ -911,7 +911,11 @@ function render_list($path, $files)
 <?php } else { 
         //if ($config['admin'] or $ishidden<4) {
         if ($config['ishidden']<4) {
-            if (isset($files['file'])) {
+            if (isset($files['error'])) {
+                    echo '<div style="margin:8px;">' . $files['error']['message'] . '</div>';
+                    $statusCode=404;
+            } else {
+                if (isset($files['file'])) {
 ?>
                 <div style="margin: 12px 4px 4px; text-align: center">
                     <div style="margin: 24px">
@@ -919,30 +923,29 @@ function render_list($path, $files)
                         <a href="<?php echo path_format($config['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
                     </div>
                     <div style="margin: 24px">
-<?php
-                $ext = strtolower(substr($path, strrpos($path, '.') + 1));
-                $DPvideo='';
-                if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
-                    echo '
+<?php               $ext = strtolower(substr($path, strrpos($path, '.') + 1));
+                    $DPvideo='';
+                    if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                        echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
 ';
-                } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
+                    } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
                     //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
-                    $DPvideo=$files['@microsoft.graph.downloadUrl'];
-                    echo '<div id="video-a0"></div>';
-                } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
-                    echo '
+                        $DPvideo=$files['@microsoft.graph.downloadUrl'];
+                        echo '<div id="video-a0"></div>';
+                    } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
+                        echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
 ';
-                } elseif (in_array($ext, ['pdf'])) {
-                    echo '
+                    } elseif (in_array($ext, ['pdf'])) {
+                        echo '
                         <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
 ';
-                } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
-                    echo '
+                    } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
+                        echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
 ';
-                } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html'])) {
+                    } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html', 'c'])) {
                     /*if ($files['name']==='当前demo的index.php') {
                         $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
 ';
@@ -951,33 +954,29 @@ function render_list($path, $files)
                         $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
                     //} ?>
                         <div id="txt">
-<?php               if ($config['admin']) { ?>
+<?php                   if ($config['admin']) { ?>
                         <form id="txt-form" action="" method="POST">
                             <a onclick="enableedit(this);" id="txt-editbutton">点击后编辑</a>
                             <a id="txt-save" style="display:none">保存</a>
-<?php               } ?>
+<?php                   } ?>
                             <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;" <?php if ($config['admin']) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"';?> ><?php echo $txtstr;?></textarea>
-<?php               if ($config['admin']) echo '</form>';?>
+<?php                   if ($config['admin']) echo '</form>'; ?>
                         </div>
-<?php           } elseif (in_array($ext, ['md'])) {
-                    echo '
+<?php               } elseif (in_array($ext, ['md'])) {
+                        echo '
                         <div class="markdown-body" id="readme">
                             <textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea>
                         </div>
 ';
-                } else {
-                    echo '<span>文件格式不支持预览</span>';
-                } ?>
+                    } else {
+                        echo '<span>文件格式不支持预览</span>';
+                    } ?>
                     </div>
                 </div>
-<?php       } else {
-                $filenum = $_POST['filenum'];
-                if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
-                $readme = false;
-                if (isset($files['error'])) {
-                    echo '<tr><td colspan="3">' . $files['error']['message'] . '<td></tr>';
-                    $statusCode=404;
-                } else { ?>
+<?php           } elseif (isset($files['folder'])) {
+                    $filenum = $_POST['filenum'];
+                    if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
+                    $readme = false; ?>
                 <div id="thumbnailsbutton" style="position:absolute;"><input type="button" value="图片缩略图" onclick="showthumbnails(this);"></div>
                 <table class="list-table" id="list-table">
                     <tr id="tr0">
@@ -1103,6 +1102,9 @@ function render_list($path, $files)
                 </center>
                 </div>
 <?php               }
+                } else {
+                    $statusCode=500;
+                    echo 'Unknown path or file.';
                 }
                 if ($readme) {
                     echo '
