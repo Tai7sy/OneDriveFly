@@ -3,6 +3,20 @@
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
+//选择添加以下某些环境变量来做设置：
+/*
+sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
+admin          ：管理密码，不添加时不显示登录页面且无法登录
+adminloginpage ：如果设置，提交登录的目标不再是'?admin'，而是此设置的值，登录按钮及页面隐藏；
+public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；
+           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）
+private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
+domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。
+imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）
+passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
+        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
+t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本
+*/
 include 'vendor/autoload.php';
 include 'functions.php';
 global $oauth;
@@ -19,19 +33,6 @@ $config = [
     'passfile' => getenv('passfile'),
     'imgup_path' => getenv('imgup_path'),
 ];
-//在环境变量添加：
-/*
-sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
-admin          ：管理密码，不添加时不显示登录页面且无法登录
-public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；
-           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）
-private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
-domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。
-imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）
-passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
-        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
-t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本
-*/
 
 function main_handler($event, $context)
 {
@@ -136,9 +137,17 @@ function main_handler($event, $context)
     } else {
         $config['admin']=0;
     }
-    if ($_GET['admin']) {
-        $url=$_SERVER['PHP_SELF'];
-        if ($_GET['preview']) $url .= '?preview';
+    if (getenv('adminloginpage')=='') {
+        $adminloginpage = 'admin';
+    } else {
+        $adminloginpage = getenv('adminloginpage');
+    }
+    if ($_GET[$adminloginpage]) {
+        if ($_GET['preview']) {
+            $url = $_SERVER['PHP_SELF'] . '?preview';
+        } else {
+            $url = path_format($_SERVER['PHP_SELF'] . '/');
+        }
         if (getenv('admin')!='') {
             if ($_POST['password1']==getenv('admin')) return adminform($function_name.'admin',md5($_POST['password1']),$url);
             return adminform();
@@ -265,22 +274,17 @@ function fetch_files_children($files, $path, $page, $cache)
         $cachefile = fetch_files(path_format($path1 . '/' .$cachefilename));
         if ($cachefile['size']>0) {
             $pageinfo = curl_request($cachefile['@microsoft.graph.downloadUrl']);
-                        //$cachefilesize = strlen($pageinfo);
             $pageinfo = json_decode($pageinfo,true);
-                        //$rsize=$files['size']-$cachefile['size'];
-                        //if ($pageinfo['size']==$files['size']) {
             for ($page4=1;$page4<$maxpage;$page4++) {
                 $cache->save('nextlink_' . $path . '_page_' . $page4, $pageinfo['nextlink_' . $path . '_page_' . $page4], 60);
                 $pageinfocache['nextlink_' . $path . '_page_' . $page4] = $pageinfo['nextlink_' . $path . '_page_' . $page4];
             }
-                        //}
         }
         $pageinfochange=0;
         for ($page1=$page;$page1>=1;$page1--) {
             $page3=$page1-1;
             $url = $cache->fetch('nextlink_' . $path . '_page_' . $page3);
             if ($url == '') {
-                            //echo $page3 .'not have url'. $url .'<br>' ;
                 if ($page1==1) {
                     $url = $oauth['api_url'];
                     if ($path !== '/') {
@@ -304,7 +308,6 @@ function fetch_files_children($files, $path, $page, $cache)
                     for ($page2=$page1+1;$page2<=$page;$page2++) {
                         sleep(1);
                         $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $config['access_token']]), true);
-                                    //echo $page2 . ' ' . $url . '<br>';
                         $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
                         $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page2);
                         if ($nextlink!=$children['@odata.nextLink']) {
@@ -326,11 +329,9 @@ function fetch_files_children($files, $path, $page, $cache)
                     return $files;
                 }
             } else {
-                            //echo $page3 .'have url<br> '. $url .'<br> ' ;
                 for ($page2=$page3+1;$page2<=$page;$page2++) {
                     sleep(1);
                     $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $config['access_token']]), true);
-                                //echo $page2 . ' ' . $url . '<br>';
                     $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
                     $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page2);
                     if ($nextlink!=$children['@odata.nextLink']) {
@@ -395,9 +396,6 @@ function list_files($path)
     } 
     if ($config['admin']) {
         $tmp = adminoperate($path);
-        /*if ($tmp['statusCode'] == 403 || $tmp['statusCode'] == 200) {
-            return $tmp;
-        }*/
         if ($tmp['statusCode'] > 0) {
             $path1 = path_format($config['list_path'] . path_format($path));
             $cache->save('path_' . $path1, json_decode('{}',true), 1);
@@ -425,14 +423,12 @@ function list_files($path)
     }
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
-        //if ($config['admin'] or $ishidden<4) {
         if ($config['ishidden']<4) {
             return output('', 302, false, [
                 'Location' => $files['@microsoft.graph.downloadUrl']
             ]);
         }
     }
-    // return '<pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
     return render_list($path, $files);
 }
 
@@ -517,12 +513,8 @@ function adminoperate($path)
         if (isset($getoldupinfo['file'])&&$getoldupinfo['size']<5120) {
             $getoldupinfo_j = curl_request($getoldupinfo['@microsoft.graph.downloadUrl']);
             $getoldupinfo = json_decode($getoldupinfo_j , true);
-            //if ($getoldupinfo['size']==$fileinfo['size'] && $getoldupinfo['lastModified']==$fileinfo['lastModified']) {
-                /*$expirationDateTime = time_format( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['expirationDateTime'] );
-                if (time() < strtotime($expirationDateTime)) return output($getoldupinfo_j);*/
-                //微软的过期时间只有20分钟，其实不用看过期时间，我过了14个小时，用昨晚的链接还可以接着继续上传，微软临时文件只要还在就可以续
-                if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
-            //}
+            //微软的过期时间只有20分钟，其实不用看过期时间，我过了14个小时，用昨晚的链接还可以接着继续上传，微软临时文件只要还在就可以续
+            if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
         }
         $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry = json_decode($response['body'],true);
@@ -531,27 +523,6 @@ function adminoperate($path)
         echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token'])['body'];
         return output($response['body'], $response['stat']);
     }
-    /*if ($_POST['upload_filename']!='') {
-        // 上传
-        $filename = spurlencode($_POST['upload_filename']);
-        $data = substr($_POST['upload_filecontent'],strpos($_POST['upload_filecontent'],'base64')+strlen('base64,'));
-        $data = base64_decode($data);
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "rename"  }}',$config['access_token'])['body'];
-        $responsearry = json_decode($response,true);
-        if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $uploadurl=$responsearry['uploadUrl'];
-                    /*$datasplit=$data;
-                    while ($datasplit!='') {
-                        $tmpdata=substr($datasplit,0,1024000);
-                        $datasplit=substr($datasplit,1024000);
-                        echo MSAPI('PUT',$uploadurl,$tmpdata,$config['access_token']);
-                    }//大文件循环PUT，SCF用不上*
-        $result = MSAPI('PUT',$uploadurl,$data,$config['access_token'])['body'];
-        echo $result;
-        $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;
-    }*/
     if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
         // 重命名
         $oldname = spurlencode($_POST['rename_oldname']);
@@ -559,10 +530,6 @@ function adminoperate($path)
         $data = '{"name":"' . $_POST['rename_newname'] . '"}';
                 //echo $oldname;
         $result = MSAPI('PATCH',$oldname,$data,$config['access_token']);
-        /*echo $result;
-        $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;*/
         return output($result['body'], $result['stat']);
     }
     if ($_POST['delete_name']!='') {
@@ -571,10 +538,6 @@ function adminoperate($path)
         $filename = path_format($path1 . '/' . $filename);
                 //echo $filename;
         $result = MSAPI('DELETE', $filename, '', $config['access_token']);
-        /*echo $result;
-        $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message'] . '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;*/
         return output($result['body'], $result['stat']);
     }
     if ($_POST['operate_action']=='加密') {
@@ -585,11 +548,6 @@ function adminoperate($path)
         $filename = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
                 //echo $foldername;
         $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token']);
-        /*echo $result;
-        $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        $tmparr['statusCode'] = 201;*/
-        //echo $result['body'];
         return output($result['body'], $result['stat']);
     }
     if ($_POST['move_folder']!='') {
@@ -600,15 +558,9 @@ function adminoperate($path)
         if ($moveable) {
             $filename = spurlencode($_POST['move_name']);
             $filename = path_format($path1 . '/' . $filename);
-                //echo $filename;
             $foldername = path_format('/'.urldecode($path1).'/'.$_POST['move_folder']);
             $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
-                // echo $data;
             $result = MSAPI('PATCH', $filename, $data, $config['access_token']);
-            /*echo $result;
-            $resultarry = json_decode($result,true);
-            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-            $tmparr['statusCode'] = 201;*/
             return output($result['body'], $result['stat']);
         } else {
             return output('{"error":"无法移动"}', 403);
@@ -626,8 +578,6 @@ function adminoperate($path)
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        //$tmparr['statusCode'] = 201;
-        //return output($result['body'], $result['stat']);
     }
     if ($_POST['create_name']!='') {
         // 新建
@@ -635,18 +585,11 @@ function adminoperate($path)
             $filename = spurlencode($_POST['create_name']);
             $filename = path_format($path1 . '/' . $filename);
             $result = MSAPI('PUT', $filename, $_POST['create_text'], $config['access_token']);
-            /*echo $result;
-            $resultarry = json_decode($result,true);
-            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);*/
         }
         if ($_POST['create_type']=='folder') {
             $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
             $result = MSAPI('children', $path1, $data, $config['access_token']);
-            /*echo $result;
-            $resultarry = json_decode($result,true);
-            if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);*/
         }
-        //$tmparr['statusCode'] = 201;
         return output($result['body'], $result['stat']);
     }
     return $tmparr;
@@ -655,10 +598,7 @@ function adminoperate($path)
 function MSAPI($method, $path, $data = '', $access_token)
 {
     global $oauth;
-    // 移目录，echo MSAPI('PATCH','/public/qqqq.txt','{"parentReference":{"path": "/drive/root:/public/release"}}',$access_token);
-    // 改名，echo MSAPI('PATCH','/public/qqqq.txt','{"name":"f.txt"}',$access_token);
-    // 删除，echo MSAPI('DELETE','/public/qqqq.txt','',$access_token);
-    // echo $method. $path.$data;
+
     if (substr($path,0,7) == 'http://' or substr($path,0,8) == 'https://') {
         $url=$path;
         $lenth=strlen($data);
@@ -706,16 +646,6 @@ function MSAPI($method, $path, $data = '', $access_token)
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
-    /*if ($method=='PUT') {
-        #curl_setopt($ch, CURLOPT_PUT, 1);
-        #curl_setopt($ch, CURLOPT_INFILE, $data);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST,"PUT");
-        curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
-    }
-    if ($method=='PATCH') {
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST,"PATCH");
-        curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
-    }*/
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST,$method);
     curl_setopt($ch, CURLOPT_POSTFIELDS,$data);
 
@@ -747,9 +677,8 @@ function get_thumbnails_url($path = '/')
     }
     $url .= ':/thumbnails/0/medium';
     $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $config['access_token']]), true);
-    //return message( $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>');
     if (isset($files['url'])) return output($files['url']);
-    return output('');
+    return output('', 404);
 }
 
 function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
@@ -882,9 +811,10 @@ function render_list($path, $files)
                 <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&','&amp;', $path)); ?></h3>
                 <div class="login">
 <?php
-    if (getenv('admin')!='') if (!$config['admin']) {?>
+    if (getenv('admin')!='') if (!$config['admin']) {
+        if (getenv('adminloginpage')=='') { ?>
                     <a onclick="login();">登录</a>
-<?php
+<?php   }
     } else { ?>
                     <li class="operate">管理<ul style="margin:-17px 0 0 -66px;">
                     <li><a onclick="logout()">登出</a></li>
@@ -909,7 +839,6 @@ function render_list($path, $files)
                 <center>
                 </div>
 <?php } else { 
-        //if ($config['admin'] or $ishidden<4) {
         if ($config['ishidden']<4) {
             if (isset($files['error'])) {
                     echo '<div style="margin:8px;">' . $files['error']['message'] . '</div>';
@@ -946,13 +875,8 @@ function render_list($path, $files)
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
 ';
                     } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html', 'c'])) {
-                    /*if ($files['name']==='当前demo的index.php') {
-                        $txtstr = '<!--修改时间：' . date("Y-m-d H:i:s",filectime(__DIR__.'/index.php')) . '-->
-';
-                        $txtstr .= htmlspecialchars(file_get_contents(__DIR__.'/index.php'));
-                    } else {*/
                         $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
-                    //} ?>
+?>
                         <div id="txt">
 <?php                   if ($config['admin']) { ?>
                         <form id="txt-form" action="" method="POST">
@@ -1048,7 +972,6 @@ function render_list($path, $files)
                     } ?>
                 </table>
 <?php               if ($files['folder']['childCount']>200) {
-                        //echo json_encode($files['folder'], JSON_PRETTY_PRINT);
                         $pagenum = $files['folder']['page'];
                         $maxpage = ceil($files['folder']['childCount']/200);
                         $prepagenext = '
@@ -1057,7 +980,6 @@ function render_list($path, $files)
                     <table width=100% border=0>
                         <tr>
                             <td width=60px align=center>';
-                        //if (isset($_POST['nextlink'])) $prepagenext .= '<a href="javascript:history.back(-1)">上一页</a>';
                         if ($pagenum!=1) {
                             $prepagenum = $pagenum-1;
                             $prepagenext .= '
@@ -1066,9 +988,7 @@ function render_list($path, $files)
                         $prepagenext .= '
                             </td>
                             <td class="updated_at">';
-                        //$pathpage = path_format($config['list_path'].$path).'_'.$page;
                         for ($page=1;$page<=$maxpage;$page++) {
-                            //if ($files['folder'][path_format($config['list_path'].$path).'_'.$page]) $prepagenext .= '  <input type="hidden" name="'.$path.'_'.$page.'" value="'.$files['folder'][path_format($config['list_path'].$path).'_'.$page].'">';
                             if ($page == $pagenum) {
                                 $prepagenext .= '
                                 <font color=red>' . $page . '</font> ';
@@ -1093,7 +1013,6 @@ function render_list($path, $files)
                 </form>';
                         echo $prepagenext;
                     }
-                    //<script src="//cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
                     if ($config['admin']) { ?>
                 <div id="upload_div" style="margin:0 0 16px 0">
                 <center>
@@ -1105,6 +1024,7 @@ function render_list($path, $files)
                 } else {
                     $statusCode=500;
                     echo 'Unknown path or file.';
+                    echo json_encode($files, JSON_PRETTY_PRINT);
                 }
                 if ($readme) {
                     echo '
@@ -1218,7 +1138,7 @@ function render_list($path, $files)
     </div>
 <?php
     } else {
-        if (getenv('admin')!='') { ?>
+        if (getenv('admin')!='') if (getenv('adminloginpage')=='') { ?>
     <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
         <div style="margin:50px">
             <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
@@ -1247,7 +1167,6 @@ function render_list($path, $files)
         while (path.indexOf('//') !== -1) {
             path = path.replace('//', '/')
         }
-        //if (path.substr(-1)=='/') path = path.substr(0,path.length-1);
         return path
     }
     document.querySelectorAll('.table-header').forEach(function (e) {
@@ -1551,7 +1470,6 @@ function render_list($path, $files)
             var html;
             if (xhr.status<300) {
                 if (str=='rename') {
-                    //if (xhr.status==200) 
                     html=JSON.parse(xhr.responseText);
                     var file_a = document.getElementById('file_a'+num);
                     file_a.innerText=html.name;
@@ -1563,10 +1481,6 @@ function render_list($path, $files)
                     addelement(html);
                 }
             } else alert(xhr.status+'\n'+xhr.responseText);
-                    //var $operatediv=document.getElementsByName('operatediv');
-                    //for ($i=0;$i<$operatediv.length;$i++) {
-                    //    $operatediv[$i].style.display='none';
-                    //}
             document.getElementById(str+'_div').style.display='none';
             document.getElementById('mask').style.display='none';
         }
@@ -1669,16 +1583,12 @@ function render_list($path, $files)
     function uploadbuttonhide() {
         document.getElementById('upload_submit').disabled='disabled';
         document.getElementById('upload_file').disabled='disabled';
-                //$("#upload_submit").hide();
-                //$("#upload_file").hide();
         document.getElementById('upload_submit').style.display='none';
         document.getElementById('upload_file').style.display='none';
     }
     function uploadbuttonshow() {
         document.getElementById('upload_file').disabled='';
         document.getElementById('upload_submit').disabled='';
-                //$("#upload_submit").show();
-                //$("#upload_file").show();
         document.getElementById('upload_submit').style.display='';
         document.getElementById('upload_file').style.display='';
     }
@@ -1778,7 +1688,6 @@ function render_list($path, $files)
                     } else {
                         StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
                     }
-                        //label.innerHTML=StartStr+ '已经上传：' +size_format(asize)+ '/'+size_format(totalsize) + '：' + (asize*100/totalsize).toFixed(2) + '%';
                     var chunksize=5*1024*1024; // 每小块上传大小，最大60M，微软建议10M
                     if (totalsize>200*1024*1024) chunksize=10*1024*1024;
                     function readblob(start) {
@@ -1830,10 +1739,8 @@ function render_list($path, $files)
                                 if (!response['nextExpectedRanges']) {
                                     label.innerHTML='<font color="red">'+xhr.responseText+'</font><br>';
                                 } else {
-                                    //var C_endtime = new Date();
                                     var a=response['nextExpectedRanges'][0];
                                     asize=Number( a.slice(0,a.indexOf("-")) );
-                                    //MiddleStr = '小块速度：'+size_format(chunksize*1000/(C_endtime.getTime()-C_starttime.getTime()))+'/s 平均速度：'+size_format((asize-newstartsize)*1000/(C_endtime.getTime()-StartTime.getTime()))+'/s<br>';
                                     readblob(asize);
                                 }
                             } } else readblob(asize);
@@ -1852,7 +1759,7 @@ function render_list($path, $files)
         }
     }
 <?php   }
-    } else if (getenv('admin')!='') { ?>
+    } else if (getenv('admin')!='') if (getenv('adminloginpage')=='') { ?>
     function login() {
         document.getElementById('mask').style.display='';
             //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
