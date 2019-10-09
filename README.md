@@ -7,7 +7,7 @@ OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 安装好后，可以在环境变量添加以下key做设置：  
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’  
 admin          ：管理密码，不添加时不显示登录页面且无法登录  
-adminloginpage ：如果设置，管理登录的页面不再是'?admin'，而是此设置的值，登录按钮及页面隐藏；  
+adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏；  
 public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；  
            　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）  
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录  
@@ -18,7 +18,8 @@ passfile       ：自定义密码文件的名字，可以是'.password'，也可
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本  
 
 # 更新记录：  
-20190930，可以隐藏管理的登录页面了（请自己记住）。  
+20191009，在header中Set-Cookie，管理登录从javascript跳改302跳，目录密码不用javascript设置。  
+20190930，可以隐藏管理的登录页面了（请自己记住设置的值）。  
 20190920，在文件列表点击“文件”、“修改时间”、“大小”几个字，可以从小到大排序。  
 20190917，新增多个域名对应多个目录的设置（比private_path优先），新增显示缩略图按钮（整体结构不变，我自己看得都丑），代码缩进重新弄  
 20190911，修复文件(夹)名字中有#会打不开的问题。  
