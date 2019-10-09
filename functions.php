@@ -99,7 +99,7 @@ function get_timezone($timezone = '8')
     return $timezones[$timezone];
 }
 
-function output($body, $statusCode = 200, $isBase64Encoded = false, $headers = ['Content-Type' => 'text/html'])
+function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/html'], $isBase64Encoded = false)
 {
     //$headers['Access-Control-Allow-Origin']='*';
     return [
@@ -170,7 +170,12 @@ function gethiddenpass($path,$passfile)
 }
 
 function comppass($pass) {
-    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) return 2;    
+    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) {
+        date_default_timezone_set('UTC');
+        $_SERVER['Set-Cookie'] = 'password='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour'));
+        date_default_timezone_set(get_timezone($_COOKIE['timezone']));
+        return 2;
+    }
     if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
     return 4;
 }
