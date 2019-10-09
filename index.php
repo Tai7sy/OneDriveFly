@@ -3,11 +3,11 @@
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
 */
-//选择添加以下某些环境变量来做设置：
+//有选择地添加以下某些环境变量来做设置：
 /*
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
 admin          ：管理密码，不添加时不显示登录页面且无法登录
-adminloginpage ：如果设置，提交登录的目标不再是'?admin'，而是此设置的值，登录按钮及页面隐藏；
+adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏；
 public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；
            　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
@@ -402,7 +402,7 @@ function list_files($path)
             return $tmp;
         }
     } else {
-        if ($config['ajax']) return output('请重新<a href="?admin"><font color="red">登录</font></a>',401);
+        if ($config['ajax']) return output('请<font color="red">刷新</font>页面后重新登录',401);
         if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') {
             $html = guestupload($path);
             if ($html!='') return $html;
@@ -482,9 +482,9 @@ function guestupload($path)
         fclose($tmpfile);
         $filename = md5_file($tmpfilename) . $ext;
         $locationurl = $config['current_url'] . '/' . $filename . '?preview';
-        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token'])['body'];
-        $responsearry=json_decode($response,true);
-        if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',403);
+        $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
+        $responsearry=json_decode($response['body'],true);
+        if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',$response['stat']);
         $uploadurl=$responsearry['uploadUrl'];
         $result = MSAPI('PUT',$uploadurl,$data,$config['access_token'])['body'];
         echo $result;
@@ -518,7 +518,7 @@ function adminoperate($path)
         }
         $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$config['access_token']);
         $responsearry = json_decode($response['body'],true);
-        if (isset($responsearry['error'])) return output($response);
+        if (isset($responsearry['error'])) return output($response['body'], $response['stat']);
         $fileinfo['uploadUrl'] = $responsearry['uploadUrl'];
         echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $config['access_token'])['body'];
         return output($response['body'], $response['stat']);
@@ -598,7 +598,6 @@ function adminoperate($path)
 function MSAPI($method, $path, $data = '', $access_token)
 {
     global $oauth;
-
     if (substr($path,0,7) == 'http://' or substr($path,0,8) == 'https://') {
         $url=$path;
         $lenth=strlen($data);
@@ -1700,7 +1699,7 @@ function render_list($path, $files)
                         var binary = this.result;
                         var xhr = new XMLHttpRequest();
                         xhr.open("PUT", url, true);
-    //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+                        //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
                         bsize=asize+e.loaded-1;
                         xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize +'/'+ totalsize);
                         xhr.upload.onprogress = function(e){
