@@ -52,6 +52,8 @@ function main_handler($event, $context)
     unset($_GET);
     unset($_COOKIE);
     unset($_SERVER);
+    date_default_timezone_set('Asia/Shanghai');
+    if ($_COOKIE['timezone']!='8') date_default_timezone_set(get_timezone($_COOKIE['timezone']));
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -132,11 +134,7 @@ function main_handler($event, $context)
     </script>
     ', 'Error', 500);
     }
-    if ($_COOKIE[$function_name.'admin']==md5(getenv('admin')) && getenv('admin')!='' ) {
-        $config['admin']=1;
-    } else {
-        $config['admin']=0;
-    }
+
     if (getenv('adminloginpage')=='') {
         $adminloginpage = 'admin';
     } else {
@@ -149,12 +147,19 @@ function main_handler($event, $context)
             $url = path_format($_SERVER['PHP_SELF'] . '/');
         }
         if (getenv('admin')!='') {
-            if ($_POST['password1']==getenv('admin')) return adminform($function_name.'admin',md5($_POST['password1']),$url);
-            return adminform();
+            if ($_POST['password1']==getenv('admin')) {
+                return adminform($function_name.'admin',md5($_POST['password1']),$url);
+            } else return adminform();
         } else {
-            return output('', 302, false, [ 'Location' => $url ]);
+            return output('', 302, [ 'Location' => $url ]);
         }
     }
+    if (getenv('admin')!='') if ($_COOKIE[$function_name.'admin']==md5(getenv('admin')) || $_POST['password1']==getenv('admin') ) {
+        $config['admin']=1;
+    } else {
+        $config['admin']=0;
+    }
+
     $config['ajax']=0;
     if ($event['headers']['x-requested-with']=='XMLHttpRequest') {
         $config['ajax']=1;
@@ -424,9 +429,7 @@ function list_files($path)
     if (isset($files['file']) && !$is_preview) {
         // is file && not preview mode
         if ($config['ishidden']<4) {
-            return output('', 302, false, [
-                'Location' => $files['@microsoft.graph.downloadUrl']
-            ]);
+            return output('', 302, [ 'Location' => $files['@microsoft.graph.downloadUrl'] ]);
         }
     }
     return render_list($path, $files);
@@ -437,15 +440,24 @@ function adminform($name = '', $pass = '', $path = '')
     $statusCode = 401;
     $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
     if ($name!=''&&$pass!='') {
-        $html .= '<script type="text/javascript">
+        /*$html .= '<script type="text/javascript">
             var expd = new Date();
             expd.setTime(expd.getTime()+(1*60*60*1000));
             var expires = "expires="+expd.toGMTString();
             document.cookie="'.$name.'='.$pass.';"+expires;
             //path='.$path.';
             location.href=location.protocol + "//" + location.host + "'.$path.'";
-</script>';
+</script>';*/
+        $html .= '<body>登录成功，正在跳转</body></html>';
         $statusCode = 302;
+        date_default_timezone_set('UTC');
+        $header = [
+            'Set-Cookie' => $name.'='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour')),
+            'Location' => $path,
+            'Content-Type' => 'text/html'
+        ];
+        return output($html,$statusCode,$header);
+        // return $name.'='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour'));
     }
     $html .= '
     <body>
@@ -490,7 +502,7 @@ function guestupload($path)
         echo $result;
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
-        return output('', 302, false, [ 'Location' => $locationurl ]);
+        return output('', 302, [ 'Location' => $locationurl ]);
     } else {
         return message('Please upload from source site!');
     }
@@ -700,8 +712,7 @@ function render_list($path, $files)
 {
     global $config;
     @ob_start();
-    date_default_timezone_set('Asia/Shanghai');
-    if ($_COOKIE['timezone']!=' 0800') date_default_timezone_set(get_timezone($_COOKIE['timezone']));
+
     $path = str_replace('%20','%2520',$path);
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
@@ -1272,7 +1283,7 @@ function render_list($path, $files)
         return num;
     }
 <?php
-    if ($config['ishidden']==2) { //有密码写目录密码 ?>
+    /*if ($config['ishidden']==2) { //有密码写目录密码 ?>
     var $ishidden = '<?php echo $config['ishidden']; ?>';
     var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
     if ($ishidden==2) {
@@ -1281,7 +1292,7 @@ function render_list($path, $files)
         var expires = "expires="+expd.toGMTString();
         document.cookie="password="+$hiddenpass+";"+expires;
     }
-<?php }
+<?php }*/
     if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
     var nowtime= new Date();
     var timezone = 0-nowtime.getTimezoneOffset()/60;
@@ -1774,5 +1785,6 @@ function render_list($path, $files)
 </html>
 <?php
     $html=ob_get_clean();
+    if ($_SERVER['Set-Cookie']!='') return output($html, $statusCode, [ 'Set-Cookie' => $_SERVER['Set-Cookie'], 'Content-Type' => 'text/html' ]);
     return output($html,$statusCode);
 }
