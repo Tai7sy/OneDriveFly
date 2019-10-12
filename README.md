@@ -3,7 +3,9 @@ OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 最新更新：(https://github.com/qkqpttgf/OneDrive_SCF)  
 
 # 安装
-安装时，在环境变量里什么都不用添加，获得token后，可以按128字节分开，添加到环境变量的t1-t7(个人帐户只到t4)，也可以复制粘贴到oauth的refresh_token字段(不推荐)。  
+安装时，在环境变量里什么都不用添加，  
+获得token后，可以按128字节分开，添加到环境变量的t1-t7(个人帐户只到t4)，  
+*也可以复制粘贴到oauth的refresh_token字段(不推荐)。*  
 安装好后，可以在环境变量添加以下key做设置：  
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’  
 admin          ：管理密码，不添加时不显示登录页面且无法登录  
@@ -18,6 +20,7 @@ passfile       ：自定义密码文件的名字，可以是'.password'，也可
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本  
 
 # 更新记录：  
+20191012，时间跟大小的排序可以正反多次点击。  
 20191009，在header中Set-Cookie，管理登录从javascript跳改302跳，目录密码不用javascript设置。  
 20190930，可以隐藏管理的登录页面了（请自己记住设置的值）。  
 20190920，在文件列表点击“文件”、“修改时间”、“大小”几个字，可以从小到大排序。  
