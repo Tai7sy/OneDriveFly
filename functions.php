@@ -61,6 +61,68 @@ function time_format($ISO)
     return date('Y-m-d H:i:s',strtotime($ISO . " UTC"));
 }
 
+function config_oauth()
+{
+    global $oauth;
+    if ($oauth['onedrive_ver']==0) {
+        // 0 默认（支持商业版与个人版）
+        // https://portal.azure.com
+        $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
+        $oauth['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
+        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $oauth['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
+    }
+    if ($oauth['onedrive_ver']==1) {
+        // 1 世纪互联
+        // https://portal.azure.cn
+        $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
+        $oauth['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
+        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
+        $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
+        $oauth['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
+    }
+    if ($oauth['onedrive_ver']==2) {
+        // 2 SharePoint
+        // https://portal.azure.com
+        $oauth['client_id'] = '4214169b-2f35-4ffd-95b0-1b05d55448e5';
+        $oauth['client_secret'] = 'iTsch4W@afSadYo.[VLLR[FdfKEri803';
+        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $oauth['scope'] = 'https://microsoft.sharepoint-df.com/MyFiles.Read https://microsoft.sharepoint-df.com/MyFiles.Write offline_access';
+    }
+    $oauth['client_secret'] = urlencode($oauth['client_secret']);
+    $oauth['scope'] = urlencode($oauth['scope']);
+}
+
+function get_refresh_token($code)
+{
+    global $oauth;
+    $ret = json_decode(curl_request(
+        $oauth['oauth_url'] . 'token',
+        'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
+    if (isset($ret['refresh_token'])) {
+        $tmptoken=$ret['refresh_token'];
+        $str = 'split:<br>';
+        for ($i=1;strlen($tmptoken)>0;$i++) {
+            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . substr($tmptoken,0,128) . '</textarea>';
+            $tmptoken=substr($tmptoken,128);
+        }
+        return '<table width=100%><tr>
+        <td>' . $str . '</td>
+        <td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td>
+        </tr></table><br><br>
+        Please add t1-t'.--$i.' to environments
+        <script>
+            var texta=document.getElementsByTagName(\'textarea\');
+            for(i=0;i<texta.length;i++) {
+                texta[i].style.height = texta[i].scrollHeight + \'px\';
+            }
+        </script>';
+    }
+    return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
+}
+
 function get_timezone($timezone = '8')
 {
     $timezones = array( 
@@ -95,7 +157,8 @@ function get_timezone($timezone = '8')
         '10'=>'Pacific/Guam', 
         '11'=>'Asia/Magadan', 
         '12'=>'Asia/Kamchatka'
-    ); 
+    );
+    if ($timezone=='') $timezone = '8';
     return $timezones[$timezone];
 }
 
@@ -113,6 +176,22 @@ function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/ht
 function message($message, $title = 'Message', $statusCode = 200)
 {
     return output('<html><meta charset=utf-8><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
+}
+
+function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
+{
+    for ($page=$page1+1;$page<$maxpage;$page++) {
+        $pageinfocache['nextlink_' . $path . '_page_' . $page] = '';
+    }
+    return $pageinfocache;
+}
+
+function encode_str_replace($str)
+{
+    $str = str_replace('&','&amp;',$str);
+    $str = str_replace('+','%2B',$str);
+    $str = str_replace('#','%23',$str);
+    return $str;
 }
 
 function spurlencode($str,$splite='') {
