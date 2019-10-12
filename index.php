@@ -77,8 +77,7 @@ function main_handler($event, $context)
         $config['list_path'] = $public_path;
         $path = substr($event['path'], strlen('/'.$function_name.'/'));
     } else {
-        $config['base_path'] = '/';
-        if (empty($config['base_path'])) $config['base_path'] = '/';
+        $config['base_path'] = $event['requestContext']['path'];
         $config['list_path'] = $private_path;
         $path = substr($event['path'], strlen($event['requestContext']['path']));
     }
@@ -425,7 +424,7 @@ function guestupload($path)
             // 重命名为MD5加后缀
         $filename = spurlencode($_POST['upload_filename']);
         $ext = strtolower(substr($filename, strrpos($filename, '.')));
-        $tmpfilename = "tmp/".date("Ymd-His")."-".$filename;
+        $tmpfilename = "/tmp/".date("Ymd-His")."-".$filename;
         $tmpfile=fopen($tmpfilename,'wb');
         fwrite($tmpfile,$data);
         fclose($tmpfile);
