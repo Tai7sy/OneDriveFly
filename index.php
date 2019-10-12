@@ -5,17 +5,17 @@
 */
 //有选择地添加以下某些环境变量来做设置：
 /*
-sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’
-admin          ：管理密码，不添加时不显示登录页面且无法登录
-adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏；
-public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；
-           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）
-private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录
-domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。
-imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）
-passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；
-        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。
-t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本
+sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’。  
+admin          ：管理密码，不添加时不显示登录页面且无法登录。  
+adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏。  
+public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；  
+           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）。  
+private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。  
+domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。  
+imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。  
+passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；  
+        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
+t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
 */
 include 'vendor/autoload.php';
 include 'functions.php';
@@ -52,8 +52,7 @@ function main_handler($event, $context)
     unset($_GET);
     unset($_COOKIE);
     unset($_SERVER);
-    date_default_timezone_set('Asia/Shanghai');
-    if ($_COOKIE['timezone']!='8') date_default_timezone_set(get_timezone($_COOKIE['timezone']));
+    date_default_timezone_set(get_timezone($_COOKIE['timezone']));
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -166,68 +165,6 @@ function main_handler($event, $context)
     }
 
     return list_files($path);
-}
-
-function config_oauth()
-{
-    global $oauth;
-    if ($oauth['onedrive_ver']==0) {
-        // 0 默认（支持商业版与个人版）
-        // https://portal.azure.com
-        $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
-        $oauth['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
-    }
-    if ($oauth['onedrive_ver']==1) {
-        // 1 世纪互联
-        // https://portal.azure.cn
-        $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
-        $oauth['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
-        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
-    }
-    if ($oauth['onedrive_ver']==2) {
-        // 2 SharePoint
-        // https://portal.azure.com
-        $oauth['client_id'] = '4214169b-2f35-4ffd-95b0-1b05d55448e5';
-        $oauth['client_secret'] = 'iTsch4W@afSadYo.[VLLR[FdfKEri803';
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://microsoft.sharepoint-df.com/MyFiles.Read https://microsoft.sharepoint-df.com/MyFiles.Write offline_access';
-    }
-    $oauth['client_secret'] = urlencode($oauth['client_secret']);
-    $oauth['scope'] = urlencode($oauth['scope']);
-}
-
-function get_refresh_token($code)
-{
-    global $oauth;
-    $ret = json_decode(curl_request(
-        $oauth['oauth_url'] . 'token',
-        'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
-    if (isset($ret['refresh_token'])) {
-        $tmptoken=$ret['refresh_token'];
-        $str = 'split:<br>';
-        for ($i=1;strlen($tmptoken)>0;$i++) {
-            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . substr($tmptoken,0,128) . '</textarea>';
-            $tmptoken=substr($tmptoken,128);
-        }
-        return '<table width=100%><tr>
-        <td>' . $str . '</td>
-        <td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td>
-        </tr></table><br><br>
-        Please add t1-t'.--$i.' to environments
-        <script>
-            var texta=document.getElementsByTagName(\'textarea\');
-            for(i=0;i<texta.length;i++) {
-                texta[i].style.height = texta[i].scrollHeight + \'px\';
-            }
-        </script>';
-    }
-    return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
 }
 
 function fetch_files($path = '/')
@@ -690,22 +627,6 @@ function get_thumbnails_url($path = '/')
     $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $config['access_token']]), true);
     if (isset($files['url'])) return output($files['url']);
     return output('', 404);
-}
-
-function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
-{
-    for ($page=$page1+1;$page<$maxpage;$page++) {
-        $pageinfocache['nextlink_' . $path . '_page_' . $page] = '';
-    }
-    return $pageinfocache;
-}
-
-function encode_str_replace($str)
-{
-    $str = str_replace('&','&amp;',$str);
-    $str = str_replace('+','%2B',$str);
-    $str = str_replace('#','%23',$str);
-    return $str;
 }
 
 function render_list($path, $files)
@@ -1228,9 +1149,11 @@ function render_list($path, $files)
             sort=0;
             return;
         } else return;
-        if (string=='time' && sort==1) return;
-        if (string=='size' && sort==2) return;
+        // if (string=='time' && sort==1) return;
+        // if (string=='size' && sort==2) return;
+        sort1=sort;
         sortby('a');
+        sort=sort1;
         var a=[];
         for (i = 1; i <= <?php echo $filenum?$filenum:0;?>; i++) {
             a[i]=i;
@@ -1239,8 +1162,16 @@ function render_list($path, $files)
                 for (j = 1; j < i; j++) {
                     if (!!document.getElementById('folder_'+string+a[j])) {
                         var c=false;
-                        if (string=='time') c=(td1.innerText < document.getElementById('folder_'+string+a[j]).innerText);
-                        if (string=='size') c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('folder_'+string+a[j]).innerText));
+                        if (string=='time') if (sort==-1) {
+                            c=(td1.innerText < document.getElementById('folder_'+string+a[j]).innerText);
+                        } else {
+                            c=(td1.innerText > document.getElementById('folder_'+string+a[j]).innerText);
+                        }
+                        if (string=='size') if (sort==2) {
+                            c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('folder_'+string+a[j]).innerText));
+                        } else {
+                            c=(size_reformat(td1.innerText) > size_reformat(document.getElementById('folder_'+string+a[j]).innerText));
+                        }
                         if (c) {
                             document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]));
                             for (k = i; k > j; k--) {
@@ -1257,8 +1188,16 @@ function render_list($path, $files)
                 for (j = 1; j < i; j++) {
                     if (!!document.getElementById('file_'+string+a[j])) {
                         var c=false;
-                        if (string=='time') c=(td1.innerText < document.getElementById('file_'+string+a[j]).innerText);
-                        if (string=='size') c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('file_'+string+a[j]).innerText));
+                        if (string=='time') if (sort==-1) {
+                            c=(td1.innerText < document.getElementById('file_'+string+a[j]).innerText);
+                        } else {
+                            c=(td1.innerText > document.getElementById('file_'+string+a[j]).innerText);
+                        }
+                        if (string=='size') if (sort==2) {
+                            c=(size_reformat(td1.innerText) < size_reformat(document.getElementById('file_'+string+a[j]).innerText));
+                        } else {
+                            c=(size_reformat(td1.innerText) > size_reformat(document.getElementById('file_'+string+a[j]).innerText));
+                        }
                         if (c) {
                             document.getElementById('tr'+i).parentNode.insertBefore(document.getElementById('tr'+i),document.getElementById('tr'+a[j]));
                             for (k = i; k > j; k--) {
@@ -1271,8 +1210,16 @@ function render_list($path, $files)
                 }
             }
         }
-        if (string=='time') sort=1;
-        if (string=='size') sort=2;
+        if (string=='time') if (sort==-1) {
+            sort=1;
+        } else {
+            sort=-1;
+        }
+        if (string=='size') if (sort==2) {
+            sort=-2;
+        } else {
+            sort=2;
+        }
     }
     function size_reformat(str) {
         if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
