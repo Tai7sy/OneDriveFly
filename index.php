@@ -42,9 +42,9 @@ function main_handler($event, $context)
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
     if (strlen(json_encode($event1['body']))>500) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+10) . '...Too Long!...' . substr($event1['body'],-50);
-    echo urldecode(json_encode($event1)) . '
+    echo urldecode(json_encode($event1, JSON_PRETTY_PRINT)) . '
  
-' . urldecode(json_encode($context)) . '
+' . urldecode(json_encode($context, JSON_PRETTY_PRINT)) . '
  
 ';
     unset($event1);
@@ -88,6 +88,8 @@ function main_handler($event, $context)
         $config['list_path'] = spurlencode($config['list_path'],'/') ;
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
+    $config['is_imgup_path'] = 0;
+    if (path_format('/'.path_format(urldecode($config['list_path'].path_format($path))).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') $config['is_imgup_path'] = 1;
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = path_format($config['base_path'] . $path);
     $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
@@ -330,11 +332,13 @@ function list_files($path)
         $cache->save('access_token', $config['access_token'], $ret['expires_in'] - 60);
     }
 
-    if ($config['ajax']&&$_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
+    if ($config['ajax']) {
+        if ($_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
         // 无需登录即可删除.tmp后缀文件
         $tmp = MSAPI('DELETE',path_format(path_format($config['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$access_token);
         return output($tmp['body'],$tmp['stat']);
-    } 
+        }
+    }
     if ($config['admin']) {
         $tmp = adminoperate($path);
         if ($tmp['statusCode'] > 0) {
@@ -344,14 +348,14 @@ function list_files($path)
         }
     } else {
         if ($config['ajax']) return output('请<font color="red">刷新</font>页面后重新登录',401);
-        if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') {
+        if ($config['is_imgup_path']) {
             $html = guestupload($path);
             if ($html!='') return $html;
         }
     }
     $config['ishidden'] = 4;
     $config['ishidden'] = passhidden($path);
-    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) {
+    if ($config['is_imgup_path']&&!$config['admin']) {
         // 是图床目录且不是管理
         $files = json_decode('{"folder":{}}', true);
     } elseif ($config['ishidden']==4) {
@@ -359,7 +363,7 @@ function list_files($path)
     } else {
         if ($_GET['thumbnails']) if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
             return get_thumbnails_url($path);
-        } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',500);
+        } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',400);
         $files = fetch_files($path);
     }
     if (isset($files['file']) && !$is_preview) {
@@ -388,7 +392,7 @@ function adminform($name = '', $pass = '', $path = '')
         $statusCode = 302;
         date_default_timezone_set('UTC');
         $header = [
-            'Set-Cookie' => $name.'='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour')),
+            'Set-Cookie' => $name.'='.$pass.'; path=/; expires='.date(DATE_COOKIE,strtotime('+1hour')),
             'Location' => $path,
             'Content-Type' => 'text/html'
         ];
@@ -403,7 +407,7 @@ function adminform($name = '', $pass = '', $path = '')
 		  <div>
 		    <label>密码</label>
 		    <input name="password1" type="password"/>
-		    <input type="submit" value="查看">
+		    <input type="submit" value="登录">
           </div>
 	  </form>
       </center>
@@ -758,7 +762,7 @@ function render_list($path, $files)
             </div>
             <div class="list-body-container">
 <?php
-    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { ?>
+    if ($config['is_imgup_path']&&!$config['admin']) { ?>
                 <div id="upload_div" style="margin:10px">
                 <center>
                     <form action="" method="POST">
@@ -768,7 +772,7 @@ function render_list($path, $files)
                     </form>
                 <center>
                 </div>
-<?php } else { 
+<?php } else {
         if ($config['ishidden']<4) {
             if (isset($files['error'])) {
                     echo '<div style="margin:8px;">' . $files['error']['message'] . '</div>';
@@ -788,7 +792,7 @@ function render_list($path, $files)
                         echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
 ';
-                    } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
+                    } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
                     //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
                         $DPvideo=$files['@microsoft.graph.downloadUrl'];
                         echo '<div id="video-a0"></div>';
@@ -804,7 +808,7 @@ function render_list($path, $files)
                         echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
 ';
-                    } elseif (in_array($ext, ['txt', 'sh', 'php', 'asp', 'js', 'html', 'c'])) {
+                    } elseif (in_array($ext, ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'])) {
                         $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
 ?>
                         <div id="txt">
@@ -995,7 +999,8 @@ function render_list($path, $files)
     </div>
     <div id="mask" style="position:absolute;display:none;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5"></div>
 <?php
-    if ($config['admin']&&!$_GET['preview']) { ?>
+    if ($config['admin']) {
+        if (!$_GET['preview']) { ?>
     <div>
         <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
             <div style="margin:16px">
@@ -1066,7 +1071,7 @@ function render_list($path, $files)
             </div>
         </div>
     </div>
-<?php
+<?php   }
     } else {
         if (getenv('admin')!='') if (getenv('adminloginpage')=='') { ?>
     <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
@@ -1077,7 +1082,7 @@ function render_list($path, $files)
 	            <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
 		        <label>密码</label>
 		        <input id="login_input" name="password1" type="password"/>
-		        <input type="submit" value="查看">
+		        <input type="submit" value="登录">
 	            </form>
             </center>
         </div>
@@ -1091,7 +1096,6 @@ function render_list($path, $files)
 <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
 <script type="text/javascript">
     var root = '<?php echo $config["base_path"]; ?>';
-    var sort=0;
     function path_format(path) {
         path = '/' + path + '/';
         while (path.indexOf('//') !== -1) {
@@ -1115,6 +1119,89 @@ function render_list($path, $files)
     if ($readme) {
         $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
     }
+<?php
+    if ($_GET['preview']) { //在预览时处理 ?>
+    var $url = document.getElementById('url');
+    if ($url) {
+        $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
+        $url.style.height = $url.scrollHeight + 'px';
+    }
+    var $officearea=document.getElementById('office-a');
+    if ($officearea) {
+        $officearea.style.height = window.innerHeight + 'px';
+    }
+    var $textarea=document.getElementById('txt-a');
+    if ($textarea) {
+        $textarea.style.height = $textarea.scrollHeight + 'px';
+    }
+<?php   if (!!$DPvideo) { ?>
+    function loadResources(type, src, callback) {
+        let script = document.createElement(type);
+        let loaded = false;
+        if (typeof callback === 'function') {
+            script.onload = script.onreadystatechange = () => {
+                if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
+                    script.onload = script.onreadystatechange = null;
+                    loaded = true;
+                    callback();
+                }
+            }
+        }
+        if (type === 'link') {
+            script.href = src;
+            script.rel = 'stylesheet';
+        } else {
+            script.src = src;
+        }
+        document.getElementsByTagName('head')[0].appendChild(script);
+    }
+    function addVideos(videos) {
+        let host = 'https://s0.pstatp.com/cdn/expire-1-M';
+        let unloadedResourceCount = 4;
+        let callback = (() => {
+            return () => {
+                if (!--unloadedResourceCount) {
+                    createDplayers(videos);
+                }
+            };
+        })(unloadedResourceCount, videos);
+        loadResources(
+            'link',
+            host + '/dplayer/1.25.0/DPlayer.min.css',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/dplayer/1.25.0/DPlayer.min.js',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/hls.js/0.12.4/hls.light.min.js',
+            callback
+        );
+        loadResources(
+            'script',
+            host + '/flv.js/1.5.0/flv.min.js',
+            callback
+        );
+    }
+    function createDplayers(videos) {
+        for (i = 0; i < videos.length; i++) {
+            console.log(videos[i]);
+            new DPlayer({
+                container: document.getElementById('video-a' + i),
+                screenshot: true,
+                video: {
+                    url: videos[i]
+                }
+            });
+        }
+    }
+    addVideos(['<?php echo $DPvideo;?>']);
+<?php   } 
+    } else { //不预览，即浏览目录时?>
+    var sort=0;
     function showthumbnails(obj) {
         var files=document.getElementsByName('filelist');
         for ($i=0;$i<files.length;$i++) {
@@ -1122,7 +1209,7 @@ function render_list($path, $files)
             if (str.substr(-1)==' ') str=str.substr(0,str.length-1);
             if (!str) return;
             strarry=str.split('.');
-            ext=strarry[strarry.length-1];
+            ext=strarry[strarry.length-1].toLowerCase();
             images = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
             if (images.indexOf(ext)>-1) get_thumbnails_url(str, files[$i]);
         }
@@ -1229,23 +1316,14 @@ function render_list($path, $files)
         return num;
     }
 <?php
-    /*if ($config['ishidden']==2) { //有密码写目录密码 ?>
-    var $ishidden = '<?php echo $config['ishidden']; ?>';
-    var $hiddenpass = '<?php echo md5($_POST['password1']);?>';
-    if ($ishidden==2) {
-        var expd = new Date();
-        expd.setTime(expd.getTime()+(2*60*60*1000));
-        var expires = "expires="+expd.toGMTString();
-        document.cookie="password="+$hiddenpass+";"+expires;
     }
-<?php }*/
     if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
     var nowtime= new Date();
     var timezone = 0-nowtime.getTimezoneOffset()/60;
     var expd = new Date();
     expd.setTime(expd.getTime()+(2*60*60*1000));
     var expires = "expires="+expd.toGMTString();
-    document.cookie="timezone="+timezone+";"+expires;
+    document.cookie="timezone="+timezone+"; path=/; "+expires;
     if (timezone!='8') {
         alert('Your timezone is '+timezone+', reload local timezone.');
         location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'] . '/' . $path );?>" ;
@@ -1257,94 +1335,13 @@ function render_list($path, $files)
         document.getElementById('nextpageform').submit();
     }
 <?php }
-    if ($_GET['preview']) { //在预览时处理 ?>
-    var $url = document.getElementById('url');
-    if ($url) {
-        $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
-        $url.style.height = $url.scrollHeight + 'px';
-    }
-    var $officearea=document.getElementById('office-a');
-    if ($officearea) {
-        $officearea.style.height = window.innerHeight + 'px';
-    }
-    var $textarea=document.getElementById('txt-a');
-    if ($textarea) {
-        $textarea.style.height = $textarea.scrollHeight + 'px';
-    }
-<?php   if (!!$DPvideo) { ?>
-    function loadResources(type, src, callback) {
-        let script = document.createElement(type);
-        let loaded = false;
-        if (typeof callback === 'function') {
-            script.onload = script.onreadystatechange = () => {
-                if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
-                    script.onload = script.onreadystatechange = null;
-                    loaded = true;
-                    callback();
-                }
-            }
-        }
-        if (type === 'link') {
-            script.href = src;
-            script.rel = 'stylesheet';
-        } else {
-            script.src = src;
-        }
-        document.getElementsByTagName('head')[0].appendChild(script);
-    }
-    function addVideos(videos) {
-        let host = 'https://s0.pstatp.com/cdn/expire-1-M';
-        let unloadedResourceCount = 4;
-        let callback = (() => {
-            return () => {
-                if (!--unloadedResourceCount) {
-                    createDplayers(videos);
-                }
-            };
-        })(unloadedResourceCount, videos);
-        loadResources(
-            'link',
-            host + '/dplayer/1.25.0/DPlayer.min.css',
-            callback
-        );
-        loadResources(
-            'script',
-            host + '/dplayer/1.25.0/DPlayer.min.js',
-            callback
-        );
-        loadResources(
-            'script',
-            host + '/hls.js/0.12.4/hls.light.min.js',
-            callback
-        );
-        loadResources(
-            'script',
-            host + '/flv.js/1.5.0/flv.min.js',
-            callback
-        );
-    }
-    function createDplayers(videos) {
-        for (i = 0; i < videos.length; i++) {
-            console.log(videos[i]);
-            new DPlayer({
-                container: document.getElementById('video-a' + i),
-                screenshot: true,
-                video: {
-                    url: videos[i]
-                }
-            });
-        }
-    }
-    addVideos(['<?php echo $DPvideo;?>']);
-<?php   } 
-    }
     if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
     function operatediv_close(operate) {
         document.getElementById(operate+'_div').style.display='none';
         document.getElementById('mask').style.display='none';
     }
 <?php }
-    if (path_format('/'.path_format(urldecode($config['list_path'].$path)).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!=''&&!$config['admin']) { //当前是图床目录时 ?>
+    if ($config['is_imgup_path']&&!$config['admin']) { //当前是图床目录时 ?>
     function base64upfile() {
         var $file=document.getElementById('upload_file').files[0];
         var $reader = new FileReader();
@@ -1357,11 +1354,8 @@ function render_list($path, $files)
 <?php }
     if ($config['admin']) { //管理登录后 ?>
     function logout() {
-        var expd = new Date();
-        expd.setTime(expd.getTime()-(60*1000));
-        var expires = "expires="+expd.toGMTString();
-        document.cookie="<?php echo $config['function_name'];?>='';"+expires;
-        location.href=location.protocol + "//" + location.host + "<?php echo path_format($config['base_path'].str_replace('&amp;','&',$path));?>";
+        document.cookie = "<?php echo $config['function_name'] . 'admin';?>=; path=/";
+        location.href = location.href;
     }
     function enableedit(obj) {
         document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
