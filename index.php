@@ -13,7 +13,7 @@ public_path    ：使用API长链接访问时，显示网盘文件的路径，�
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。  
 domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。  
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。  
-passfile       ：自定义密码文件的名字，可以是'.password'，也可以是'aaaa.txt'等等；  
+passfile       ：自定义密码文件的名字，可以是'pppppp'，也可以是'aaaa.txt'等等；  
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
 */
@@ -835,11 +835,9 @@ function render_list($path, $files)
                     $filenum = $_POST['filenum'];
                     if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page']-1)*200;
                     $readme = false; ?>
-                <div id="thumbnailsbutton" style="position:absolute;"><input type="button" value="图片缩略图" onclick="showthumbnails(this);"></div>
                 <table class="list-table" id="list-table">
                     <tr id="tr0">
-                        <!--<th class="updated_at" width="5%">序号</th>-->
-                        <th class="file" width="60%" onclick="sortby('a');">文件</th>
+                        <th class="file" onclick="sortby('a');">文件&nbsp;&nbsp;&nbsp;<button onclick="showthumbnails(this);">图片缩略</button></th>
                         <th class="updated_at" width="25%" onclick="sortby('time');">修改时间</th>
                         <th class="size" width="15%" onclick="sortby('size');">大小</th>
                     </tr>
@@ -850,12 +848,9 @@ function render_list($path, $files)
                         if (isset($file['folder'])) { 
                             $filenum++; ?>
                     <tr data-to id="tr<?php echo $filenum;?>">
-                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
                         <td class="file">
                             <ion-icon name="folder"></ion-icon>
-                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&','&amp;', $file['name']);?></a>
-<?php                       if ($config['admin']) {?>
-                            &nbsp;&nbsp;&nbsp;
+<?php                       if ($config['admin']) { ?>
                             <li class="operate">管理
                             <ul>
                                 <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);">加密</a></li>
@@ -863,14 +858,16 @@ function render_list($path, $files)
                                 <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
                                 <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
                             </ul>
-                            </li>
-<?php                       }?>
+                            </li>&nbsp;&nbsp;&nbsp;
+<?php                       } ?>
+                            <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&','&amp;', $file['name']);?></a>
                         </td>
                         <td class="updated_at" id="folder_time<?php echo $filenum;?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
                         <td class="size" id="folder_size<?php echo $filenum;?>"><?php echo size_format($file['size']); ?></td>
                     </tr>
 <?php                   }
                     }
+                    // if ($filenum) echo '<tr data-to></tr>';
                     foreach ($files['children'] as $file) {
                         // Files
                         if (isset($file['file'])) {
@@ -882,21 +879,19 @@ function render_list($path, $files)
                                 }
                                 $filenum++; ?>
                     <tr data-to id="tr<?php echo $filenum;?>">
-                        <!--<td class="updated_at"><?php echo $filenum;?></td>-->
                         <td class="file">
                             <ion-icon name="document"></ion-icon>
-                            <a id="file_a<?php echo $filenum;?>" name="filelist" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank><?php echo str_replace('&','&amp;', $file['name']); ?></a>
-                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>"><ion-icon name="download"></ion-icon></a>
-<?php                           if ($config['admin']) {?>
-                            &nbsp;&nbsp;&nbsp;
+<?php                           if ($config['admin']) { ?>
                             <li class="operate">管理
                             <ul>
                                 <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
                                 <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
                                 <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
                             </ul>
-                            </li>
-<?php                           }?>
+                            </li>&nbsp;&nbsp;&nbsp;
+<?php                           } ?>
+                            <a id="file_a<?php echo $filenum;?>" name="filelist" href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank><?php echo str_replace('&','&amp;', $file['name']); ?></a>
+                            <a href="<?php echo path_format($config['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>"><ion-icon name="download"></ion-icon></a>
                         </td>
                         <td class="updated_at" id="file_time<?php echo $filenum;?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
                         <td class="size" id="file_size<?php echo $filenum;?>"><?php echo size_format($file['size']); ?></td>
@@ -1545,6 +1540,10 @@ function render_list($path, $files)
     function preup() {
         uploadbuttonhide();
         var files=document.getElementById('upload_file').files;
+        if (files.length<1) {
+            uploadbuttonshow();
+            return;
+        };
         var table1=document.createElement('table');
         document.getElementById('upload_div').appendChild(table1);
         table1.setAttribute('class','list-table');
