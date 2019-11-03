@@ -96,36 +96,43 @@ function get_refresh_token($code)
         'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
     if (isset($ret['refresh_token'])) {
         $tmptoken=$ret['refresh_token'];
-        $str = 'refresh_token :<br>';
+        $str = '
+        refresh_token :<br>';
         for ($i=1;strlen($tmptoken)>0;$i++) {
             $t['t' . $i] = substr($tmptoken,0,128);
-            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . $t['t' . $i] . '</textarea><br><br>';
+            $str .= '
+            t' . $i . ':<textarea readonly style="width: 95%">' . $t['t' . $i] . '</textarea><br><br>';
             $tmptoken=substr($tmptoken,128);
         }
-        if (getenv('serviceId')!='' && getenv('secretKey')!='') {
-            updataEnvironment($config['function_name'], $config['Region'], $t);
-            $url = path_format($_SERVER['PHP_SELF'] . '/');
-            return output('', 302, [ 'Location' => $url ]);
-        } else return $str . '
-        Please add t1-t'.--$i.' to environments
+        $str .= '
+        Please add t1-t'.--$i.' to environments or wait 5s jump to index page.
         <script>
             var texta=document.getElementsByTagName(\'textarea\');
             for(i=0;i<texta.length;i++) {
                 texta[i].style.height = texta[i].scrollHeight + \'px\';
             }
         </script>';
+        if (getenv('SecretId')!='' && getenv('SecretKey')!='') {
+            updataEnvironment($config['function_name'], $config['Region'], $t);
+            $url = path_format($_SERVER['PHP_SELF'] . '/');
+            echo $url;
+            //return output('', 302, [ 'Location' => $url ]);
+            //$str .= '            location.href = "' . $url . '";';
+            $str .= '
+            <meta http-equiv="refresh" content="5;URL=' . $url . '">';
+        }
+        return message($str);
     }
-    return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
+    return message('<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>', 500);
 }
 
 function jump_MS_login()
 {
     global $oauth;
-    $html = 'Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create serviceId & secretKey</a> and add them in the environments First!<br>
-    Then set the <code>refresh_token</code> in environments<br>
-    <a href="" id="a1">Get a refresh_token</a>';
-    if (getenv('serviceId')!='' && getenv('secretKey')!='') {
+    $html = 'Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>';
+    if (getenv('SecretId')!='' && getenv('SecretKey')!='') {
         $html .= '
+    <a href="" id="a1">Get a refresh_token</a>
     <script>
         url=window.location.href;
         if (url.substr(-1)!="/") url+="/";
