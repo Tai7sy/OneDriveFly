@@ -82,15 +82,7 @@ function config_oauth()
         $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
         $oauth['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
     }
-    if ($oauth['onedrive_ver']==2) {
-        // 2 SharePoint
-        // https://portal.azure.com
-        $oauth['client_id'] = '4214169b-2f35-4ffd-95b0-1b05d55448e5';
-        $oauth['client_secret'] = 'iTsch4W@afSadYo.[VLLR[FdfKEri803';
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://microsoft.sharepoint-df.com/MyFiles.Read https://microsoft.sharepoint-df.com/MyFiles.Write offline_access';
-    }
+
     $oauth['client_secret'] = urlencode($oauth['client_secret']);
     $oauth['scope'] = urlencode($oauth['scope']);
 }
@@ -98,20 +90,23 @@ function config_oauth()
 function get_refresh_token($code)
 {
     global $oauth;
+    global $config;
     $ret = json_decode(curl_request(
         $oauth['oauth_url'] . 'token',
         'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $code), true);
     if (isset($ret['refresh_token'])) {
         $tmptoken=$ret['refresh_token'];
-        $str = 'split:<br>';
+        $str = 'refresh_token :<br>';
         for ($i=1;strlen($tmptoken)>0;$i++) {
-            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . substr($tmptoken,0,128) . '</textarea>';
+            $t['t' . $i] = substr($tmptoken,0,128);
+            $str .= 't' . $i . ':<textarea readonly style="width: 95%">' . $t['t' . $i] . '</textarea><br><br>';
             $tmptoken=substr($tmptoken,128);
         }
-        return '<table width=100%><tr>
-        <td>' . $str . '</td>
-        <td width=50%>refresh_token:<textarea readonly style="width: 100%;">' . $ret['refresh_token'] . '</textarea></td>
-        </tr></table><br><br>
+        if (getenv('serviceId')!='' && getenv('secretKey')!='') {
+            updataEnvironment($config['function_name'], $config['Region'], $t);
+            $url = path_format($_SERVER['PHP_SELF'] . '/');
+            return output('', 302, [ 'Location' => $url ]);
+        } else return $str . '
         Please add t1-t'.--$i.' to environments
         <script>
             var texta=document.getElementsByTagName(\'textarea\');
@@ -121,6 +116,27 @@ function get_refresh_token($code)
         </script>';
     }
     return '<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>';
+}
+
+function jump_MS_login()
+{
+    global $oauth;
+    $html = 'Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create serviceId & secretKey</a> and add them in the environments First!<br>
+    Then set the <code>refresh_token</code> in environments<br>
+    <a href="" id="a1">Get a refresh_token</a>';
+    if (getenv('serviceId')!='' && getenv('secretKey')!='') {
+        $html .= '
+    <script>
+        url=window.location.href;
+        if (url.substr(-1)!="/") url+="/";
+        url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
+        document.getElementById(\'a1\').href=url;
+        //window.open(url,"_blank");
+        location.href = url;
+    </script>
+    ';
+    }
+    return $html;
 }
 
 function get_timezone($timezone = '8')
