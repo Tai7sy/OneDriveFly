@@ -15,7 +15,7 @@ function getfunctioninfo($function_name, $Region)
     $url .= '&Version=2018-04-16'; // need
     //echo $url;
 
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('secretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
 }
@@ -65,7 +65,7 @@ function updataEnvironment($function_name, $Region, $Envs)
     $tmpStr = $meth . $host . '/?' . $data;
     echo $data;
 
-    $signStr = base64_encode(hash_hmac('sha1', $tmpStr, getenv('secretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $tmpStr, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return file_get_contents('https://'.$host . '/?' . $data.'&Signature='.urlencode($signStr));
     //return curl_request('https://'.$host, $data.'&Signature='.urlencode($signStr));
@@ -88,7 +88,7 @@ function updataProgram($function_name, $Region)
     $updataurl .= '&Version=2018-04-16';
     //echo $updataurl;
 
-    $signStr = base64_encode(hash_hmac('sha1', $updatameth.$updataurl, getenv('secretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $updatameth.$updataurl, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return file_get_contents('https://'.$updataurl.'&Signature='.urlencode($signStr));
 }
