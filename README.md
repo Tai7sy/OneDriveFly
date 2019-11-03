@@ -3,7 +3,7 @@ OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 最新更新：(https://github.com/qkqpttgf/OneDrive_SCF)  
 
 # 安装
-安装前，在环境变量里添加SecretId与SecretKey，  
+安装前，在环境变量里添加SecretId与SecretKey（在 https://console.cloud.tencent.com/cam/capi 这里生成），  
 获得token后，程序会自动按128字节分开，添加到环境变量的t1-t7(个人帐户只到t4)，  
 
 安装好后，可以在环境变量添加以下key做设置：  
