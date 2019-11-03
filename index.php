@@ -123,7 +123,7 @@ function main_handler($event, $context)
     if (!$oauth['refresh_token']) $oauth['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
     if (!$oauth['refresh_token']) {
         if ($_GET['authorization_code'] && isset($_GET['code'])) {
-            return message(get_refresh_token($_GET['code']));
+            return get_refresh_token($_GET['code']);
         }
         return message(jump_MS_login(), 'Error', 500);
     }
@@ -153,14 +153,14 @@ function main_handler($event, $context)
         $config['admin']=0;
     }
     $config['needUpdate'] = 0;
-    if ($config['admin'] && getenv('SecretId')!='' && getenv('secretKey')!='') {
+    if ($config['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         $current_ver = file_get_contents(__DIR__ . '/version');
         $current_ver = substr($current_ver, strpos($current_ver, '.')+1);
         $github_ver = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
         $github_ver = substr($github_ver, strpos($github_ver, '.')+1);
         if ($current_ver != $github_ver) $config['needUpdate'] = 1;
     }
-    if ($_GET['setup']) if ($config['admin'] && getenv('SecretId')!='' && getenv('secretKey')!='') {
+    if ($_GET['setup']) if ($config['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         // 设置，对环境变量操作
         return EnvOpt($config['function_name'], $config['Region'], $config['needUpdate']);
     } else {
@@ -642,7 +642,7 @@ function get_thumbnails_url($path = '/')
 
 function EnvOpt($function_name, $Region, $needUpdate = 0)
 {
-    //$constEnv = array('SecretId', 'secretKey');
+    //$constEnv = array('SecretId', 'SecretKey');
     $constEnv = array(
         '管理密码，不添加时不显示登录页面且无法登录。' => 'admin',
         '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是此设置的值。' => 'adminloginpage',
@@ -660,7 +660,7 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
         //'token 6' => 't6',
         //'token 7' => 't7',
         //'SCF API 的 ID' => 'SecretId',
-        //'SCF API 的 KEY' => 'secretKey',
+        //'SCF API 的 KEY' => 'SecretKey',
         //'SCF程序所在地区' => 'Region',
     );
     if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region);
@@ -678,7 +678,7 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
     if ($needUpdate) {
         $html = '
         <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看更新</a>';
-        if (getenv('SecretId')!='' && getenv('secretKey')!='') $html .= '
+        if (getenv('SecretId')!='' && getenv('SecretKey')!='') $html .= '
         <form action="" method="post">
             <input type="submit" name="updateProgram" value="一键更新">
         </form>';
@@ -829,7 +829,7 @@ function render_list($path, $files)
                     <li><a onclick="showdiv(event,'create','');">新建</a></li>
                     <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
 <?php       if (!$_GET['preview']) { ?>
-                    <li><a <?php if (getenv('SecretId')!='' && getenv('secretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和secretKey！');"<?php } ?>>设置</a></li>
+                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和secretKey！');"<?php } ?>>设置</a></li>
 <?php       } ?>
                     </ul></li>
 <?php   }
