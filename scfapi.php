@@ -22,6 +22,7 @@ function getfunctioninfo($function_name, $Region)
 
 function updataEnvironment($function_name, $Region, $Envs)
 {
+    //print_r($Envs);
     //json_decode($a,true)['Response']['Environment']['Variables'][0]['Key']
     $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
     foreach ($tmp as $tmp1) {
@@ -34,6 +35,7 @@ function updataEnvironment($function_name, $Region, $Envs)
     //echo json_encode($tmp_env);
     $tmp_env = array_filter($tmp_env); // 清除空值
     $tmp_env['Region'] = $Region;
+    ksort($tmp_env);
     $tmp_env1 = [];
     $i = 0;
     foreach ($tmp_env as $key1 => $value1) {
@@ -63,7 +65,7 @@ function updataEnvironment($function_name, $Region, $Envs)
     $data .= '&Token=';
     $data .= '&Version=2018-04-16'; // need
     $tmpStr = $meth . $host . '/?' . $data;
-    echo $data;
+    //echo $data;
 
     $signStr = base64_encode(hash_hmac('sha1', $tmpStr, getenv('SecretKey'), true));
     //echo urlencode($signStr);
