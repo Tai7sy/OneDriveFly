@@ -19,6 +19,7 @@ t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量�
 */
 include 'vendor/autoload.php';
 include 'functions.php';
+include 'scfapi.php';
 global $oauth;
 global $config;
 $oauth='';
@@ -41,7 +42,7 @@ function main_handler($event, $context)
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
-    if (strlen(json_encode($event1['body']))>500) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+10) . '...Too Long!...' . substr($event1['body'],-50);
+    //if (strlen(json_encode($event1['body']))>500) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+30) . '...Too Long!...' . substr($event1['body'],-50);
     echo urldecode(json_encode($event1, JSON_PRETTY_PRINT)) . '
  
 ' . urldecode(json_encode($context, JSON_PRETTY_PRINT)) . '
@@ -52,7 +53,6 @@ function main_handler($event, $context)
     unset($_GET);
     unset($_COOKIE);
     unset($_SERVER);
-    date_default_timezone_set(get_timezone($_COOKIE['timezone']));
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -75,10 +75,13 @@ function main_handler($event, $context)
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
         $config['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
         $config['list_path'] = $public_path;
+        $config['Region'] = substr($host_name, strpos($host_name, '.')+1);
+        $config['Region'] = substr($config['Region'], 0, strpos($config['Region'], '.'));
         $path = substr($event['path'], strlen('/'.$function_name.'/'));
     } else {
         $config['base_path'] = $event['requestContext']['path'];
         $config['list_path'] = $private_path;
+        $config['Region'] = getenv('Region');
         $path = substr($event['path'], strlen($event['requestContext']['path']));
     }
     if (substr($path,-1)=='/') $path=substr($path,0,-1);
@@ -119,20 +122,10 @@ function main_handler($event, $context)
     }
     if (!$oauth['refresh_token']) $oauth['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
     if (!$oauth['refresh_token']) {
-        if ($path=='authorization_code' && isset($_GET['code'])) {
+        if ($_GET['authorization_code'] && isset($_GET['code'])) {
             return message(get_refresh_token($_GET['code']));
         }
-        return message('Please set the <code>refresh_token</code> in environments<br>
-    <a href="" id="a1">Get a refresh_token</a>
-    <br><code>allow javascript</code>
-    <script>
-        url=window.location.href;
-        if (url.substr(-1)!="/") url+="/";
-        url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
-        document.getElementById(\'a1\').href=url;
-        window.open(url,"_blank");
-    </script>
-    ', 'Error', 500);
+        return message(jump_MS_login(), 'Error', 500);
     }
 
     if (getenv('adminloginpage')=='') {
@@ -158,6 +151,21 @@ function main_handler($event, $context)
         $config['admin']=1;
     } else {
         $config['admin']=0;
+    }
+    $config['needUpdate'] = 0;
+    if ($config['admin'] && getenv('SecretId')!='' && getenv('secretKey')!='') {
+        $current_ver = file_get_contents(__DIR__ . '/version');
+        $current_ver = substr($current_ver, strpos($current_ver, '.')+1);
+        $github_ver = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
+        $github_ver = substr($github_ver, strpos($github_ver, '.')+1);
+        if ($current_ver != $github_ver) $config['needUpdate'] = 1;
+    }
+    if ($_GET['setup']) if ($config['admin'] && getenv('SecretId')!='' && getenv('secretKey')!='') {
+        // 设置，对环境变量操作
+        return EnvOpt($config['function_name'], $config['Region'], $config['needUpdate']);
+    } else {
+        $url = path_format($_SERVER['PHP_SELF'] . '/');
+        return output('<script>alert(\'先在环境变量设置SecretId和secretKey！\');</script>', 302, [ 'Location' => $url ]);
     }
 
     $config['ajax']=0;
@@ -632,6 +640,67 @@ function get_thumbnails_url($path = '/')
     return output('', 404);
 }
 
+function EnvOpt($function_name, $Region, $needUpdate = 0)
+{
+    //$constEnv = array('SecretId', 'secretKey');
+    $constEnv = array(
+        '管理密码，不添加时不显示登录页面且无法登录。' => 'admin',
+        '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是此设置的值。' => 'adminloginpage',
+        '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。' => 'domain_path',
+        '设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。' => 'imgup_path',
+        '自定义密码文件的名字，可以是\'pppppp\'，也可以是\'aaaa.txt\'等等；列目录时不会显示，只有知道密码才能查看或下载此文件。密码是这个文件的内容，可以空格、可以中文；' => 'passfile',
+        '使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。' => 'private_path',
+        '使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）。' => 'public_path',
+        '网站的名称，不添加会显示为‘请在环境变量添加sitename’。' => 'sitename',
+        //'token 1' => 't1',
+        //'token 2' => 't2',
+        //'token 3' => 't3',
+        //'token 4' => 't4',
+        //'token 5' => 't5',
+        //'token 6' => 't6',
+        //'token 7' => 't7',
+        //'SCF API 的 ID' => 'SecretId',
+        //'SCF API 的 KEY' => 'secretKey',
+        //'SCF程序所在地区' => 'Region',
+    );
+    if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region);
+    if ($_POST['submit1']) {
+        foreach ($_POST as $k => $v) {
+            if (in_array($k, $constEnv)) {
+                $tmp[$k] = $v;
+            } 
+        }
+        echo 'updataEnvironment' . updataEnvironment($function_name, $Region, $tmp);
+    }
+
+    $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
+    foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
+    if ($needUpdate) {
+        $html = '
+        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看更新</a>';
+        if (getenv('SecretId')!='' && getenv('secretKey')!='') $html .= '
+        <form action="" method="post">
+            <input type="submit" name="updateProgram" value="一键更新">
+        </form>';
+    } else {
+        $html = '';
+    }
+    $html .= '
+    <form action="" method="post">
+    <table border=1 width=100%>';
+    foreach ($constEnv as $dis => $key) {
+        $html .= '
+        <tr>
+            <td><label>' . $key . '</label></td>
+            <td width=100%><input type="text" name="' . $key .'" value="' . $tmp_env[$key] . '" placeholder="' . $dis . '" style="width:100%"></td>
+        </tr>';
+    }
+    $html .= '</table>
+    <input type="submit" name="submit1" value="修改">
+    </form>';
+    return message($html);
+}
+
 function render_list($path, $files)
 {
     global $config;
@@ -664,6 +733,7 @@ function render_list($path, $files)
     $p_path=str_replace('&amp;','&',$p_path);
     $pretitle = str_replace('%23','#',$pretitle);
     $statusCode=200;
+    date_default_timezone_set(get_timezone($_COOKIE['timezone']));
 ?>
 <!DOCTYPE html>
 <html lang="zh-cn">
@@ -720,8 +790,11 @@ function render_list($path, $files)
 </head>
 
 <body>
+<?php if ($config['needUpdate']) { ?>
+    <div style='position:absolute;'><font color='red'>可以升级<br>从右边管理进入设置后升级</font></div>
+<?php } ?>
     <h1 class="title">
-        <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename'] ;?></a>
+        <a href="<?php echo $config['base_path']; ?>"><?php echo $config['sitename']; ?></a>
     </h1>
     <div class="list-wrapper">
         <div class="list-container">
@@ -755,6 +828,9 @@ function render_list($path, $files)
 <?php   if (isset($files['folder'])) { ?>
                     <li><a onclick="showdiv(event,'create','');">新建</a></li>
                     <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
+<?php       if (!$_GET['preview']) { ?>
+                    <li><a <?php if (getenv('SecretId')!='' && getenv('secretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和secretKey！');"<?php } ?>>设置</a></li>
+<?php       } ?>
                     </ul></li>
 <?php   }
     } ?>
