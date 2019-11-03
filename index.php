@@ -2,9 +2,17 @@
 /*
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
-*/
-//有选择地添加以下某些环境变量来做设置：
-/*
+
+必填环境变量：  
+SecretId       ：腾讯云API 的 SecretId。  
+SecretKey      ：腾讯云API 的 SecretKey。  
+
+安装时程序自动填写：  
+Region         ：SCF程序所在地区。  
+Onedrive_ver   ：Onedrive版本  
+t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
+
+有选择地添加以下某些环境变量来做设置：  
 sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’。  
 admin          ：管理密码，不添加时不显示登录页面且无法登录。  
 adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏。  
@@ -15,8 +23,8 @@ domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优�
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。  
 passfile       ：自定义密码文件的名字，可以是'pppppp'，也可以是'aaaa.txt'等等；  
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
-t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
 */
+
 include 'vendor/autoload.php';
 include 'functions.php';
 include 'scfapi.php';
@@ -25,9 +33,7 @@ global $config;
 $oauth='';
 $config='';
 $oauth = [
-    'onedrive_ver' => 0, // 0:默认（支持商业版与个人版） 1:世纪互联
     'redirect_uri' => 'https://scfonedrive.github.io',
-    'refresh_token' => '',
 ];
 $config = [
     'sitename' => getenv('sitename'),
@@ -53,6 +59,8 @@ function main_handler($event, $context)
     unset($_GET);
     unset($_COOKIE);
     unset($_SERVER);
+    config_oauth();
+
     $function_name = $context['function_name'];
     $config['function_name'] = $function_name;
     $host_name = $event['headers']['host'];
@@ -116,17 +124,8 @@ function main_handler($event, $context)
         $config['current_url'] = '';
     }
 
-    config_oauth();
-    if (!$config['base_path']) {
-        return message('Missing env <code>base_path</code>');
-    }
     if (!$oauth['refresh_token']) $oauth['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
-    if (!$oauth['refresh_token']) {
-        if ($_GET['authorization_code'] && isset($_GET['code'])) {
-            return get_refresh_token($_GET['code']);
-        }
-        return message(jump_MS_login(), 'Error', 500);
-    }
+    if (!$oauth['refresh_token']) return get_refresh_token();
 
     if (getenv('adminloginpage')=='') {
         $adminloginpage = 'admin';
@@ -662,6 +661,7 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
         //'SCF API 的 ID' => 'SecretId',
         //'SCF API 的 KEY' => 'SecretKey',
         //'SCF程序所在地区' => 'Region',
+        //'Onedrive版本' => 'Onedrive_ver',
     );
     if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region);
     if ($_POST['submit1']) {
