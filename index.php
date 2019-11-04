@@ -670,21 +670,22 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
                 $tmp[$k] = $v;
             } 
         }
-        echo 'updataEnvironment' . updataEnvironment($function_name, $Region, $tmp);
+        updataEnvironment($function_name, $Region, $tmp);
     }
 
-    $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
-    foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
+    $html = '<title>设置</title>';
     if ($needUpdate) {
-        $html = '
-        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看更新</a>';
-        if (getenv('SecretId')!='' && getenv('SecretKey')!='') $html .= '
+        $html .= '
         <form action="" method="post">
             <input type="submit" name="updateProgram" value="一键更新">
         </form>';
     } else {
-        $html = '';
+        $html .= '不需要更新';
     }
+    $html .= '
+        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看github</a>';
+    $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
+    foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
     $html .= '
     <form action="" method="post">
     <table border=1 width=100%>';
