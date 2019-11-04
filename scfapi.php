@@ -4,17 +4,22 @@
 function getfunctioninfo($function_name, $Region)
 {
     $meth = 'GET';
-    $url = 'scf.tencentcloudapi.com/'; // need
-    $url .= '?Action=GetFunction'; // need
-    $url .= '&FunctionName='.$function_name; // need
-    $url .= '&Nonce='.time(); // need
-    $url .= '&Region='.$Region; // need
-    $url .= '&SecretId='.getenv('SecretId'); // need
-    $url .= '&Timestamp='.time(); // need
-    $url .= '&Token=';
-    $url .= '&Version=2018-04-16'; // need
-    //echo $url;
-
+    $host = 'scf.tencentcloudapi.com';
+    $tmpdata['Action'] = 'GetFunction';
+    $tmpdata['FunctionName'] = $function_name;
+    $tmpdata['Nonce'] = time();
+    $tmpdata['Region'] = $Region;
+    $tmpdata['SecretId'] = getenv('SecretId');
+    $tmpdata['Timestamp'] = time();
+    $tmpdata['Token'] = '';
+    $tmpdata['Version'] = '2018-04-16';
+    ksort($tmpdata);
+    foreach ($tmpdata as $key1 => $value1) {
+        $data .= '&' . $key1 . '=' . $value1;
+    }
+    $data = substr($data, 1); // 去掉第一个&
+    $url = $host.'/?'.$data;
+    //echo $meth.$url;
     $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
@@ -28,49 +33,40 @@ function updataEnvironment($function_name, $Region, $Envs)
     foreach ($tmp as $tmp1) {
         $tmp_env[$tmp1['Key']] = $tmp1['Value'];
     }
-    //echo json_encode($Envs);
     foreach ($Envs as $key1 => $value1) {
         $tmp_env[$key1] = $value1;
     }
-    //echo json_encode($tmp_env);
     $tmp_env = array_filter($tmp_env); // 清除空值
     $tmp_env['Region'] = $Region;
     ksort($tmp_env);
-    $tmp_env1 = [];
+
     $i = 0;
     foreach ($tmp_env as $key1 => $value1) {
         //array_push($Environment['Variables'],[ 'Key' => $key1, 'Value' => $value1 ]);
-        $tmp_env1['Environment.Variables.'.$i.'.Key'] = $key1;
-        $tmp_env1['Environment.Variables.'.$i.'.Value'] = $value1;
+        $tmpdata['Environment.Variables.'.$i.'.Key'] = $key1;
+        $tmpdata['Environment.Variables.'.$i.'.Value'] = $value1;
         $i++;
     }
-    ksort($tmp_env1);
-    $Environment = '';
-    foreach ($tmp_env1 as $key1 => $value1) {
-        $Environment .= '&' . $key1 . '=' . $value1;
-    }
-    //echo $Environment;
-    //$Environment = json_encode($Environment);
-
     $meth = 'GET';
-    $host = 'scf.tencentcloudapi.com'; // need
-    $data = 'Action=UpdateFunctionConfiguration'; // need
-    //$data .= '&Environment='.json_encode($Environment);
-    $data .= $Environment;
-    $data .= '&FunctionName='.$function_name; // need
-    $data .= '&Nonce='.time(); // need
-    $data .= '&Region='.$Region; // need
-    $data .= '&SecretId='.getenv('SecretId'); // need
-    $data .= '&Timestamp='.time(); // need
-    $data .= '&Token=';
-    $data .= '&Version=2018-04-16'; // need
-    $tmpStr = $meth . $host . '/?' . $data;
-    //echo $data;
+    $host = 'scf.tencentcloudapi.com';
+    $tmpdata['Action'] = 'UpdateFunctionConfiguration';
+    $tmpdata['FunctionName'] = $function_name;
+    $tmpdata['Nonce'] = time();
+    $tmpdata['Region'] = $Region;
+    $tmpdata['SecretId'] = getenv('SecretId');
+    $tmpdata['Timestamp'] = time();
+    $tmpdata['Token'] = '';
+    $tmpdata['Version'] = '2018-04-16';
+    ksort($tmpdata);
+    foreach ($tmpdata as $key1 => $value1) {
+        $data .= '&' . $key1 . '=' . $value1;
+    }
+    $data = substr($data, 1); // 去掉第一个&
+    $url = $host.'/?'.$data;
 
-    $signStr = base64_encode(hash_hmac('sha1', $tmpStr, getenv('SecretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return file_get_contents('https://'.$host . '/?' . $data.'&Signature='.urlencode($signStr));
-    //return curl_request('https://'.$host, $data.'&Signature='.urlencode($signStr));
+    return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
 }
 
 function updataProgram($function_name, $Region)
