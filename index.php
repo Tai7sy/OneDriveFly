@@ -151,9 +151,16 @@ function main_handler($event, $context)
     if ($config['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         $current_ver = file_get_contents(__DIR__ . '/version');
         $current_ver = substr($current_ver, strpos($current_ver, '.')+1);
-        $github_ver = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
-        $github_ver = substr($github_ver, strpos($github_ver, '.')+1);
-        if ($current_ver != $github_ver) $config['needUpdate'] = 1;
+        $current_ver = explode(urldecode('%0A'),$current_ver)[0];
+        $current_ver = explode(urldecode('%0D'),$current_ver)[0];
+        $github_version = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
+        $github_ver = substr($github_version, strpos($github_version, '.')+1);
+        $github_ver = explode(urldecode('%0A'),$github_ver)[0];
+        $github_ver = explode(urldecode('%0D'),$github_ver)[0];
+        if ($current_ver != $github_ver) {
+            $config['needUpdate'] = 1;
+            $_SERVER['github_version'] = $github_version;
+        }
     }
     if ($_GET['setup']) if ($config['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         // 设置，对环境变量操作
@@ -670,16 +677,16 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
     }
 
     $html = '<title>设置</title>';
+    $html .= '
+        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看github</a><br>';
     if ($needUpdate) {
-        $html .= '
+        $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
         <form action="" method="post">
             <input type="submit" name="updateProgram" value="一键更新">
         </form>';
     } else {
         $html .= '不需要更新';
     }
-    $html .= '
-        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看github</a>';
     $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
     foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
     $html .= '
