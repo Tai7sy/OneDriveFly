@@ -263,12 +263,11 @@ function spurlencode($str,$splite='') {
 
 function passhidden($path)
 {
-    global $config;
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&amp;','&', path_format(urldecode($path)));
-    if ($config['passfile'] != '') {
+    if (getenv('passfile') != '') {
         if (substr($path,-1)=='/') $path=substr($path,0,-1);
-        $hiddenpass=gethiddenpass($path,$config['passfile']);
+        $hiddenpass=gethiddenpass($path,getenv('passfile'));
         if ($hiddenpass != '') {
             return comppass($hiddenpass);
         } else {
