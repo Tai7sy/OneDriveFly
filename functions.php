@@ -91,13 +91,12 @@ function get_refresh_token()
 {
     global $oauth;
     global $config;
+
+    if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
     $url = path_format($_SERVER['PHP_SELF'] . '/');
 
     if ($_GET['authorization_code'] && isset($_GET['code'])) {
-            //return get_refresh_token($_GET['code']);
-        $ret = json_decode(curl_request(
-        $oauth['oauth_url'] . 'token',
-        'client_id='. $oauth['client_id'] .'&client_secret='. $oauth['client_secret'] .'&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri='. $oauth['redirect_uri'] .'&code=' . $_GET['code']), true);
+        $ret = json_decode(curl_request($oauth['oauth_url'] . 'token', 'client_id=' . $oauth['client_id'] .'&client_secret=' . $oauth['client_secret'] . '&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri=' . $oauth['redirect_uri'] .'&code=' . $_GET['code']), true);
         if (isset($ret['refresh_token'])) {
             $tmptoken=$ret['refresh_token'];
             $str = '
@@ -128,13 +127,10 @@ function get_refresh_token()
         return message('<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>', 500);
     }
 
-    if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
-
     if ($_GET['install2']) {
         if (getenv('Onedrive_ver')=='MS' || getenv('Onedrive_ver')=='CN') {
-            //echo getenv('Onedrive_ver');
             return message('
-    go to OFFICE <a href="" id="a1">Get a refresh_token</a>
+    Go to OFFICE <a href="" id="a1">Get a refresh_token</a>
     <script>
         url=location.protocol + "//" + location.host + "'.$url.'";
         url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
@@ -145,28 +141,38 @@ function get_refresh_token()
     ', 'Wait 1s', 201);
         }
     }
-    if ($_GET['install1'])  {
+
+    if ($_GET['install1']) {
         echo $_POST['Onedrive_ver'];
         if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
-            updataEnvironment($config['function_name'], $config['Region'], $tmp);
-            $html = '确认Onedrive版本<br>
-            ';
-            if ($_POST['Onedrive_ver']=='MS') $html .= '为国际版（支持商业版与个人版）';
-            if ($_POST['Onedrive_ver']=='CN') $html .= '为国内世纪互联版';
-            $html .= '
-            <meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
-                //return output('', 302, [ 'Location' => $url ]);
-            return message($html, '稍等3秒', 201);
+            $response = json_decode(updataEnvironment($config['function_name'], $config['Region'], $tmp), true)['Response'];
+            //getfunctioninfo($config['function_name'], $config['Region']);
+            sleep(2);
+            if (getenv('Onedrive_ver')=='MS') {
+                $title = '国际版（支持商业版与个人版）';
+            } elseif (getenv('Onedrive_ver')=='CN') {
+                $title = '国内世纪互联版';
+            } else $title = '环境变量Onedrive_ver应该已经写入，等待更新';
+            $html = '稍等3秒<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
+            if (isset($response['Error'])) {
+                $html = $response['Error']['Code'] . '<br>
+' . $response['Error']['Message'] . '<br><br>
+function_name:' . $config['function_name'] . '<br>
+Region:' . $config['Region'];
+                $title = 'Error';
+            }
+            return message($html, $title, 201);
         }
     }
+
     $html = '
     <form action="?install1" method="post">
-        请选择Onedrive的版本：
         <input type="radio" name="Onedrive_ver" value="MS" checked>MS:默认（支持商业版与个人版） <input type="radio" name="Onedrive_ver" value="CN">CN:世纪互联
+        <br>
         <input type="submit" value="确认">
     </form>';
-    return message($html, '选择Onedrive版本', 201);    
+    return message($html, '请选择Onedrive版本：', 201);    
 }
 
 function get_timezone($timezone = '8')
