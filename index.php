@@ -30,15 +30,11 @@ include 'functions.php';
 include 'scfapi.php';
 global $oauth;
 global $config;
-$oauth='';
-$config='';
 $oauth = [
     'redirect_uri' => 'https://scfonedrive.github.io',
 ];
 $config = [
     'sitename' => getenv('sitename'),
-    'passfile' => getenv('passfile'),
-    'imgup_path' => getenv('imgup_path'),
 ];
 
 function main_handler($event, $context)
@@ -100,7 +96,7 @@ function main_handler($event, $context)
     }
     if (empty($config['sitename'])) $config['sitename'] = '请在环境变量添加sitename';
     $config['is_imgup_path'] = 0;
-    if (path_format('/'.path_format(urldecode($config['list_path'].path_format($path))).'/')==path_format('/'.path_format($config['imgup_path']).'/')&&$config['imgup_path']!='') $config['is_imgup_path'] = 1;
+    if (path_format('/'.path_format(urldecode($config['list_path'].path_format($path))).'/')==path_format('/'.path_format(getenv('imgup_path')).'/')&&getenv('imgup_path')!='') $config['is_imgup_path'] = 1;
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = path_format($config['base_path'] . $path);
     $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
@@ -501,10 +497,10 @@ function adminoperate($path)
     }
     if ($_POST['operate_action']=='加密') {
         // 加密
-        if ($config['passfile']=='') return message('先在环境变量设置passfile才能加密','',403);
+        if (getenv('passfile')=='') return message('先在环境变量设置passfile才能加密','',403);
         if ($_POST['encrypt_folder']=='/') $_POST['encrypt_folder']=='';
         $foldername = spurlencode($_POST['encrypt_folder']);
-        $filename = path_format($path1 . '/' . $foldername . '/' . $config['passfile']);
+        $filename = path_format($path1 . '/' . $foldername . '/' . getenv('passfile'));
                 //echo $foldername;
         $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $config['access_token']);
         return output($result['body'], $result['stat']);
@@ -948,7 +944,7 @@ function render_list($path, $files)
                     foreach ($files['children'] as $file) {
                         // Files
                         if (isset($file['file'])) {
-                            if ($config['admin'] or (substr($file['name'],0,1) !== '.' and $file['name'] !== $config['passfile']) ) {
+                            if ($config['admin'] or (substr($file['name'],0,1) !== '.' and $file['name'] !== getenv('passfile') ) ) {
                                 if (strtolower($file['name']) === 'readme.md') $readme = $file;
                                 if (strtolower($file['name']) === 'index.html') {
                                     $html = curl_request(fetch_files(spurlencode(path_format($path . '/' .$file['name']),'/'))['@microsoft.graph.downloadUrl']);
