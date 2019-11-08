@@ -164,7 +164,7 @@ function main_handler($event, $context)
     }
     if ($_GET['setup']) if ($config['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         // 设置，对环境变量操作
-        return EnvOpt($config['function_name'], $config['Region'], $config['needUpdate']);
+        return EnvOpt($config['function_name'], $config['Region'], $context['namespace'], $config['needUpdate']);
     } else {
         $url = path_format($_SERVER['PHP_SELF'] . '/');
         return output('<script>alert(\'先在环境变量设置SecretId和secretKey！\');</script>', 302, [ 'Location' => $url ]);
@@ -642,7 +642,7 @@ function get_thumbnails_url($path = '/')
     return output('', 404);
 }
 
-function EnvOpt($function_name, $Region, $needUpdate = 0)
+function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
 {
     //$constEnv = array('SecretId', 'SecretKey');
     $constEnv = array(
@@ -666,14 +666,14 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
         //'SCF程序所在地区' => 'Region',
         //'Onedrive版本' => 'Onedrive_ver',
     );
-    if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region);
+    if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region, $namespace);
     if ($_POST['submit1']) {
         foreach ($_POST as $k => $v) {
             if (in_array($k, $constEnv)) {
                 $tmp[$k] = $v;
             } 
         }
-        updataEnvironment($function_name, $Region, $tmp);
+        updataEnvironment($tmp, $function_name, $Region, $namespace);
     }
 
     $html = '<title>设置</title>';
@@ -687,7 +687,7 @@ function EnvOpt($function_name, $Region, $needUpdate = 0)
     } else {
         $html .= '不需要更新';
     }
-    $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
+    $tmp = json_decode(getfunctioninfo($function_name, $Region, $namespace),true)['Response']['Environment']['Variables'];
     foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
     $html .= '
     <form action="" method="post">
