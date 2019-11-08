@@ -29,11 +29,8 @@ include 'vendor/autoload.php';
 include 'functions.php';
 include 'scfapi.php';
 
-
 function main_handler($event, $context)
 {
-    
-    
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     $event1 = $event;
@@ -50,8 +47,7 @@ function main_handler($event, $context)
     unset($_SERVER);
     config_oauth();
 
-    $function_name = $context['function_name'];
-    $_SERVER['function_name'] = $function_name;
+    $_SERVER['function_name'] = $context['function_name'];
     $host_name = $event['headers']['host'];
     $serviceId = $event['requestContext']['serviceId'];
     $public_path = path_format(getenv('public_path'));
@@ -70,11 +66,11 @@ function main_handler($event, $context)
     if ($tmp_path!='') if ($public_path == substr($tmp_path,0,strlen($public_path))) $public_path=$tmp_path;
     if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
-        $_SERVER['base_path'] = '/'.$event['requestContext']['stage'].'/'.$function_name.'/';
+        $_SERVER['base_path'] = '/'.$event['requestContext']['stage'].'/'.$_SERVER['function_name'].'/';
         $_SERVER['list_path'] = $public_path;
         $_SERVER['Region'] = substr($host_name, strpos($host_name, '.')+1);
         $_SERVER['Region'] = substr($_SERVER['Region'], 0, strpos($_SERVER['Region'], '.'));
-        $path = substr($event['path'], strlen('/'.$function_name.'/'));
+        $path = substr($event['path'], strlen('/'.$_SERVER['function_name'].'/'));
     } else {
         $_SERVER['base_path'] = $event['requestContext']['path'];
         $_SERVER['list_path'] = $private_path;
@@ -93,8 +89,8 @@ function main_handler($event, $context)
     $_GET = $event['queryString'];
     $_SERVER['PHP_SELF'] = path_format($_SERVER['base_path'] . $path);
     $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
-    $_POSTbody = explode("&",$event['body']);
-    foreach ($_POSTbody as $postvalues) {
+    $postbody = explode("&",$event['body']);
+    foreach ($postbody as $postvalues) {
         $pos = strpos($postvalues,"=");
         $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
     }
@@ -113,8 +109,6 @@ function main_handler($event, $context)
         $_SERVER['current_url'] = '';
     }
 
-    //if (!$_SERVER['refresh_token'])
-    $_SERVER['refresh_token'] = ''; 
     $_SERVER['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
     if (!$_SERVER['refresh_token']) return get_refresh_token();
 
@@ -131,13 +125,13 @@ function main_handler($event, $context)
         }
         if (getenv('admin')!='') {
             if ($_POST['password1']==getenv('admin')) {
-                return adminform($function_name.'admin',md5($_POST['password1']),$url);
+                return adminform($_SERVER['function_name'].'admin',md5($_POST['password1']),$url);
             } else return adminform();
         } else {
             return output('', 302, [ 'Location' => $url ]);
         }
     }
-    if (getenv('admin')!='') if ($_COOKIE[$function_name.'admin']==md5(getenv('admin')) || $_POST['password1']==getenv('admin') ) {
+    if (getenv('admin')!='') if ($_COOKIE[$_SERVER['function_name'].'admin']==md5(getenv('admin')) || $_POST['password1']==getenv('admin') ) {
         $_SERVER['admin']=1;
     } else {
         $_SERVER['admin']=0;
@@ -175,8 +169,6 @@ function main_handler($event, $context)
 
 function fetch_files($path = '/')
 {
-    
-    
     $path1 = path_format($path);
     $path = path_format($_SERVER['list_path'] . path_format($path));
     $cache = null;
@@ -189,9 +181,9 @@ function fetch_files($path = '/')
 
         $url = $_SERVER['api_url'];
         if ($path !== '/') {
-                    $url .= ':' . $path;
-                    if (substr($url,-1)=='/') $url=substr($url,0,-1);
-                }
+            $url .= ':' . $path;
+            if (substr($url,-1)=='/') $url=substr($url,0,-1);
+        }
         $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
         $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
         // echo $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
@@ -212,8 +204,6 @@ function fetch_files($path = '/')
 
 function fetch_files_children($files, $path, $page, $cache)
 {
-    
-    
     $cachefilename = '.SCFcache_'.$_SERVER['function_name'];
     $maxpage = ceil($files['folder']['childCount']/200);
 
@@ -316,10 +306,6 @@ function fetch_files_children($files, $path, $page, $cache)
 
 function list_files($path)
 {
-    
-    
-    $is_preview = false;
-    if ($_GET['preview']) $is_preview = true;
     $path = path_format($path);
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
@@ -339,8 +325,8 @@ function list_files($path)
     if ($_SERVER['ajax']) {
         if ($_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
         // 无需登录即可删除.tmp后缀文件
-        $tmp = MSAPI('DELETE',path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$_SERVER['access_token']);
-        return output($tmp['body'],$tmp['stat']);
+            $tmp = MSAPI('DELETE',path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$_SERVER['access_token']);
+            return output($tmp['body'],$tmp['stat']);
         }
     }
     if ($_SERVER['admin']) {
@@ -370,7 +356,7 @@ function list_files($path)
         } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',400);
         $files = fetch_files($path);
     }
-    if (isset($files['file']) && !$is_preview) {
+    if (isset($files['file']) && !$_GET['preview']) {
         // is file && not preview mode
         if ($_SERVER['ishidden']<4) {
             return output('', 302, [ 'Location' => $files['@microsoft.graph.downloadUrl'] ]);
@@ -384,14 +370,6 @@ function adminform($name = '', $pass = '', $path = '')
     $statusCode = 401;
     $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
     if ($name!=''&&$pass!='') {
-        /*$html .= '<script type="text/javascript">
-            var expd = new Date();
-            expd.setTime(expd.getTime()+(1*60*60*1000));
-            var expires = "expires="+expd.toGMTString();
-            document.cookie="'.$name.'='.$pass.';"+expires;
-            //path='.$path.';
-            location.href=location.protocol + "//" + location.host + "'.$path.'";
-</script>';*/
         $html .= '<body>登录成功，正在跳转</body></html>';
         $statusCode = 302;
         date_default_timezone_set('UTC');
@@ -401,7 +379,6 @@ function adminform($name = '', $pass = '', $path = '')
             'Content-Type' => 'text/html'
         ];
         return output($html,$statusCode,$header);
-        // return $name.'='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour'));
     }
     $html .= '
     <body>
@@ -423,7 +400,6 @@ function adminform($name = '', $pass = '', $path = '')
 
 function guestupload($path)
 {
-    
     $path1 = path_format($_SERVER['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!='') if ($_SERVER['current_url']!='') {
@@ -454,7 +430,6 @@ function guestupload($path)
 
 function adminoperate($path)
 {
-    
     $path1 = path_format($_SERVER['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     $tmparr['statusCode'] = 0;
@@ -553,7 +528,6 @@ function adminoperate($path)
 
 function MSAPI($method, $path, $data = '', $access_token)
 {
-    
     if (substr($path,0,7) == 'http://' or substr($path,0,8) == 'https://') {
         $url=$path;
         $lenth=strlen($data);
@@ -621,8 +595,6 @@ function MSAPI($method, $path, $data = '', $access_token)
 
 function get_thumbnails_url($path = '/')
 {
-    
-    
     $path1 = path_format($path);
     $path = path_format($_SERVER['list_path'] . path_format($path));
     $url = $_SERVER['api_url'];
@@ -638,7 +610,6 @@ function get_thumbnails_url($path = '/')
 
 function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
 {
-    //$constEnv = array('SecretId', 'SecretKey');
     $constEnv = array(
         '管理密码，不添加时不显示登录页面且无法登录。' => 'admin',
         '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是此设置的值。' => 'adminloginpage',
@@ -701,9 +672,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
 
 function render_list($path, $files)
 {
-    
     @ob_start();
-
     $path = str_replace('%20','%2520',$path);
     $path = str_replace('+','%2B',$path);
     $path = str_replace('&','&amp;',path_format(urldecode($path))) ;
@@ -753,8 +722,8 @@ function render_list($path, $files)
         a:hover{color:#24292e}
         .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
         .title a{color:#333;text-decoration:none}
-        .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
-        .list-container{position:relative;overflow:hidden}
+        .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgb(128,128,128);border-radius: 15px;}
+        .list-container{position:relative;overflow:hidden;border-radius: 15px;}
         .list-header-container{position:relative}
         .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
         .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
@@ -789,7 +758,7 @@ function render_list($path, $files)
 
 <body>
 <?php if ($_SERVER['needUpdate']) { ?>
-    <div style='position:absolute;'><font color='red'>可以升级<br>从右边管理进入设置后升级</font></div>
+    <div style='position:absolute;'><font color='red'>可以升级<br>点右边管理<br>在设置页面升级</font></div>
 <?php } ?>
     <h1 class="title">
         <a href="<?php echo $_SERVER['base_path']; ?>"><?php echo $_SERVER['sitename']; ?></a>
@@ -827,7 +796,7 @@ function render_list($path, $files)
                     <li><a onclick="showdiv(event,'create','');">新建</a></li>
                     <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
 <?php       if (!$_GET['preview']) { ?>
-                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和secretKey！');"<?php } ?>>设置</a></li>
+                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和SecretKey！');"<?php } ?>>设置</a></li>
 <?php       } ?>
                     </ul></li>
 <?php   }
@@ -1131,11 +1100,11 @@ function render_list($path, $files)
                 <form id="create_form" onsubmit="return submit_operate('create');">
                 <input id="create_sid" name="create_sid" type="hidden" value="">
                 <input id="create_hidden" type="hidden" value="">
-                　　　<input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹
-                <input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件<br>
+                　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹</label>
+                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件</label><br>
                 名字：<input id="create_input" name="create_name" type="text" value=""><br>
                 <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
-                <input name="operate_action" type="submit" value="新建">
+                　　　<input name="operate_action" type="submit" value="新建">
                 </form>
             </div>
         </div>
@@ -1147,10 +1116,8 @@ function render_list($path, $files)
         <div style="margin:50px">
             <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
 	        <center>
-                <h4>输入管理密码</h4>
 	            <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
-		        <label>密码</label>
-		        <input id="login_input" name="password1" type="password"/>
+		        <input id="login_input" name="password1" type="password" placeholder="请输入管理密码">
 		        <input type="submit" value="登录">
 	            </form>
             </center>
@@ -1304,8 +1271,6 @@ function render_list($path, $files)
             sort=0;
             return;
         } else return;
-        // if (string=='time' && sort==1) return;
-        // if (string=='size' && sort==2) return;
         sort1=sort;
         sortby('a');
         sort=sort1;
