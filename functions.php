@@ -63,40 +63,43 @@ function time_format($ISO)
 
 function config_oauth()
 {
-    global $oauth;
+$_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
+$_SERVER['sitename'] = getenv('sitename');
+
+    
     if (getenv('Onedrive_ver')=='MS') {
         // MS 默认（支持商业版与个人版）
         // https://portal.azure.com
-        $oauth['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
-        $oauth['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
-        $oauth['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
+        $_SERVER['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
+        $_SERVER['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
+        $_SERVER['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $_SERVER['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $_SERVER['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
     }
     if (getenv('Onedrive_ver')=='CN') {
         // CN 世纪互联
         // https://portal.azure.cn
-        $oauth['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
-        $oauth['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
-        $oauth['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
-        $oauth['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $oauth['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
+        $_SERVER['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
+        $_SERVER['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
+        $_SERVER['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
+        $_SERVER['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
+        $_SERVER['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
     }
 
-    $oauth['client_secret'] = urlencode($oauth['client_secret']);
-    $oauth['scope'] = urlencode($oauth['scope']);
+    $_SERVER['client_secret'] = urlencode($_SERVER['client_secret']);
+    $_SERVER['scope'] = urlencode($_SERVER['scope']);
 }
 
 function get_refresh_token()
 {
-    global $oauth;
-    global $config;
+    
+    
 
     if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
     $url = path_format($_SERVER['PHP_SELF'] . '/');
 
     if ($_GET['authorization_code'] && isset($_GET['code'])) {
-        $ret = json_decode(curl_request($oauth['oauth_url'] . 'token', 'client_id=' . $oauth['client_id'] .'&client_secret=' . $oauth['client_secret'] . '&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri=' . $oauth['redirect_uri'] .'&code=' . $_GET['code']), true);
+        $ret = json_decode(curl_request($_SERVER['oauth_url'] . 'token', 'client_id=' . $_SERVER['client_id'] .'&client_secret=' . $_SERVER['client_secret'] . '&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri=' . $_SERVER['redirect_uri'] .'&code=' . $_GET['code']), true);
         if (isset($ret['refresh_token'])) {
             $tmptoken=$ret['refresh_token'];
             $str = '
@@ -116,7 +119,7 @@ function get_refresh_token()
             }
         </script>';
             if (getenv('SecretId')!='' && getenv('SecretKey')!='') {
-                updataEnvironment($config['function_name'], $config['Region'], $t);
+                updataEnvironment($_SERVER['function_name'], $_SERVER['Region'], $t);
             //return output('', 302, [ 'Location' => $url ]);
             //$str .= '            location.href = "' . $url . '";';
                 $str .= '
@@ -133,7 +136,7 @@ function get_refresh_token()
     Go to OFFICE <a href="" id="a1">Get a refresh_token</a>
     <script>
         url=location.protocol + "//" + location.host + "'.$url.'";
-        url="'. $oauth['oauth_url'] .'authorize?scope='. $oauth['scope'] .'&response_type=code&client_id='. $oauth['client_id'] .'&redirect_uri='. $oauth['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
+        url="'. $_SERVER['oauth_url'] .'authorize?scope='. $_SERVER['scope'] .'&response_type=code&client_id='. $_SERVER['client_id'] .'&redirect_uri='. $_SERVER['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
         document.getElementById(\'a1\').href=url;
         //window.open(url,"_blank");
         location.href = url;
@@ -146,8 +149,8 @@ function get_refresh_token()
         echo $_POST['Onedrive_ver'];
         if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
-            $response = json_decode(updataEnvironment($config['function_name'], $config['Region'], $tmp), true)['Response'];
-            //getfunctioninfo($config['function_name'], $config['Region']);
+            $response = json_decode(updataEnvironment($_SERVER['function_name'], $_SERVER['Region'], $tmp), true)['Response'];
+            //getfunctioninfo($_SERVER['function_name'], $_SERVER['Region']);
             sleep(2);
             if (getenv('Onedrive_ver')=='MS') {
                 $title = '国际版（支持商业版与个人版）';
@@ -158,8 +161,8 @@ function get_refresh_token()
             if (isset($response['Error'])) {
                 $html = $response['Error']['Code'] . '<br>
 ' . $response['Error']['Message'] . '<br><br>
-function_name:' . $config['function_name'] . '<br>
-Region:' . $config['Region'];
+function_name:' . $_SERVER['function_name'] . '<br>
+Region:' . $_SERVER['Region'];
                 $title = 'Error';
             }
             return message($html, $title, 201);
