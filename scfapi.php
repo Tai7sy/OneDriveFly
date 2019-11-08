@@ -30,7 +30,7 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
 {
     //print_r($Envs);
     //json_decode($a,true)['Response']['Environment']['Variables'][0]['Key']
-    $tmp = json_decode(getfunctioninfo($function_name, $Region),true)['Response']['Environment']['Variables'];
+    $tmp = json_decode(getfunctioninfo($function_name, $Region, $Namespace),true)['Response']['Environment']['Variables'];
     foreach ($tmp as $tmp1) {
         $tmp_env[$tmp1['Key']] = $tmp1['Value'];
     }
