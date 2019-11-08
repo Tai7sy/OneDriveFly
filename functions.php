@@ -63,10 +63,9 @@ function time_format($ISO)
 
 function config_oauth()
 {
-$_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
-$_SERVER['sitename'] = getenv('sitename');
+    $_SERVER['sitename'] = getenv('sitename');
+    $_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
 
-    
     if (getenv('Onedrive_ver')=='MS') {
         // MS 默认（支持商业版与个人版）
         // https://portal.azure.com
@@ -92,9 +91,6 @@ $_SERVER['sitename'] = getenv('sitename');
 
 function get_refresh_token()
 {
-    
-    
-
     if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
     $url = path_format($_SERVER['PHP_SELF'] . '/');
 
@@ -149,8 +145,7 @@ function get_refresh_token()
         echo $_POST['Onedrive_ver'];
         if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
-            $response = json_decode(updataEnvironment($_SERVER['function_name'], $_SERVER['Region'], $tmp), true)['Response'];
-            //getfunctioninfo($_SERVER['function_name'], $_SERVER['Region']);
+            $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region']), true)['Response'];
             sleep(2);
             if (getenv('Onedrive_ver')=='MS') {
                 $title = '国际版（支持商业版与个人版）';
@@ -171,7 +166,7 @@ Region:' . $_SERVER['Region'];
 
     $html = '
     <form action="?install1" method="post">
-        <input type="radio" name="Onedrive_ver" value="MS" checked>MS:默认（支持商业版与个人版） <input type="radio" name="Onedrive_ver" value="CN">CN:世纪互联
+        <label><input type="radio" name="Onedrive_ver" value="MS" checked>MS:默认（支持商业版与个人版）</label> <label><input type="radio" name="Onedrive_ver" value="CN">CN:世纪互联</label>
         <br>
         <input type="submit" value="确认">
     </form>';
