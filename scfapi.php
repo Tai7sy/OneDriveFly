@@ -1,12 +1,13 @@
 <?php
 // https://cloud.tencent.com/document/api/583/17235
 
-function getfunctioninfo($function_name, $Region)
+function getfunctioninfo($function_name, $Region, $Namespace)
 {
     $meth = 'GET';
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'GetFunction';
     $tmpdata['FunctionName'] = $function_name;
+    $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
     $tmpdata['Region'] = $Region;
     $tmpdata['SecretId'] = getenv('SecretId');
@@ -25,7 +26,7 @@ function getfunctioninfo($function_name, $Region)
     return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
 }
 
-function updataEnvironment($function_name, $Region, $Envs)
+function updataEnvironment($Envs, $function_name, $Region, $Namespace)
 {
     //print_r($Envs);
     //json_decode($a,true)['Response']['Environment']['Variables'][0]['Key']
@@ -51,6 +52,7 @@ function updataEnvironment($function_name, $Region, $Envs)
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'UpdateFunctionConfiguration';
     $tmpdata['FunctionName'] = $function_name;
+    $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
     $tmpdata['Region'] = $Region;
     $tmpdata['SecretId'] = getenv('SecretId');
@@ -69,26 +71,32 @@ function updataEnvironment($function_name, $Region, $Envs)
     return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
 }
 
-function updataProgram($function_name, $Region)
+function updataProgram($function_name, $Region, $Namespace)
 {
-    $updatameth = 'GET';
-    $updataurl = 'scf.tencentcloudapi.com/';
-    $updataurl .= '?Action=UpdateFunctionCode';
-    $updataurl .= '&Code.GitUrl=https://github.com/qkqpttgf/OneDrive_SCF';
-    $updataurl .= '&CodeSource=Git';
-    $updataurl .= '&FunctionName='.$function_name;
-    $updataurl .= '&Handler=index.main_handler';
-    $updataurl .= '&Nonce='.time();
-    $updataurl .= '&Region='.$Region;
-    $updataurl .= '&SecretId='.getenv('SecretId');
-    $updataurl .= '&Timestamp='.time();
-    $updataurl .= '&Token=';
-    $updataurl .= '&Version=2018-04-16';
-    //echo $updataurl;
-
-    $signStr = base64_encode(hash_hmac('sha1', $updatameth.$updataurl, getenv('SecretKey'), true));
+    $meth = 'GET';
+    $host = 'scf.tencentcloudapi.com';
+    $tmpdata['Action'] = 'UpdateFunctionCode';
+    $tmpdata['Code.GitUrl'] = 'https://github.com/qkqpttgf/OneDrive_SCF';
+    $tmpdata['CodeSource'] = 'Git';
+    $tmpdata['FunctionName'] = $function_name;
+    $tmpdata['Handler'] = 'index.main_handler';
+    $tmpdata['Namespace'] = $Namespace;
+    $tmpdata['Nonce'] = time();
+    $tmpdata['Region'] = $Region;
+    $tmpdata['SecretId'] = getenv('SecretId');
+    $tmpdata['Timestamp'] = time();
+    $tmpdata['Token'] = '';
+    $tmpdata['Version'] = '2018-04-16';
+    ksort($tmpdata);
+    foreach ($tmpdata as $key1 => $value1) {
+        $data .= '&' . $key1 . '=' . $value1;
+    }
+    $data = substr($data, 1); // 去掉第一个&
+    $url = $host.'/?'.$data;
+    //echo $meth.$url;
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return file_get_contents('https://'.$updataurl.'&Signature='.urlencode($signStr));
+    return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
 }
 
 ?>
