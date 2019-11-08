@@ -345,15 +345,19 @@ function list_files($path)
     }
     $_SERVER['ishidden'] = 4;
     $_SERVER['ishidden'] = passhidden($path);
+    if ($_GET['thumbnails']) {
+        if ($_SERVER['ishidden']<4) {
+            if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                return get_thumbnails_url($path);
+            } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',400);
+        } else return output('',401);
+    }
     if ($_SERVER['is_imgup_path']&&!$_SERVER['admin']) {
         // 是图床目录且不是管理
         $files = json_decode('{"folder":{}}', true);
     } elseif ($_SERVER['ishidden']==4) {
         $files = json_decode('{"folder":{}}', true);
     } else {
-        if ($_GET['thumbnails']) if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
-            return get_thumbnails_url($path);
-        } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',400);
         $files = fetch_files($path);
     }
     if (isset($files['file']) && !$_GET['preview']) {
@@ -362,7 +366,9 @@ function list_files($path)
             return output('', 302, [ 'Location' => $files['@microsoft.graph.downloadUrl'] ]);
         }
     }
-    return render_list($path, $files);
+    if ( isset($files['folder']) || isset($files['file']) ) {
+        return render_list($path, $files);
+    } else return list_files($path);
 }
 
 function adminform($name = '', $pass = '', $path = '')
@@ -667,7 +673,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
     $html .= '</table>
     <input type="submit" name="submit1" value="修改">
     </form>';
-    return message($html);
+    return message($html, '设置');
 }
 
 function render_list($path, $files)
