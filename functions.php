@@ -89,7 +89,7 @@ function config_oauth()
     $_SERVER['scope'] = urlencode($_SERVER['scope']);
 }
 
-function get_refresh_token()
+function get_refresh_token($function_name, $Region, $Namespace)
 {
     if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
     $url = path_format($_SERVER['PHP_SELF'] . '/');
@@ -115,7 +115,7 @@ function get_refresh_token()
             }
         </script>';
             if (getenv('SecretId')!='' && getenv('SecretKey')!='') {
-                updataEnvironment($_SERVER['function_name'], $_SERVER['Region'], $t);
+                updataEnvironment($t, $function_name, $Region, $Namespace);
             //return output('', 302, [ 'Location' => $url ]);
             //$str .= '            location.href = "' . $url . '";';
                 $str .= '
