@@ -110,7 +110,7 @@ function main_handler($event, $context)
     }
 
     $_SERVER['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
-    if (!$_SERVER['refresh_token']) return get_refresh_token();
+    if (!$_SERVER['refresh_token']) return get_refresh_token($_SERVER['function_name'], $_SERVER['Region'], $context['namespace']);
 
     if (getenv('adminloginpage')=='') {
         $adminloginpage = 'admin';
