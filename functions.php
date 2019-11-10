@@ -145,7 +145,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
         echo $_POST['Onedrive_ver'];
         if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
-            $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region']), true)['Response'];
+            $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
             sleep(2);
             if (getenv('Onedrive_ver')=='MS') {
                 $title = '国际版（支持商业版与个人版）';
