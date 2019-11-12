@@ -1,5 +1,54 @@
 <?php
 
+function config_oauth()
+{
+    $_SERVER['sitename'] = getenv('sitename');
+    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = '请在环境变量添加sitename';
+    $_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
+
+    if (getenv('Onedrive_ver')=='MS') {
+        // MS 默认（支持商业版与个人版）
+        // https://portal.azure.com
+        $_SERVER['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
+        $_SERVER['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
+        $_SERVER['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $_SERVER['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $_SERVER['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
+    }
+    if (getenv('Onedrive_ver')=='CN') {
+        // CN 世纪互联
+        // https://portal.azure.cn
+        $_SERVER['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
+        $_SERVER['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
+        $_SERVER['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
+        $_SERVER['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
+        $_SERVER['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
+    }
+
+    $_SERVER['client_secret'] = urlencode($_SERVER['client_secret']);
+    $_SERVER['scope'] = urlencode($_SERVER['scope']);
+}
+
+function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
+{
+    for ($page=$page1+1;$page<$maxpage;$page++) {
+        $pageinfocache['nextlink_' . $path . '_page_' . $page] = '';
+    }
+    return $pageinfocache;
+}
+
+function comppass($pass)
+{
+    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) {
+        date_default_timezone_set('UTC');
+        $_SERVER['Set-Cookie'] = 'password='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour'));
+        date_default_timezone_set(get_timezone($_COOKIE['timezone']));
+        return 2;
+    }
+    if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
+    return 4;
+}
+
 function curl_request($url, $data = false, $headers = [])
 {
     if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
@@ -31,62 +80,32 @@ function curl_request($url, $data = false, $headers = [])
     return $response;
 }
 
-function path_format($path)
+function encode_str_replace($str)
 {
-    $path = '/' . $path;
-    while (strpos($path, '//') !== FALSE) {
-        $path = str_replace('//', '/', $path);
-    }
-    return $path;
+    $str = str_replace('&','&amp;',$str);
+    $str = str_replace('+','%2B',$str);
+    $str = str_replace('#','%23',$str);
+    return $str;
 }
 
-function size_format($byte)
+function gethiddenpass($path,$passfile)
 {
-    $i = 0;
-    while (abs($byte) >= 1024) {
-        $byte = $byte / 1024;
-        $i++;
-        if ($i == 3) break;
+    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile),'/'));
+    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
+    if (isset($ispassfile['file'])) {
+        $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
+        $password=$passwordf[0];
+        $password=md5($password);
+        return $password;
+    } else {
+        if ($path !== '' ) {
+            $path = substr($path,0,strrpos($path,'/'));
+            return gethiddenpass($path,$passfile);
+        } else {
+            return '';
+        }
     }
-    $units = array('B', 'KB', 'MB', 'GB', 'TB');
-    $ret = round($byte, 2);
-    return ($ret . ' ' . $units[$i]);
-}
-
-function time_format($ISO)
-{
-    $ISO = str_replace('T', ' ', $ISO);
-    $ISO = str_replace('Z', ' ', $ISO);
-    //return $ISO;
-    return date('Y-m-d H:i:s',strtotime($ISO . " UTC"));
-}
-
-function config_oauth()
-{
-    $_SERVER['sitename'] = getenv('sitename');
-    $_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
-
-    if (getenv('Onedrive_ver')=='MS') {
-        // MS 默认（支持商业版与个人版）
-        // https://portal.azure.com
-        $_SERVER['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
-        $_SERVER['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
-        $_SERVER['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
-        $_SERVER['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
-        $_SERVER['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
-    }
-    if (getenv('Onedrive_ver')=='CN') {
-        // CN 世纪互联
-        // https://portal.azure.cn
-        $_SERVER['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
-        $_SERVER['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
-        $_SERVER['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
-        $_SERVER['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
-        $_SERVER['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
-    }
-
-    $_SERVER['client_secret'] = urlencode($_SERVER['client_secret']);
-    $_SERVER['scope'] = urlencode($_SERVER['scope']);
+    return '';
 }
 
 function get_refresh_token($function_name, $Region, $Namespace)
@@ -129,7 +148,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
     if ($_GET['install2']) {
         if (getenv('Onedrive_ver')=='MS' || getenv('Onedrive_ver')=='CN') {
             return message('
-    Go to OFFICE <a href="" id="a1">Get a refresh_token</a>
+    <a href="" id="a1">Login OFFICE and Get a refresh_token</a>
     <script>
         url=location.protocol + "//" + location.host + "'.$url.'";
         url="'. $_SERVER['oauth_url'] .'authorize?scope='. $_SERVER['scope'] .'&response_type=code&client_id='. $_SERVER['client_id'] .'&redirect_uri='. $_SERVER['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
@@ -212,6 +231,109 @@ function get_timezone($timezone = '8')
     return $timezones[$timezone];
 }
 
+function GetGlobalVariable($event)
+{
+    $_GET = $event['queryString'];
+    $postbody = explode("&",$event['body']);
+    foreach ($postbody as $postvalues) {
+        $pos = strpos($postvalues,"=");
+        $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
+    }
+    $cookiebody = explode("; ",$event['headers']['cookie']);
+    foreach ($cookiebody as $cookievalues) {
+        $pos = strpos($cookievalues,"=");
+        $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
+    }
+}
+
+function GetPathSetting($event, $context)
+{
+    $_SERVER['function_name'] = $context['function_name'];
+    $host_name = $event['headers']['host'];
+    $serviceId = $event['requestContext']['serviceId'];
+    $public_path = path_format(getenv('public_path'));
+    $private_path = path_format(getenv('private_path'));
+    $domain_path = getenv('domain_path');
+    $tmp_path='';
+    if ($domain_path!='') {
+        $tmp = explode("&",$domain_path);
+        foreach ($tmp as $multidomain_paths){
+            $pos = strpos($multidomain_paths,"=");
+            $tmp_path = path_format(substr($multidomain_paths,$pos+1));
+            if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=$tmp_path;
+        }
+    }
+    // public_path 不能是 private_path 的上级目录。
+    if ($tmp_path!='') if ($public_path == substr($tmp_path,0,strlen($public_path))) $public_path=$tmp_path;
+    if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
+    if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
+        $_SERVER['base_path'] = '/'.$event['requestContext']['stage'].'/'.$_SERVER['function_name'].'/';
+        $_SERVER['list_path'] = $public_path;
+        $_SERVER['Region'] = substr($host_name, strpos($host_name, '.')+1);
+        $_SERVER['Region'] = substr($_SERVER['Region'], 0, strpos($_SERVER['Region'], '.'));
+        $path = substr($event['path'], strlen('/'.$_SERVER['function_name'].'/'));
+    } else {
+        $_SERVER['base_path'] = $event['requestContext']['path'];
+        $_SERVER['list_path'] = $private_path;
+        $_SERVER['Region'] = getenv('Region');
+        $path = substr($event['path'], strlen($event['requestContext']['path']));
+    }
+    if (substr($path,-1)=='/') $path=substr($path,0,-1);
+    if (empty($_SERVER['list_path'])) {
+        $_SERVER['list_path'] = '/';
+    } else {
+        $_SERVER['list_path'] = spurlencode($_SERVER['list_path'],'/') ;
+    }
+    $_SERVER['is_imgup_path'] = is_imgup_path($path);
+    $_SERVER['PHP_SELF'] = path_format($_SERVER['base_path'] . $path);
+    $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
+    $_SERVER['ajax']=0;
+    if ($event['headers']['x-requested-with']=='XMLHttpRequest') {
+        $_SERVER['ajax']=1;
+    }
+    
+    $referer = $event['headers']['referer'];
+    $tmpurl = substr($referer,strpos($referer,'//')+2);
+    $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
+    if ($refererhost==$host_name) {
+        // 仅游客上传用，referer不对就空值，无法上传
+        $_SERVER['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
+    } else {
+        $_SERVER['current_url'] = '';
+    }
+    return $path;
+}
+
+function is_imgup_path($path)
+{
+    if (path_format('/'.path_format(urldecode($_SERVER['list_path'].path_format($path))).'/')==path_format('/'.path_format(getenv('imgup_path')).'/')&&getenv('imgup_path')!='') return 1;
+    return 0;
+}
+
+function message($message, $title = 'Message', $statusCode = 200)
+{
+    return output('<html><meta charset=utf-8><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
+}
+
+function needUpdate()
+{
+    if ($_SERVER['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
+        $current_ver = file_get_contents(__DIR__ . '/version');
+        $current_ver = substr($current_ver, strpos($current_ver, '.')+1);
+        $current_ver = explode(urldecode('%0A'),$current_ver)[0];
+        $current_ver = explode(urldecode('%0D'),$current_ver)[0];
+        $github_version = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
+        $github_ver = substr($github_version, strpos($github_version, '.')+1);
+        $github_ver = explode(urldecode('%0A'),$github_ver)[0];
+        $github_ver = explode(urldecode('%0D'),$github_ver)[0];
+        if ($current_ver != $github_ver) {
+            $_SERVER['github_version'] = $github_version;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/html'], $isBase64Encoded = false)
 {
     //$headers['Access-Control-Allow-Origin']='*';
@@ -221,42 +343,6 @@ function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/ht
         'headers' => $headers,
         'body' => $body
     ];
-}
-
-function message($message, $title = 'Message', $statusCode = 200)
-{
-    return output('<html><meta charset=utf-8><body><h1>' . $title . '</h1><p>' . $message . '</p></body></html>', $statusCode);
-}
-
-function clearbehindvalue($path,$page1,$maxpage,$pageinfocache)
-{
-    for ($page=$page1+1;$page<$maxpage;$page++) {
-        $pageinfocache['nextlink_' . $path . '_page_' . $page] = '';
-    }
-    return $pageinfocache;
-}
-
-function encode_str_replace($str)
-{
-    $str = str_replace('&','&amp;',$str);
-    $str = str_replace('+','%2B',$str);
-    $str = str_replace('#','%23',$str);
-    return $str;
-}
-
-function spurlencode($str,$splite='') {
-    $str = str_replace(' ', '%20',$str);
-    $tmp='';
-    if ($splite!='') {
-        $tmparr=explode($splite,$str);
-        for($x=0;$x<count($tmparr);$x++) {
-            if ($tmparr[$x]!='') $tmp .= $splite . urlencode($tmparr[$x]);
-        }
-    } else {
-        $tmp = urlencode($str);
-    }
-    $tmp = str_replace('%2520', '%20',$tmp);
-    return $tmp;
 }
 
 function passhidden($path)
@@ -277,33 +363,58 @@ function passhidden($path)
     return 4;
 }
 
-function gethiddenpass($path,$passfile)
+function path_format($path)
 {
-    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile),'/'));
-    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
-    if (isset($ispassfile['file'])) {
-        $passwordf=explode("\n",curl_request($ispassfile['@microsoft.graph.downloadUrl']));
-        $password=$passwordf[0];
-        $password=md5($password);
-        return $password;
-    } else {
-        if ($path !== '' ) {
-            $path = substr($path,0,strrpos($path,'/'));
-            return gethiddenpass($path,$passfile);
-        } else {
-            return '';
-        }
+    $path = '/' . $path;
+    while (strpos($path, '//') !== FALSE) {
+        $path = str_replace('//', '/', $path);
     }
-    return '';
+    return $path;
 }
 
-function comppass($pass) {
-    if ($_POST['password1'] !== '') if (md5($_POST['password1']) === $pass ) {
-        date_default_timezone_set('UTC');
-        $_SERVER['Set-Cookie'] = 'password='.$pass.'; expires='.date(DATE_COOKIE,strtotime('+1hour'));
-        date_default_timezone_set(get_timezone($_COOKIE['timezone']));
-        return 2;
+function printInput($event, $context)
+{
+    if (strlen(json_encode($event['body']))>500) $event['body']=substr($event['body'],0,strpos($event['body'],'base64')+30) . '...Too Long!...' . substr($event['body'],-50);
+    echo urldecode(json_encode($event, JSON_PRETTY_PRINT)) . '
+ 
+' . urldecode(json_encode($context, JSON_PRETTY_PRINT)) . '
+ 
+';
+}
+
+function size_format($byte)
+{
+    $i = 0;
+    while (abs($byte) >= 1024) {
+        $byte = $byte / 1024;
+        $i++;
+        if ($i == 3) break;
     }
-    if ($_COOKIE['password'] !== '') if ($_COOKIE['password'] === $pass ) return 3;
-    return 4;
+    $units = array('B', 'KB', 'MB', 'GB', 'TB');
+    $ret = round($byte, 2);
+    return ($ret . ' ' . $units[$i]);
+}
+
+function spurlencode($str,$splite='')
+{
+    $str = str_replace(' ', '%20',$str);
+    $tmp='';
+    if ($splite!='') {
+        $tmparr=explode($splite,$str);
+        for($x=0;$x<count($tmparr);$x++) {
+            if ($tmparr[$x]!='') $tmp .= $splite . urlencode($tmparr[$x]);
+        }
+    } else {
+        $tmp = urlencode($str);
+    }
+    $tmp = str_replace('%2520', '%20',$tmp);
+    return $tmp;
+}
+
+function time_format($ISO)
+{
+    $ISO = str_replace('T', ' ', $ISO);
+    $ISO = str_replace('Z', ' ', $ISO);
+    //return $ISO;
+    return date('Y-m-d H:i:s',strtotime($ISO . " UTC"));
 }
