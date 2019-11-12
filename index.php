@@ -33,82 +33,15 @@ function main_handler($event, $context)
 {
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
-    $event1 = $event;
-    if (strlen(json_encode($event1['body']))>500) $event1['body']=substr($event1['body'],0,strpos($event1['body'],'base64')+30) . '...Too Long!...' . substr($event1['body'],-50);
-    echo urldecode(json_encode($event1, JSON_PRETTY_PRINT)) . '
- 
-' . urldecode(json_encode($context, JSON_PRETTY_PRINT)) . '
- 
-';
-    unset($event1);
+    printInput($event, $context);
+
     unset($_POST);
     unset($_GET);
     unset($_COOKIE);
     unset($_SERVER);
+    GetGlobalVariable($event);
     config_oauth();
-
-    $_SERVER['function_name'] = $context['function_name'];
-    $host_name = $event['headers']['host'];
-    $serviceId = $event['requestContext']['serviceId'];
-    $public_path = path_format(getenv('public_path'));
-    $private_path = path_format(getenv('private_path'));
-    $domain_path = getenv('domain_path');
-    $tmp_path='';
-    if ($domain_path!='') {
-        $tmp = explode("&",$domain_path);
-        foreach ($tmp as $multidomain_paths){
-            $pos = strpos($multidomain_paths,"=");
-            $tmp_path = path_format(substr($multidomain_paths,$pos+1));
-            if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=$tmp_path;
-        }
-    }
-    // public_path 不能是 private_path 的上级目录。
-    if ($tmp_path!='') if ($public_path == substr($tmp_path,0,strlen($public_path))) $public_path=$tmp_path;
-    if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
-    if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
-        $_SERVER['base_path'] = '/'.$event['requestContext']['stage'].'/'.$_SERVER['function_name'].'/';
-        $_SERVER['list_path'] = $public_path;
-        $_SERVER['Region'] = substr($host_name, strpos($host_name, '.')+1);
-        $_SERVER['Region'] = substr($_SERVER['Region'], 0, strpos($_SERVER['Region'], '.'));
-        $path = substr($event['path'], strlen('/'.$_SERVER['function_name'].'/'));
-    } else {
-        $_SERVER['base_path'] = $event['requestContext']['path'];
-        $_SERVER['list_path'] = $private_path;
-        $_SERVER['Region'] = getenv('Region');
-        $path = substr($event['path'], strlen($event['requestContext']['path']));
-    }
-    if (substr($path,-1)=='/') $path=substr($path,0,-1);
-    if (empty($_SERVER['list_path'])) {
-        $_SERVER['list_path'] = '/';
-    } else {
-        $_SERVER['list_path'] = spurlencode($_SERVER['list_path'],'/') ;
-    }
-    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = '请在环境变量添加sitename';
-    $_SERVER['is_imgup_path'] = 0;
-    if (path_format('/'.path_format(urldecode($_SERVER['list_path'].path_format($path))).'/')==path_format('/'.path_format(getenv('imgup_path')).'/')&&getenv('imgup_path')!='') $_SERVER['is_imgup_path'] = 1;
-    $_GET = $event['queryString'];
-    $_SERVER['PHP_SELF'] = path_format($_SERVER['base_path'] . $path);
-    $_SERVER['REMOTE_ADDR'] = $event['requestContext']['sourceIp'];
-    $postbody = explode("&",$event['body']);
-    foreach ($postbody as $postvalues) {
-        $pos = strpos($postvalues,"=");
-        $_POST[urldecode(substr($postvalues,0,$pos))]=urldecode(substr($postvalues,$pos+1));
-    }
-    $cookiebody = explode("; ",$event['headers']['cookie']);
-    foreach ($cookiebody as $cookievalues) {
-        $pos = strpos($cookievalues,"=");
-        $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
-    }
-    $referer = $event['headers']['referer'];
-    $tmpurl = substr($referer,strpos($referer,'//')+2);
-    $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
-    if ($refererhost==$host_name) {
-        // 仅游客上传用，referer不对就空值，无法上传
-        $_SERVER['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
-    } else {
-        $_SERVER['current_url'] = '';
-    }
-
+    $path = GetPathSetting($event, $context);
     $_SERVER['refresh_token'] = getenv('t1').getenv('t2').getenv('t3').getenv('t4').getenv('t5').getenv('t6').getenv('t7');
     if (!$_SERVER['refresh_token']) return get_refresh_token($_SERVER['function_name'], $_SERVER['Region'], $context['namespace']);
 
@@ -136,32 +69,13 @@ function main_handler($event, $context)
     } else {
         $_SERVER['admin']=0;
     }
-    $_SERVER['needUpdate'] = 0;
-    if ($_SERVER['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
-        $current_ver = file_get_contents(__DIR__ . '/version');
-        $current_ver = substr($current_ver, strpos($current_ver, '.')+1);
-        $current_ver = explode(urldecode('%0A'),$current_ver)[0];
-        $current_ver = explode(urldecode('%0D'),$current_ver)[0];
-        $github_version = file_get_contents('https://raw.githubusercontent.com/qkqpttgf/OneDrive_SCF/master/version');
-        $github_ver = substr($github_version, strpos($github_version, '.')+1);
-        $github_ver = explode(urldecode('%0A'),$github_ver)[0];
-        $github_ver = explode(urldecode('%0D'),$github_ver)[0];
-        if ($current_ver != $github_ver) {
-            $_SERVER['needUpdate'] = 1;
-            $_SERVER['github_version'] = $github_version;
-        }
-    }
+    $_SERVER['needUpdate'] = needUpdate();
     if ($_GET['setup']) if ($_SERVER['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
         // 设置，对环境变量操作
         return EnvOpt($_SERVER['function_name'], $_SERVER['Region'], $context['namespace'], $_SERVER['needUpdate']);
     } else {
         $url = path_format($_SERVER['PHP_SELF'] . '/');
-        return output('<script>alert(\'先在环境变量设置SecretId和secretKey！\');</script>', 302, [ 'Location' => $url ]);
-    }
-
-    $_SERVER['ajax']=0;
-    if ($event['headers']['x-requested-with']=='XMLHttpRequest') {
-        $_SERVER['ajax']=1;
+        return output('<script>alert(\'先在环境变量设置SecretId和SecretKey！\');</script>', 302, [ 'Location' => $url ]);
     }
 
     return list_files($path);
@@ -362,9 +276,7 @@ function list_files($path)
     }
     if (isset($files['file']) && !$_GET['preview']) {
         // is file && not preview mode
-        if ($_SERVER['ishidden']<4) {
-            return output('', 302, [ 'Location' => $files['@microsoft.graph.downloadUrl'] ]);
-        }
+        if ($_SERVER['ishidden']<4) return output('', 302, [ 'Location' => $files['@microsoft.graph.downloadUrl'] ]);
     }
     if ( isset($files['folder']) || isset($files['file']) ) {
         return render_list($path, $files);
@@ -743,13 +655,16 @@ function render_list($path, $files)
         .list-table td,.list-table th{padding:0 10px;text-align:left}
         .list-table .size,.list-table .updated_at{text-align:right}
         .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
+        .mask{position:absolute;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5}
 <?php if ($_SERVER['admin']) { ?>
         .operate{display: inline-table;margin:0;list-style:none;}
         .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin:-17px 0 0 0;padding: 0;color:#205D67;}
         .operate:hover ul{position: absolute;display:inline-table;}
         .operate ul li{padding:1px;list-style:none;}
-        .operatediv_close{position: absolute;right: 3px;top:3px;}
 <?php } ?>
+        .operatediv{position:absolute;border:1px #CCCCCC;background-color:#FFFFCC;}
+        .operatediv div{margin:16px}
+        .operatediv_close{position: absolute;right: 3px;top:3px;}
         .readme{padding:8px;background-color: #fff;}
         #readme{padding: 20px;text-align: left}
 
@@ -764,7 +679,7 @@ function render_list($path, $files)
 
 <body>
 <?php if ($_SERVER['needUpdate']) { ?>
-    <div style='position:absolute;'><font color='red'>可以升级<br>点右边管理<br>在设置页面升级</font></div>
+    <div style='position:absolute;'><font color='red'>可以升级程序<br>点右边管理<br>在设置页面升级</font></div>
 <?php } ?>
     <h1 class="title">
         <a href="<?php echo $_SERVER['base_path']; ?>"><?php echo $_SERVER['sitename']; ?></a>
@@ -1027,10 +942,8 @@ function render_list($path, $files)
             echo '
                 <div style="padding:20px">
 	            <center>
-                    <h4>输入密码进行查看</h4>
 	                <form action="" method="post">
-		            <label>密码</label>
-		            <input name="password1" type="password"/>
+		            <input name="password1" type="password" placeholder="输入密码">
 		            <input type="submit" value="查看">
 	                </form>
                 </center>
@@ -1041,13 +954,13 @@ function render_list($path, $files)
             </div>
         </div>
     </div>
-    <div id="mask" style="position:absolute;display:none;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5"></div>
+    <div id="mask" class="mask" style="display:none;"></div>
 <?php
     if ($_SERVER['admin']) {
         if (!$_GET['preview']) { ?>
     <div>
-        <div id="rename_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:16px">
+        <div id="rename_div" class="operatediv" style="display:none">
+            <div>
                 <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
                 <form id="rename_form" onsubmit="return submit_operate('rename');">
                 <input id="rename_sid" name="rename_sid" type="hidden" value="">
@@ -1057,8 +970,8 @@ function render_list($path, $files)
                 </form>
             </div>
         </div>
-        <div id="delete_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:16px">
+        <div id="delete_div" class="operatediv" style="display:none">
+            <div>
                 <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
                 <label id="delete_label"></label>
                 <form id="delete_form" onsubmit="return submit_operate('delete');">
@@ -1069,8 +982,8 @@ function render_list($path, $files)
                 </form>
             </div>
         </div>
-        <div id="encrypt_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:16px">
+        <div id="encrypt_div" class="operatediv" style="display:none">
+            <div>
                 <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
                 <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
                 <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
@@ -1080,8 +993,8 @@ function render_list($path, $files)
                 </form>
             </div>
         </div>
-        <div id="move_div" name="operatediv" style="position: absolute;border: 10px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:16px">
+        <div id="move_div" class="operatediv" style="display:none">
+            <div>
                 <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
                 <form id="move_form" onsubmit="return submit_operate('move');">
                 <input id="move_sid" name="move_sid" type="hidden" value="">
@@ -1100,8 +1013,8 @@ function render_list($path, $files)
                 </form>
             </div>
         </div>
-        <div id="create_div" name="operatediv" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
-            <div style="margin:50px">
+        <div id="create_div" class="operatediv" style="display:none">
+            <div>
                 <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
                 <form id="create_form" onsubmit="return submit_operate('create');">
                 <input id="create_sid" name="create_sid" type="hidden" value="">
@@ -1109,7 +1022,7 @@ function render_list($path, $files)
                 　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹</label>
                 <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件</label><br>
                 名字：<input id="create_input" name="create_name" type="text" value=""><br>
-                <div id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></div>
+                <label id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></label>
                 　　　<input name="operate_action" type="submit" value="新建">
                 </form>
             </div>
@@ -1118,9 +1031,9 @@ function render_list($path, $files)
 <?php   }
     } else {
         if (getenv('admin')!='') if (getenv('adminloginpage')=='') { ?>
-    <div id="login_div" style="position: absolute;border: 1px #CCCCCC;background-color: #FFFFCC; display:none">
+    <div id="login_div" class="operatediv" style="display:none">
         <div style="margin:50px">
-            <a onclick="operatediv_close('login')" style="position: absolute;right: 10px;top:5px;">关闭</a>
+            <a onclick="operatediv_close('login')" class="operatediv_close">关闭</a>
 	        <center>
 	            <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
 		        <input id="login_input" name="password1" type="password" placeholder="请输入管理密码">
