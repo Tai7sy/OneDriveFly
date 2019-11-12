@@ -1,9 +1,28 @@
 <?php
 // https://cloud.tencent.com/document/api/583/17235
 
+function post2url($url, $data)
+{
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回获取的输出文本流
+    curl_setopt($ch, CURLOPT_HEADER, 0);         // 将头文件的信息作为数据流输出
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    //echo $response;
+    return $response;
+}
+
 function getfunctioninfo($function_name, $Region, $Namespace)
 {
-    $meth = 'GET';
+    //$meth = 'GET';
+    $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'GetFunction';
     $tmpdata['FunctionName'] = $function_name;
@@ -19,11 +38,10 @@ function getfunctioninfo($function_name, $Region, $Namespace)
         $data .= '&' . $key1 . '=' . $value1;
     }
     $data = substr($data, 1); // 去掉第一个&
-    $url = $host.'/?'.$data;
-    //echo $meth.$url;
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
 }
 
 function updataEnvironment($Envs, $function_name, $Region, $Namespace)
@@ -48,7 +66,7 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
         $tmpdata['Environment.Variables.'.$i.'.Value'] = $value1;
         $i++;
     }
-    $meth = 'GET';
+    $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'UpdateFunctionConfiguration';
     $tmpdata['FunctionName'] = $function_name;
@@ -64,16 +82,15 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
         $data .= '&' . $key1 . '=' . $value1;
     }
     $data = substr($data, 1); // 去掉第一个&
-    $url = $host.'/?'.$data;
-
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
 }
 
 function updataProgram($function_name, $Region, $Namespace)
 {
-    $meth = 'GET';
+    $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'UpdateFunctionCode';
     $tmpdata['Code.GitUrl'] = 'https://github.com/qkqpttgf/OneDrive_SCF';
@@ -92,11 +109,10 @@ function updataProgram($function_name, $Region, $Namespace)
         $data .= '&' . $key1 . '=' . $value1;
     }
     $data = substr($data, 1); // 去掉第一个&
-    $url = $host.'/?'.$data;
-    //echo $meth.$url;
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$url, getenv('SecretKey'), true));
+    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
+    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
 }
 
 ?>
