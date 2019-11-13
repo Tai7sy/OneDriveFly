@@ -19,7 +19,7 @@ adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值
 public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；  
            　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）。  
 private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。  
-domain_path    ：格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。  
+domain_path    ：格式为a1.com=/dir/path1;b1.com=/path2，比private_path优先。  
 imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。  
 passfile       ：自定义密码文件的名字，可以是'pppppp'，也可以是'aaaa.txt'等等；  
         　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
@@ -28,6 +28,12 @@ passfile       ：自定义密码文件的名字，可以是'pppppp'，也可以
 include 'vendor/autoload.php';
 include 'functions.php';
 include 'scfapi.php';
+global $exts;
+$exts['img'] = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
+$exts['music'] = ['mp3', 'wma', 'flac', 'wav'];
+$exts['office'] = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'];
+$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'];
 
 function main_handler($event, $context)
 {
@@ -220,6 +226,7 @@ function fetch_files_children($files, $path, $page, $cache)
 
 function list_files($path)
 {
+    global $exts;
     $path = path_format($path);
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
@@ -261,9 +268,9 @@ function list_files($path)
     $_SERVER['ishidden'] = passhidden($path);
     if ($_GET['thumbnails']) {
         if ($_SERVER['ishidden']<4) {
-            if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+            if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), $exts['img'])) {
                 return get_thumbnails_url($path);
-            } else return output('ico,bmp,gif,jpg,jpeg,jpe,jfif,tif,tiff,png,heic,webp',400);
+            } else return output(json_encode($exts['img']),400);
         } else return output('',401);
     }
     if ($_SERVER['is_imgup_path']&&!$_SERVER['admin']) {
@@ -531,7 +538,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
     $constEnv = array(
         '管理密码，不添加时不显示登录页面且无法登录。' => 'admin',
         '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是此设置的值。' => 'adminloginpage',
-        '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com=/dir/path1&b1.com=/path2，比private_path优先。' => 'domain_path',
+        '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com=/dir/path1;b1.com=/path2，比private_path优先。' => 'domain_path',
         '设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。' => 'imgup_path',
         '自定义密码文件的名字，可以是\'pppppp\'，也可以是\'aaaa.txt\'等等；列目录时不会显示，只有知道密码才能查看或下载此文件。密码是这个文件的内容，可以空格、可以中文；' => 'passfile',
         '使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。' => 'private_path',
@@ -590,6 +597,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
 
 function render_list($path, $files)
 {
+    global $exts;
     @ob_start();
     $path = str_replace('%20','%2520',$path);
     $path = str_replace('+','%2B',$path);
@@ -752,15 +760,15 @@ function render_list($path, $files)
                     <div style="margin: 24px">
 <?php               $ext = strtolower(substr($path, strrpos($path, '.') + 1));
                     $DPvideo='';
-                    if (in_array($ext, ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'])) {
+                    if (in_array($ext, $exts['img'])) {
                         echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
 ';
-                    } elseif (in_array($ext, ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'])) {
+                    } elseif (in_array($ext, $exts['video'])) {
                     //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
                         $DPvideo=$files['@microsoft.graph.downloadUrl'];
                         echo '<div id="video-a0"></div>';
-                    } elseif (in_array($ext, ['mp3', 'wma', 'flac', 'wav'])) {
+                    } elseif (in_array($ext, $exts['music'])) {
                         echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
 ';
@@ -768,11 +776,11 @@ function render_list($path, $files)
                         echo '
                         <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
 ';
-                    } elseif (in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])) {
+                    } elseif (in_array($ext, $exts['office'])) {
                         echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
 ';
-                    } elseif (in_array($ext, ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'])) {
+                    } elseif (in_array($ext, $exts['txt'])) {
                         $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
 ?>
                         <div id="txt">
@@ -844,8 +852,21 @@ function render_list($path, $files)
                                 $filenum++; ?>
                     <tr data-to id="tr<?php echo $filenum;?>">
                         <td class="file">
+<?php                           $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
+                                if (in_array($ext, $exts['music'])) { ?>
+                            <ion-icon name="musical-notes"></ion-icon>
+<?php                           } elseif (in_array($ext, $exts['video'])) { ?>
+                            <ion-icon name="logo-youtube"></ion-icon>
+<?php                           } elseif (in_array($ext, $exts['img'])) { ?>
+                            <ion-icon name="image"></ion-icon>
+<?php                           } elseif (in_array($ext, $exts['office'])) { ?>
+                            <ion-icon name="paper"></ion-icon>
+<?php                           } elseif (in_array($ext, $exts['txt'])) { ?>
+                            <ion-icon name="clipboard"></ion-icon>
+<?php                           } else { ?>
                             <ion-icon name="document"></ion-icon>
-<?php                           if ($_SERVER['admin']) { ?>
+<?php                           }
+                                if ($_SERVER['admin']) { ?>
                             <li class="operate">管理
                             <ul>
                                 <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
@@ -1165,7 +1186,7 @@ function render_list($path, $files)
             if (!str) return;
             strarry=str.split('.');
             ext=strarry[strarry.length-1].toLowerCase();
-            images = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
+            images = [<?php foreach ($exts['img'] as $imgext) echo '\''.$imgext.'\', '; ?>];
             if (images.indexOf(ext)>-1) get_thumbnails_url(str, files[$i]);
         }
         obj.disabled='disabled';
