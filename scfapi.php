@@ -44,12 +44,13 @@ function getfunctioninfo($function_name, $Region, $Namespace)
     return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
 }
 
+function array_value_isnot_null($arr)
+{
+    return $arr!=='';
+}
+
 function updataEnvironment($Envs, $function_name, $Region, $Namespace)
 {
-    function array_value_isnot_null($arr)
-    {
-        return $arr!=='';
-    }
     //print_r($Envs);
     //json_decode($a,true)['Response']['Environment']['Variables'][0]['Key']
     $tmp = json_decode(getfunctioninfo($function_name, $Region, $Namespace),true)['Response']['Environment']['Variables'];
