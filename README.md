@@ -3,7 +3,14 @@ OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)
 最新更新：(https://github.com/qkqpttgf/OneDrive_SCF)  
 QQ群：943919989  
 
+# Demo
+目前为游客大文件上传：  
+[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/)  
+可能正在编辑，甚至会有ERROR：  
+[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
+
 # 更新记录：  
+20191113，原domain_path格式不好在API中提交，修改机制不用“&”用“;”分隔；分文件显示图标  
 20191112，SCFAPI改POST方式，将main里面一些代码拿出来放function，将管理操作的DIV做个css  
 20191108，SCFAPI加入namespace，抛弃config与oauth，直接用SERVER（野路子，不要学）  
 20191104，世纪互联版本写入环境变量，管理登录后显示可以更新  
@@ -45,12 +52,6 @@ QQ群：943919989
           在config新增sitename，方便改网站名称；  
           在title中带上当前文件名；  
           支持自定义域名跟API触发同时工作，方便传播（路径容易错乱的问题已经解决了）。  
-
-# Demo
-正式：  
-[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/release/abcdef/)  
-可能正在编辑，甚至会有ERROR：  
-[https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
 
 # 安装
 安装前，在环境变量里添加SecretId与SecretKey（在 https://console.cloud.tencent.com/cam/capi 这里生成），  
