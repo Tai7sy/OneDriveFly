@@ -559,7 +559,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
         updataEnvironment($tmp, $function_name, $Region, $namespace);
     }
 
-    $html = '<title>设置</title>';
+    $html = '<title>SCF设置</title>';
     $html .= '
         <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看github</a><br>';
     if ($needUpdate) {
