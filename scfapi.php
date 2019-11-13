@@ -66,7 +66,6 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
 
     $i = 0;
     foreach ($tmp_env as $key1 => $value1) {
-        //array_push($Environment['Variables'],[ 'Key' => $key1, 'Value' => $value1 ]);
         $tmpdata['Environment.Variables.'.$i.'.Key'] = $key1;
         $tmpdata['Environment.Variables.'.$i.'.Value'] = $value1;
         $i++;
