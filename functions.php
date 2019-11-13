@@ -166,17 +166,14 @@ function get_refresh_token($function_name, $Region, $Namespace)
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
             $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
             sleep(2);
-            if (getenv('Onedrive_ver')=='MS') {
-                $title = '国际版（支持商业版与个人版）';
-            } elseif (getenv('Onedrive_ver')=='CN') {
-                $title = '国内世纪互联版';
-            } else $title = '环境变量Onedrive_ver应该已经写入，等待更新';
+            $title = '环境变量Onedrive_ver应该已经写入';
             $html = '稍等3秒<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
             if (isset($response['Error'])) {
                 $html = $response['Error']['Code'] . '<br>
 ' . $response['Error']['Message'] . '<br><br>
 function_name:' . $_SERVER['function_name'] . '<br>
-Region:' . $_SERVER['Region'];
+Region:' . $_SERVER['Region'] . '<br>
+namespace:' . $Namespace;
                 $title = 'Error';
             }
             return message($html, $title, 201);
