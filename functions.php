@@ -253,7 +253,7 @@ function GetPathSetting($event, $context)
     $domain_path = getenv('domain_path');
     $tmp_path='';
     if ($domain_path!='') {
-        $tmp = explode("&",$domain_path);
+        $tmp = explode(";",$domain_path);
         foreach ($tmp as $multidomain_paths){
             $pos = strpos($multidomain_paths,"=");
             $tmp_path = path_format(substr($multidomain_paths,$pos+1));
