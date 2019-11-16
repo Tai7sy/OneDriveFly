@@ -2,12 +2,16 @@
 
 function config_oauth()
 {
+    global $constStr;
+    $constStr['language'] = $_COOKIE['language'];
+    if ($constStr['language']=='') $constStr['language'] = getenv('language');
+    if ($constStr['language']=='') $constStr['language'] = 'en-us';
     $_SERVER['sitename'] = getenv('sitename');
-    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = '请在环境变量添加sitename';
+    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = $constStr['SetSitename'][$constStr['language']];
     $_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
 
     if (getenv('Onedrive_ver')=='MS') {
-        // MS 默认（支持商业版与个人版）
+        // MS
         // https://portal.azure.com
         $_SERVER['client_id'] = '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c';
         $_SERVER['client_secret'] = '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6';
@@ -16,7 +20,7 @@ function config_oauth()
         $_SERVER['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
     }
     if (getenv('Onedrive_ver')=='CN') {
-        // CN 世纪互联
+        // CN
         // https://portal.azure.cn
         $_SERVER['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
         $_SERVER['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB';
@@ -69,8 +73,8 @@ function curl_request($url, $data = false, $headers = [])
 
     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回获取的输出文本流
-    curl_setopt($ch, CURLOPT_HEADER, 0);         // 将头文件的信息作为数据流输出
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_HEADER, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
@@ -110,7 +114,7 @@ function gethiddenpass($path,$passfile)
 
 function get_refresh_token($function_name, $Region, $Namespace)
 {
-    if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message('Please <a href="https://console.cloud.tencent.com/cam/capi" target="_blank">create SecretId & SecretKey</a> and add them in the environments First!<br>', 'Error', 500);
+    global $constStr;
     $url = path_format($_SERVER['PHP_SELF'] . '/');
 
     if ($_GET['authorization_code'] && isset($_GET['code'])) {
@@ -126,21 +130,20 @@ function get_refresh_token($function_name, $Region, $Namespace)
                 $tmptoken=substr($tmptoken,128);
             }
             $str .= '
-        Please add t1-t'.--$i.' to environments.
+        Add t1-t'.--$i.' to environments.
         <script>
             var texta=document.getElementsByTagName(\'textarea\');
             for(i=0;i<texta.length;i++) {
                 texta[i].style.height = texta[i].scrollHeight + \'px\';
             }
+            document.cookie=\'language=; path=/\';
         </script>';
             if (getenv('SecretId')!='' && getenv('SecretKey')!='') {
-                updataEnvironment($t, $function_name, $Region, $Namespace);
-            //return output('', 302, [ 'Location' => $url ]);
-            //$str .= '            location.href = "' . $url . '";';
+                echo updataEnvironment($t, $function_name, $Region, $Namespace);
                 $str .= '
             <meta http-equiv="refresh" content="5;URL=' . $url . '">';
             }
-            return message($str, 'Wait 5s jump to index page');
+            return message($str, $constStr['WaitJumpIndex'][$constStr['language']]);
         }
         return message('<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>', 500);
     }
@@ -148,7 +151,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
     if ($_GET['install2']) {
         if (getenv('Onedrive_ver')=='MS' || getenv('Onedrive_ver')=='CN') {
             return message('
-    <a href="" id="a1">Login OFFICE and Get a refresh_token</a>
+    <a href="" id="a1">'.$constStr['JumptoOffice'][$constStr['language']].'</a>
     <script>
         url=location.protocol + "//" + location.host + "'.$url.'";
         url="'. $_SERVER['oauth_url'] .'authorize?scope='. $_SERVER['scope'] .'&response_type=code&client_id='. $_SERVER['client_id'] .'&redirect_uri='. $_SERVER['redirect_uri'] . '&state=' .'"+encodeURIComponent(url);
@@ -156,37 +159,75 @@ function get_refresh_token($function_name, $Region, $Namespace)
         //window.open(url,"_blank");
         location.href = url;
     </script>
-    ', 'Wait 1s', 201);
+    ', $constStr['Wait'][$constStr['language']].' 1s', 201);
         }
     }
 
     if ($_GET['install1']) {
-        echo $_POST['Onedrive_ver'];
+        // echo $_POST['Onedrive_ver'];
         if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
+            $tmp['language'] = $_COOKIE['language'];
             $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
             sleep(2);
-            $title = '环境变量Onedrive_ver应该已经写入';
-            $html = '稍等3秒<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
+            $title = $constStr['MayinEnv'][$constStr['language']];
+            $html = $constStr['Wait'][$constStr['language']] . ' 3s<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
             if (isset($response['Error'])) {
                 $html = $response['Error']['Code'] . '<br>
 ' . $response['Error']['Message'] . '<br><br>
 function_name:' . $_SERVER['function_name'] . '<br>
 Region:' . $_SERVER['Region'] . '<br>
-namespace:' . $Namespace;
+namespace:' . $Namespace . '<br>
+<button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button>';
                 $title = 'Error';
             }
             return message($html, $title, 201);
         }
     }
 
-    $html = '
+    if ($_GET['install0']) {
+        if (getenv('SecretId')=='' || getenv('SecretKey')=='') return message($constStr['SetSecretsFirst'][$constStr['language']].'<button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button><br>'.'(<a href="https://console.cloud.tencent.com/cam/capi" target="_blank">'.$constStr['Create'][$constStr['language']].' SecretId & SecretKey</a>)', 'Error', 500);
+        $response = json_decode(SetConfig($_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
+        if (isset($response['Error'])) {
+            $html = $response['Error']['Code'] . '<br>
+' . $response['Error']['Message'] . '<br><br>
+function_name:' . $_SERVER['function_name'] . '<br>
+Region:' . $_SERVER['Region'] . '<br>
+namespace:' . $Namespace . '<br>
+<button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button>';
+            $title = 'Error';
+        } else {
+            $html = '
     <form action="?install1" method="post">
-        <label><input type="radio" name="Onedrive_ver" value="MS" checked>MS:默认（支持商业版与个人版）</label> <label><input type="radio" name="Onedrive_ver" value="CN">CN:世纪互联</label>
-        <br>
-        <input type="submit" value="确认">
+        Onedrive_Ver：<br>
+        <label><input type="radio" name="Onedrive_ver" value="MS" checked>MS: '.$constStr['OndriveVerMS'][$constStr['language']].'</label><br>
+        <label><input type="radio" name="Onedrive_ver" value="CN">CN: '.$constStr['OndriveVerCN'][$constStr['language']].'</label><br>
+        <input type="submit" value="'.$constStr['Submit'][$constStr['language']].'">
     </form>';
-    return message($html, '请选择Onedrive版本：', 201);    
+            $title = 'Install';
+        }
+        return message($html, $title, 201);
+    }
+
+    $html .= '
+    <form action="?install0" method="post">
+    language:<br>';
+    foreach ($constStr['languages'] as $key1 => $value1) {
+        $html .= '
+    <label><input type="radio" name="language" value="'.$key1.'" '.($key1==$constStr['language']?'checked':'').' onclick="changelanguage(\''.$key1.'\')">'.$value1.'</label><br>';
+    }
+    $html .= '<br>
+    <input type="submit" value="'.$constStr['Submit'][$constStr['language']].'">
+    </form>
+    <script>
+        function changelanguage(str)
+        {
+            document.cookie=\'language=\'+str+\'; path=/\';
+            location.href = location.href;
+        }
+    </script>';
+    $title = $constStr['SelectLanguage'][$constStr['language']];
+    return message($html, $title, 201);
 }
 
 function get_timezone($timezone = '8')
@@ -260,7 +301,7 @@ function GetPathSetting($event, $context)
             if (substr($multidomain_paths,0,$pos)==$host_name) $private_path=$tmp_path;
         }
     }
-    // public_path 不能是 private_path 的上级目录。
+    // public_path is not Parent Dir of private_path. public_path 不能是 private_path 的上级目录。
     if ($tmp_path!='') if ($public_path == substr($tmp_path,0,strlen($public_path))) $public_path=$tmp_path;
     if ($public_path == substr($private_path,0,strlen($public_path))) $public_path=$private_path;
     if ( $serviceId === substr($host_name,0,strlen($serviceId)) ) {
@@ -293,7 +334,7 @@ function GetPathSetting($event, $context)
     $tmpurl = substr($referer,strpos($referer,'//')+2);
     $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
     if ($refererhost==$host_name) {
-        // 仅游客上传用，referer不对就空值，无法上传
+        // Guest only upload from this site. 仅游客上传用，referer不对就空值，无法上传
         $_SERVER['current_url'] = substr($referer,0,strpos($referer,'//')) . '//' . $host_name.$_SERVER['PHP_SELF'];
     } else {
         $_SERVER['current_url'] = '';
@@ -333,7 +374,6 @@ function needUpdate()
 
 function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/html'], $isBase64Encoded = false)
 {
-    //$headers['Access-Control-Allow-Origin']='*';
     return [
         'isBase64Encoded' => $isBase64Encoded,
         'statusCode' => $statusCode,
