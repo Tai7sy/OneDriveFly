@@ -2,41 +2,15 @@
 /*
     帖子 ： https://www.hostloc.com/thread-561971-1-1.html
     github ： https://github.com/qkqpttgf/OneDrive_SCF
-
-必填环境变量：  
-SecretId       ：腾讯云API 的 SecretId。  
-SecretKey      ：腾讯云API 的 SecretKey。  
-
-安装时程序自动填写：  
-Region         ：SCF程序所在地区。  
-Onedrive_ver   ：Onedrive版本  
-t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
-
-有选择地添加以下某些环境变量来做设置：  
-sitename       ：网站的名称，不添加会显示为‘请在环境变量添加sitename’。  
-admin          ：管理密码，不添加时不显示登录页面且无法登录。  
-adminloginpage ：管理登录的页面不再是'?admin'，而是此设置的值。如果设置，登录按钮及页面隐藏。  
-public_path    ：使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；  
-           　　　不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）。  
-private_path   ：使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。  
-domain_path    ：格式为a1.com=/dir/path1;b1.com=/path2，比private_path优先。  
-imgup_path     ：设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。  
-passfile       ：自定义密码文件的名字，可以是'pppppp'，也可以是'aaaa.txt'等等；  
-        　       密码是这个文件的内容，可以空格、可以中文；列目录时不会显示，只有知道密码才能查看或下载此文件。  
 */
-
 include 'vendor/autoload.php';
+include 'conststr.php';
 include 'functions.php';
 include 'scfapi.php';
-global $exts;
-$exts['img'] = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
-$exts['music'] = ['mp3', 'wma', 'flac', 'wav'];
-$exts['office'] = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
-$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'];
-$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'];
 
 function main_handler($event, $context)
 {
+    global $constStr;
     $event = json_decode(json_encode($event), true);
     $context = json_decode(json_encode($context), true);
     printInput($event, $context);
@@ -77,11 +51,11 @@ function main_handler($event, $context)
     }
     $_SERVER['needUpdate'] = needUpdate();
     if ($_GET['setup']) if ($_SERVER['admin'] && getenv('SecretId')!='' && getenv('SecretKey')!='') {
-        // 设置，对环境变量操作
+        // setup Environments. 设置，对环境变量操作
         return EnvOpt($_SERVER['function_name'], $_SERVER['Region'], $context['namespace'], $_SERVER['needUpdate']);
     } else {
         $url = path_format($_SERVER['PHP_SELF'] . '/');
-        return output('<script>alert(\'先在环境变量设置SecretId和SecretKey！\');</script>', 302, [ 'Location' => $url ]);
+        return output('<script>alert(\''.$constStr['SetSecretsFirst'][$constStr['language']].'\');</script>', 302, [ 'Location' => $url ]);
     }
 
     return list_files($path);
@@ -128,7 +102,7 @@ function fetch_files_children($files, $path, $page, $cache)
     $maxpage = ceil($files['folder']['childCount']/200);
 
     if (!($files['children'] = $cache->fetch('files_' . $path . '_page_' . $page))) {
-                    // 下载cache文件获取跳页链接
+        // down cache file get jump info. 下载cache文件获取跳页链接
         $cachefile = fetch_files(path_format($path1 . '/' .$cachefilename));
         if ($cachefile['size']>0) {
             $pageinfo = curl_request($cachefile['@microsoft.graph.downloadUrl']);
@@ -153,7 +127,7 @@ function fetch_files_children($files, $path, $page, $cache)
                         $url .= '/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
                     }
                     $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-                               // echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                    // echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                     $cache->save('files_' . $path . '_page_' . $page1, $children['value'], 60);
                     $nextlink=$cache->fetch('nextlink_' . $path . '_page_' . $page1);
                     if ($nextlink!=$children['@odata.nextLink']) {
@@ -176,7 +150,7 @@ function fetch_files_children($files, $path, $page, $cache)
                         }
                         $url = $children['@odata.nextLink'];
                     }
-                                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                    //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                     $files['children'] = $children['value'];
                     $files['folder']['page']=$page;
                     $pageinfocache['filenum'] = $files['folder']['childCount'];
@@ -200,7 +174,7 @@ function fetch_files_children($files, $path, $page, $cache)
                     }
                     $url = $children['@odata.nextLink'];
                 }
-                                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
+                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
                 $files['children'] = $children['value'];
                 $files['folder']['page']=$page;
                 $pageinfocache['filenum'] = $files['folder']['childCount'];
@@ -227,6 +201,7 @@ function fetch_files_children($files, $path, $page, $cache)
 function list_files($path)
 {
     global $exts;
+    global $constStr;
     $path = path_format($path);
     $cache = null;
     $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
@@ -245,7 +220,7 @@ function list_files($path)
 
     if ($_SERVER['ajax']) {
         if ($_POST['action']=='del_upload_cache'&&substr($_POST['filename'],-4)=='.tmp') {
-        // 无需登录即可删除.tmp后缀文件
+        // del '.tmp' without login. 无需登录即可删除.tmp后缀文件
             $tmp = MSAPI('DELETE',path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename']) ),'',$_SERVER['access_token']);
             return output($tmp['body'],$tmp['stat']);
         }
@@ -258,7 +233,7 @@ function list_files($path)
             return $tmp;
         }
     } else {
-        if ($_SERVER['ajax']) return output('请<font color="red">刷新</font>页面后重新登录',401);
+        if ($_SERVER['ajax']) return output($constStr['RefleshtoLogin'][$constStr['language']],401);
         if ($_SERVER['is_imgup_path']) {
             $html = guestupload($path);
             if ($html!='') return $html;
@@ -274,7 +249,6 @@ function list_files($path)
         } else return output('',401);
     }
     if ($_SERVER['is_imgup_path']&&!$_SERVER['admin']) {
-        // 是图床目录且不是管理
         $files = json_decode('{"folder":{}}', true);
     } elseif ($_SERVER['ishidden']==4) {
         $files = json_decode('{"folder":{}}', true);
@@ -292,10 +266,11 @@ function list_files($path)
 
 function adminform($name = '', $pass = '', $path = '')
 {
+    global $constStr;
     $statusCode = 401;
-    $html = '<html><head><title>管理登录</title><meta charset=utf-8></head>';
+    $html = '<html><head><title>'.$constStr['AdminLogin'][$constStr['language']].'</title><meta charset=utf-8></head>';
     if ($name!=''&&$pass!='') {
-        $html .= '<body>登录成功，正在跳转</body></html>';
+        $html .= '<body>'.$constStr['LoginSuccess'][$constStr['language']].'</body></html>';
         $statusCode = 302;
         date_default_timezone_set('UTC');
         $header = [
@@ -308,12 +283,11 @@ function adminform($name = '', $pass = '', $path = '')
     $html .= '
     <body>
 	<div>
-	  <center><h4>输入管理密码</h4>
+	  <center><h4>'.$constStr['InputPassword'][$constStr['language']].'</h4>
 	  <form action="" method="post">
 		  <div>
-		    <label>密码</label>
 		    <input name="password1" type="password"/>
-		    <input type="submit" value="登录">
+		    <input type="submit" value="'.$constStr['Login'][$constStr['language']].'">
           </div>
 	  </form>
       </center>
@@ -330,7 +304,7 @@ function guestupload($path)
     if ($_POST['guest_upload_filecontent']!=''&&$_POST['upload_filename']!='') if ($_SERVER['current_url']!='') {
         $data = substr($_POST['guest_upload_filecontent'],strpos($_POST['guest_upload_filecontent'],'base64')+strlen('base64,'));
         $data = base64_decode($data);
-            // 重命名为MD5加后缀
+        // rename as MD5. 重命名为MD5加后缀
         $filename = spurlencode($_POST['upload_filename']);
         $ext = strtolower(substr($filename, strrpos($filename, '.')));
         $tmpfilename = "/tmp/".date("Ymd-His")."-".$filename;
@@ -341,12 +315,12 @@ function guestupload($path)
         $locationurl = $_SERVER['current_url'] . '/' . $filename . '?preview';
         $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$_SERVER['access_token']);
         $responsearry=json_decode($response['body'],true);
-        if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','错误',$response['stat']);
+        if (isset($responsearry['error'])) return message($responsearry['error']['message']. '<hr><a href="' . $locationurl .'">' . $filename . '</a><br><a href="javascript:history.back(-1)">上一页</a>','Error',$response['stat']);
         $uploadurl=$responsearry['uploadUrl'];
         $result = MSAPI('PUT',$uploadurl,$data,$_SERVER['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
+        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','Error',403);
         return output('', 302, [ 'Location' => $locationurl ]);
     } else {
         return message('Please upload from source site!');
@@ -355,6 +329,7 @@ function guestupload($path)
 
 function adminoperate($path)
 {
+    global $constStr;
     $path1 = path_format($_SERVER['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     $tmparr['statusCode'] = 0;
@@ -365,11 +340,10 @@ function adminoperate($path)
         $filename = spurlencode( $fileinfo['name'] );
         $cachefilename = '.' . $fileinfo['lastModified'] . '_' . $fileinfo['size'] . '_' . $filename . '.tmp';
         $getoldupinfo=fetch_files(path_format($path . '/' . $cachefilename));
-        //echo json_encode($getoldupinfo, JSON_PRETTY_PRINT);
+        // echo json_encode($getoldupinfo, JSON_PRETTY_PRINT);
         if (isset($getoldupinfo['file'])&&$getoldupinfo['size']<5120) {
             $getoldupinfo_j = curl_request($getoldupinfo['@microsoft.graph.downloadUrl']);
             $getoldupinfo = json_decode($getoldupinfo_j , true);
-            //微软的过期时间只有20分钟，其实不用看过期时间，我过了14个小时，用昨晚的链接还可以接着继续上传，微软临时文件只要还在就可以续
             if ( json_decode( curl_request($getoldupinfo['uploadUrl']), true)['@odata.context']!='' ) return output($getoldupinfo_j);
         }
         $response=MSAPI('createUploadSession',path_format($path1 . '/' . $filename),'{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$_SERVER['access_token']);
@@ -380,7 +354,7 @@ function adminoperate($path)
         return output($response['body'], $response['stat']);
     }
     if ($_POST['rename_newname']!=$_POST['rename_oldname'] && $_POST['rename_newname']!='') {
-        // 重命名
+        // rename 重命名
         $oldname = spurlencode($_POST['rename_oldname']);
         $oldname = path_format($path1 . '/' . $oldname);
         $data = '{"name":"' . $_POST['rename_newname'] . '"}';
@@ -389,16 +363,16 @@ function adminoperate($path)
         return output($result['body'], $result['stat']);
     }
     if ($_POST['delete_name']!='') {
-        // 删除
+        // delete 删除
         $filename = spurlencode($_POST['delete_name']);
         $filename = path_format($path1 . '/' . $filename);
                 //echo $filename;
         $result = MSAPI('DELETE', $filename, '', $_SERVER['access_token']);
         return output($result['body'], $result['stat']);
     }
-    if ($_POST['operate_action']=='加密') {
-        // 加密
-        if (getenv('passfile')=='') return message('先在环境变量设置passfile才能加密','',403);
+    if ($_POST['operate_action']==$constStr['encrypt'][$constStr['language']]) {
+        // encrypt 加密
+        if (getenv('passfile')=='') return message($constStr['SetpassfileBfEncrypt'][$constStr['language']],'',403);
         if ($_POST['encrypt_folder']=='/') $_POST['encrypt_folder']=='';
         $foldername = spurlencode($_POST['encrypt_folder']);
         $filename = path_format($path1 . '/' . $foldername . '/' . getenv('passfile'));
@@ -407,7 +381,7 @@ function adminoperate($path)
         return output($result['body'], $result['stat']);
     }
     if ($_POST['move_folder']!='') {
-        // 移动
+        // move 移动
         $moveable = 1;
         if ($path == '/' && $_POST['move_folder'] == '/../') $moveable=0;
         if ($_POST['move_folder'] == $_POST['move_name']) $moveable=0;
@@ -419,11 +393,11 @@ function adminoperate($path)
             $result = MSAPI('PATCH', $filename, $data, $_SERVER['access_token']);
             return output($result['body'], $result['stat']);
         } else {
-            return output('{"error":"无法移动"}', 403);
+            return output('{"error":"Can not Move!"}', 403);
         }
     }
     if ($_POST['editfile']!='') {
-        // 编辑
+        // edit 编辑
         $data = $_POST['editfile'];
         /*TXT一般不会超过4M，不用二段上传
         $filename = $path1 . ':/createUploadSession';
@@ -433,10 +407,10 @@ function adminoperate($path)
         $result = MSAPI('PUT', $path1, $data, $_SERVER['access_token'])['body'];
         echo $result;
         $resultarry = json_decode($result,true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','错误',403);
+        if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">上一页</a>','Error',403);
     }
     if ($_POST['create_name']!='') {
-        // 新建
+        // create 新建
         if ($_POST['create_type']=='file') {
             $filename = spurlencode($_POST['create_name']);
             $filename = path_format($path1 . '/' . $filename);
@@ -505,8 +479,8 @@ function MSAPI($method, $path, $data = '', $access_token)
 
     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回获取的输出文本流
-    curl_setopt($ch, CURLOPT_HEADER, 0);         // 将头文件的信息作为数据流输出
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_HEADER, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
@@ -535,69 +509,72 @@ function get_thumbnails_url($path = '/')
 
 function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
 {
-    $constEnv = array(
-        '管理密码，不添加时不显示登录页面且无法登录。' => 'admin',
-        '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是此设置的值。' => 'adminloginpage',
-        '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com=/dir/path1;b1.com=/path2，比private_path优先。' => 'domain_path',
-        '设置图床路径，不设置这个值时该目录内容会正常列文件出来，设置后只有上传界面，不显示其中文件（登录后显示）。' => 'imgup_path',
-        '自定义密码文件的名字，可以是\'pppppp\'，也可以是\'aaaa.txt\'等等；列目录时不会显示，只有知道密码才能查看或下载此文件。密码是这个文件的内容，可以空格、可以中文；' => 'passfile',
-        '使用自定义域名访问时，显示网盘文件的路径，不设置时默认为根目录。' => 'private_path',
-        '使用API长链接访问时，显示网盘文件的路径，不设置时默认为根目录；不能是private_path的上级（public看到的不能比private多，要么看到的就不一样）。' => 'public_path',
-        '网站的名称，不添加会显示为‘请在环境变量添加sitename’。' => 'sitename',
-        //'token 1' => 't1',
-        //'token 2' => 't2',
-        //'token 3' => 't3',
-        //'token 4' => 't4',
-        //'token 5' => 't5',
-        //'token 6' => 't6',
-        //'token 7' => 't7',
-        //'SCF API 的 ID' => 'SecretId',
-        //'SCF API 的 KEY' => 'SecretKey',
-        //'SCF程序所在地区' => 'Region',
-        //'Onedrive版本' => 'Onedrive_ver',
-    );
-    if ($_POST['updateProgram']=='一键更新') updataProgram($function_name, $Region, $namespace);
+    global $constStr;
+    $constEnv = [
+        //'admin',
+        'adminloginpage', 'domain_path', 'imgup_path', 'passfile', 'private_path', 'public_path', 'sitename', 'language'
+    ];
+    asort($constEnv);
+    $html = '<title>SCF '.$constStr['Setup'][$constStr['language']].'</title>';
+    if ($_POST['updateProgram']==$constStr['updateProgram'][$constStr['language']]) {
+        echo updataProgram($function_name, $Region, $namespace);
+        $html .= '<script>location.href=location.href</script>';
+    }
     if ($_POST['submit1']) {
         foreach ($_POST as $k => $v) {
             if (in_array($k, $constEnv)) {
                 $tmp[$k] = $v;
-            } 
+            }
         }
-        updataEnvironment($tmp, $function_name, $Region, $namespace);
+        echo updataEnvironment($tmp, $function_name, $Region, $namespace);
+        $html .= '<script>location.href=location.href</script>';
     }
-
-    $html = '<title>SCF设置</title>';
     $html .= '
-        <a href="https://github.com/qkqpttgf/OneDrive_SCF">查看github</a><br>';
+        <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
     if ($needUpdate) {
         $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
         <form action="" method="post">
-            <input type="submit" name="updateProgram" value="一键更新">
+            <input type="submit" name="updateProgram" value="'.$constStr['updateProgram'][$constStr['language']].'">
         </form>';
     } else {
-        $html .= '不需要更新';
+        $html .= $constStr['NotNeedUpdate'][$constStr['language']];
     }
-    $tmp = json_decode(getfunctioninfo($function_name, $Region, $namespace),true)['Response']['Environment']['Variables'];
-    foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
+    //$tmp = json_decode(getfunctioninfo($function_name, $Region, $namespace),true)['Response']['Environment']['Variables'];
+    //foreach ($tmp as $tmp1) { $tmp_env[$tmp1['Key']] = $tmp1['Value']; }
     $html .= '
     <form action="" method="post">
     <table border=1 width=100%>';
-    foreach ($constEnv as $dis => $key) {
-        $html .= '
+    foreach ($constEnv as $key) {
+        if ($key=='language') {
+            $html .= '
         <tr>
             <td><label>' . $key . '</label></td>
-            <td width=100%><input type="text" name="' . $key .'" value="' . $tmp_env[$key] . '" placeholder="' . $dis . '" style="width:100%"></td>
+            <td width=100%>
+                <select name="' . $key .'">';
+            foreach ($constStr['languages'] as $key1 => $value1) {
+                $html .= '
+                    <option value="'.$key1.'" '.($key1==getenv($key)?'selected="selected"':'').'>'.$value1.'</option>';
+            }
+            $html .= '
+                </select>
+            </td>
+        </tr>';
+        } else $html .= '
+        <tr>
+            <td><label>' . $key . '</label></td>
+            <td width=100%><input type="text" name="' . $key .'" value="' . getenv($key) . '" placeholder="' . $constStr['EnvironmentsDescription'][$key][$constStr['language']] . '" style="width:100%"></td>
         </tr>';
     }
     $html .= '</table>
-    <input type="submit" name="submit1" value="修改">
+    <input type="submit" name="submit1" value="'.$constStr['Setup'][$constStr['language']].'">
     </form>';
-    return message($html, '设置');
+    return message($html, $constStr['Setup'][$constStr['language']]);
 }
 
 function render_list($path, $files)
 {
     global $exts;
+    global $constStr;
     @ob_start();
     $path = str_replace('%20','%2520',$path);
     $path = str_replace('+','%2B',$path);
@@ -619,7 +596,7 @@ function render_list($path, $files)
             $p_path=substr($p_path,strrpos($p_path,'/')+1);
         }
     } else {
-      $pretitle = '首页';
+      $pretitle = $constStr['Index'][$constStr['language']];
       $n_path=$pretitle;
     }
     $n_path=str_replace('&amp;','&',$n_path);
@@ -629,7 +606,7 @@ function render_list($path, $files)
     date_default_timezone_set(get_timezone($_COOKIE['timezone']));
 ?>
 <!DOCTYPE html>
-<html lang="zh-cn">
+<html lang="<?php echo $constStr['language']; ?>">
 <head>
     <title><?php echo $pretitle;?> - <?php echo $_SERVER['sitename'];?></title>
     <!--
@@ -687,7 +664,7 @@ function render_list($path, $files)
 
 <body>
 <?php if ($_SERVER['needUpdate']) { ?>
-    <div style='position:absolute;'><font color='red'>可以升级程序<br>点右边管理<br>在设置页面升级</font></div>
+    <div style='position:absolute;'><font color='red'><?php echo $constStr['NeedUpdate'][$constStr['language']]; ?></font></div>
 <?php } ?>
     <h1 class="title">
         <a href="<?php echo $_SERVER['base_path']; ?>"><?php echo $_SERVER['sitename']; ?></a>
@@ -716,16 +693,16 @@ function render_list($path, $files)
 <?php
     if (getenv('admin')!='') if (!$_SERVER['admin']) {
         if (getenv('adminloginpage')=='') { ?>
-                    <a onclick="login();">登录</a>
+                    <a onclick="login();"><?php echo $constStr['Login'][$constStr['language']]; ?></a>
 <?php   }
     } else { ?>
-                    <li class="operate">管理<ul style="margin:-17px 0 0 -66px;">
-                    <li><a onclick="logout()">登出</a></li>
+                    <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?><ul style="margin:-17px 0 0 -66px;">
+                    <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
 <?php   if (isset($files['folder'])) { ?>
-                    <li><a onclick="showdiv(event,'create','');">新建</a></li>
-                    <li><a onclick="showdiv(event,'encrypt','');">加密</a></li>
+                    <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
+                    <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
 <?php       if (!$_GET['preview']) { ?>
-                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('先在环境变量设置SecretId和SecretKey！');"<?php } ?>>设置</a></li>
+                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
 <?php       } ?>
                     </ul></li>
 <?php   }
@@ -740,7 +717,7 @@ function render_list($path, $files)
                     <form action="" method="POST">
                     <input id="upload_content" type="hidden" name="guest_upload_filecontent">
                     <input id="upload_file" type="file" name="upload_filename" onchange="base64upfile()">
-                    <input type="submit" value="上传">文件大小<4M，不然传输失败！
+                    <input type="submit" value="<?php echo $constStr['Upload'][$constStr['language']]; ?>">文件大小<4M，不然传输失败！
                     </form>
                 <center>
                 </div>
@@ -755,7 +732,7 @@ function render_list($path, $files)
                 <div style="margin: 12px 4px 4px; text-align: center">
                     <div style="margin: 24px">
                         <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;" readonly><?php echo str_replace('%2523', '%23', str_replace('%26amp%3B','&amp;',spurlencode(path_format($_SERVER['base_path'] . '/' . $path), '/'))); ?></textarea>
-                        <a href="<?php echo path_format($_SERVER['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;下载</a>
+                        <a href="<?php echo path_format($_SERVER['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>"><ion-icon name="download" style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo $constStr['Download'][$constStr['language']]; ?></a>
                     </div>
                     <div style="margin: 24px">
 <?php               $ext = strtolower(substr($path, strrpos($path, '.') + 1));
@@ -786,8 +763,8 @@ function render_list($path, $files)
                         <div id="txt">
 <?php                   if ($_SERVER['admin']) { ?>
                         <form id="txt-form" action="" method="POST">
-                            <a onclick="enableedit(this);" id="txt-editbutton">点击后编辑</a>
-                            <a id="txt-save" style="display:none">保存</a>
+                            <a onclick="enableedit(this);" id="txt-editbutton"><?php echo $constStr['ClicktoEdit'][$constStr['language']]; ?></a>
+                            <a id="txt-save" style="display:none"><?php echo $constStr['Save'][$constStr['language']]; ?></a>
 <?php                   } ?>
                             <textarea id="txt-a" name="editfile" readonly style="width: 100%; margin-top: 2px;" <?php if ($_SERVER['admin']) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"';?> ><?php echo $txtstr;?></textarea>
 <?php                   if ($_SERVER['admin']) echo '</form>'; ?>
@@ -799,7 +776,7 @@ function render_list($path, $files)
                         </div>
 ';
                     } else {
-                        echo '<span>文件格式不支持预览</span>';
+                        echo '<span>'.$constStr['FileNotSupport'][$constStr['language']].'</span>';
                     } ?>
                     </div>
                 </div>
@@ -809,9 +786,9 @@ function render_list($path, $files)
                     $readme = false; ?>
                 <table class="list-table" id="list-table">
                     <tr id="tr0">
-                        <th class="file" onclick="sortby('a');">文件&nbsp;&nbsp;&nbsp;<button onclick="showthumbnails(this);">图片缩略</button></th>
-                        <th class="updated_at" width="25%" onclick="sortby('time');">修改时间</th>
-                        <th class="size" width="15%" onclick="sortby('size');">大小</th>
+                        <th class="file" onclick="sortby('a');"><?php echo $constStr['File'][$constStr['language']]; ?>&nbsp;&nbsp;&nbsp;<button onclick="showthumbnails(this);"><?php echo $constStr['ShowThumbnails'][$constStr['language']]; ?></button></th>
+                        <th class="updated_at" width="25%" onclick="sortby('time');"><?php echo $constStr['EditTime'][$constStr['language']]; ?></th>
+                        <th class="size" width="15%" onclick="sortby('size');"><?php echo $constStr['Size'][$constStr['language']]; ?></th>
                     </tr>
                     <!-- Dirs -->
 <?php               //echo json_encode($files['children'], JSON_PRETTY_PRINT);
@@ -823,12 +800,12 @@ function render_list($path, $files)
                         <td class="file">
                             <ion-icon name="folder"></ion-icon>
 <?php                       if ($_SERVER['admin']) { ?>
-                            <li class="operate">管理
+                            <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
                             <ul>
-                                <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);">加密</a></li>
-                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
-                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
-                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
+                                <li><a onclick="showdiv(event,'encrypt',<?php echo $filenum;?>);"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a></li>
                             </ul>
                             </li>&nbsp;&nbsp;&nbsp;
 <?php                       } ?>
@@ -863,15 +840,17 @@ function render_list($path, $files)
                             <ion-icon name="paper"></ion-icon>
 <?php                           } elseif (in_array($ext, $exts['txt'])) { ?>
                             <ion-icon name="clipboard"></ion-icon>
+<?php                           } elseif ($ext=='apk') { ?>
+                            <ion-icon name="logo-android"></ion-icon>
 <?php                           } else { ?>
                             <ion-icon name="document"></ion-icon>
 <?php                           }
                                 if ($_SERVER['admin']) { ?>
-                            <li class="operate">管理
+                            <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
                             <ul>
-                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);">重命名</a></li>
-                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);">移动</a></li>
-                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);">删除</a></li>
+                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a></li>
                             </ul>
                             </li>&nbsp;&nbsp;&nbsp;
 <?php                           } ?>
@@ -897,7 +876,7 @@ function render_list($path, $files)
                         if ($pagenum!=1) {
                             $prepagenum = $pagenum-1;
                             $prepagenext .= '
-                                <a onclick="nextpage('.$prepagenum.');">上一页</a>';
+                                <a onclick="nextpage('.$prepagenum.');">'.$constStr['PrePage'][$constStr['language']].'</a>';
                         }
                         $prepagenext .= '
                             </td>
@@ -918,7 +897,7 @@ function render_list($path, $files)
                         if ($pagenum!=$maxpage) {
                             $nextpagenum = $pagenum+1;
                             $prepagenext .= '
-                                <a onclick="nextpage('.$nextpagenum.');">下一页</a>';
+                                <a onclick="nextpage('.$nextpagenum.');">'.$constStr['NextPage'][$constStr['language']].'</a>';
                         }
                         $prepagenext .= '
                             </td>
@@ -931,7 +910,7 @@ function render_list($path, $files)
                 <div id="upload_div" style="margin:0 0 16px 0">
                 <center>
                     <input id="upload_file" type="file" name="upload_filename" multiple="multiple">
-                    <input id="upload_submit" onclick="preup();" value="上传" type="button">
+                    <input id="upload_submit" onclick="preup();" value="<?php echo $constStr['Upload'][$constStr['language']]; ?>" type="button">
                 </center>
                 </div>
 <?php               }
@@ -964,8 +943,8 @@ function render_list($path, $files)
                 <div style="padding:20px">
 	            <center>
 	                <form action="" method="post">
-		            <input name="password1" type="password" placeholder="输入密码">
-		            <input type="submit" value="查看">
+		            <input name="password1" type="password" placeholder="'.$constStr['InputPassword'][$constStr['language']].'">
+		            <input type="submit" value="'.$constStr['Submit'][$constStr['language']].'">
 	                </form>
                 </center>
                 </div>';
@@ -982,47 +961,47 @@ function render_list($path, $files)
     <div>
         <div id="rename_div" class="operatediv" style="display:none">
             <div>
-                <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close">关闭</a>
+                <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="rename_form" onsubmit="return submit_operate('rename');">
                 <input id="rename_sid" name="rename_sid" type="hidden" value="">
                 <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
                 <input id="rename_input" name="rename_newname" type="text" value="">
-                <input name="operate_action" type="submit" value="重命名">
+                <input name="operate_action" type="submit" value="<?php echo $constStr['Rename'][$constStr['language']]; ?>">
                 </form>
             </div>
         </div>
         <div id="delete_div" class="operatediv" style="display:none">
             <div>
-                <br><a onclick="operatediv_close('delete')" class="operatediv_close">关闭</a>
+                <br><a onclick="operatediv_close('delete')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <label id="delete_label"></label>
                 <form id="delete_form" onsubmit="return submit_operate('delete');">
-                <label id="delete_input"></label>
+                <label id="delete_input"><?php echo $constStr['Delete'][$constStr['language']]; ?>?</label>
                 <input id="delete_sid" name="delete_sid" type="hidden" value="">
                 <input id="delete_hidden" name="delete_name" type="hidden" value="">
-                <input name="operate_action" type="submit" value="确定删除">
+                <input name="operate_action" type="submit" value="<?php echo $constStr['Submit'][$constStr['language']]; ?>">
                 </form>
             </div>
         </div>
         <div id="encrypt_div" class="operatediv" style="display:none">
             <div>
-                <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close">关闭</a>
+                <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
                 <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
                 <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
-                <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="输入想要设置的密码">
-                <?php if (getenv('passfile')!='') {?><input name="operate_action" type="submit" value="加密"><?php } else { ?><br><label>先在环境变量设置passfile才能加密</label><?php } ?>
+                <input id="encrypt_input" name="encrypt_newpass" type="text" value="" placeholder="<?php echo $constStr['InputPasswordUWant'][$constStr['language']]; ?>">
+                <?php if (getenv('passfile')!='') {?><input name="operate_action" type="submit" value="<?php echo $constStr['encrypt'][$constStr['language']]; ?>"><?php } else { ?><br><label><?php echo $constStr['SetpassfileBfEncrypt'][$constStr['language']]; ?></label><?php } ?>
                 </form>
             </div>
         </div>
         <div id="move_div" class="operatediv" style="display:none">
             <div>
-                <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close">关闭</a>
+                <label id="move_label"></label><br><br><a onclick="operatediv_close('move')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="move_form" onsubmit="return submit_operate('move');">
                 <input id="move_sid" name="move_sid" type="hidden" value="">
                 <input id="move_hidden" name="move_name" type="hidden" value="">
                 <select id="move_input" name="move_folder">
 <?php   if ($path != '/') { ?>
-                    <option value="/../">上一级目录</option>
+                    <option value="/../"><?php echo $constStr['ParentDir'][$constStr['language']]; ?></option>
 <?php   }
         if (isset($files['children'])) foreach ($files['children'] as $file) {
             if (isset($file['folder'])) { ?>
@@ -1030,21 +1009,21 @@ function render_list($path, $files)
 <?php       }
         } ?>
                 </select>
-                <input name="operate_action" type="submit" value="移动">
+                <input name="operate_action" type="submit" value="<?php echo $constStr['Move'][$constStr['language']]; ?>">
                 </form>
             </div>
         </div>
         <div id="create_div" class="operatediv" style="display:none">
             <div>
-                <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close">关闭</a>
+                <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="create_form" onsubmit="return submit_operate('create');">
                 <input id="create_sid" name="create_sid" type="hidden" value="">
                 <input id="create_hidden" type="hidden" value="">
-                　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';">文件夹</label>
-                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked>文件</label><br>
-                名字：<input id="create_input" name="create_name" type="text" value=""><br>
-                <label id="create_text_div">内容：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></label>
-                　　　<input name="operate_action" type="submit" value="新建">
+                　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?></label>
+                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked><?php echo $constStr['File'][$constStr['language']]; ?></label><br>
+                <?php echo $constStr['Name'][$constStr['language']]; ?>：<input id="create_input" name="create_name" type="text" value=""><br>
+                <label id="create_text_div"><?php echo $constStr['Content'][$constStr['language']]; ?>：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></label>
+                　　　<input name="operate_action" type="submit" value="<?php echo $constStr['Create'][$constStr['language']]; ?>">
                 </form>
             </div>
         </div>
@@ -1054,18 +1033,18 @@ function render_list($path, $files)
         if (getenv('admin')!='') if (getenv('adminloginpage')=='') { ?>
     <div id="login_div" class="operatediv" style="display:none">
         <div style="margin:50px">
-            <a onclick="operatediv_close('login')" class="operatediv_close">关闭</a>
+            <a onclick="operatediv_close('login')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
 	        <center>
 	            <form action="<?php echo $_GET['preview']?'?preview&':'?';?>admin" method="post">
-		        <input id="login_input" name="password1" type="password" placeholder="请输入管理密码">
-		        <input type="submit" value="登录">
+		        <input id="login_input" name="password1" type="password" placeholder="<?php echo $constStr['InputPassword'][$constStr['language']]; ?>">
+		        <input type="submit" value="<?php echo $constStr['Login'][$constStr['language']]; ?>">
 	            </form>
             </center>
         </div>
 	</div>
 <?php   }
     } ?>
-    <font color="#f7f7f9"><?php $weekarray=array("日","一","二","三","四","五","六"); echo date("Y-m-d H:i:s")." 星期".$weekarray[date("w")]." ".$_SERVER['REMOTE_ADDR'];?></font>
+    <font color="#f7f7f9"><?php echo date("Y-m-d H:i:s")." ".$constStr['Week'][date("w")][$constStr['language']]." ".$_SERVER['REMOTE_ADDR'];?></font>
 </body>
 
 <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
@@ -1096,7 +1075,7 @@ function render_list($path, $files)
         $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
     }
 <?php
-    if ($_GET['preview']) { //在预览时处理 ?>
+    if ($_GET['preview']) { //is preview mode. 在预览时处理 ?>
     var $url = document.getElementById('url');
     if ($url) {
         $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
@@ -1176,7 +1155,7 @@ function render_list($path, $files)
     }
     addVideos(['<?php echo $DPvideo;?>']);
 <?php   } 
-    } else { //不预览，即浏览目录时?>
+    } else { // view folder. 不预览，即浏览目录时?>
     var sort=0;
     function showthumbnails(obj) {
         var files=document.getElementsByName('filelist');
@@ -1291,7 +1270,7 @@ function render_list($path, $files)
     }
 <?php
     }
-    if ($_COOKIE['timezone']=='') { //无时区写时区 ?>
+    if ($_COOKIE['timezone']=='') { // cookie timezone. 无时区写时区 ?>
     var nowtime= new Date();
     var timezone = 0-nowtime.getTimezoneOffset()/60;
     var expd = new Date();
@@ -1303,19 +1282,19 @@ function render_list($path, $files)
         location.href=location.protocol + "//" + location.host + "<?php echo path_format($_SERVER['base_path'] . '/' . $path );?>" ;
     }
 <?php }
-    if ($files['folder']['childCount']>200) { //有下一页 ?>
+    if ($files['folder']['childCount']>200) { // more than 200. 有下一页 ?>
     function nextpage(num) {
         document.getElementById('pagenum').value=num;
         document.getElementById('nextpageform').submit();
     }
 <?php }
-    if (getenv('admin')!='') { //有登录或操作，需要关闭DIV时 ?>
+    if (getenv('admin')!='') { // close div. 有登录或操作，需要关闭DIV时 ?>
     function operatediv_close(operate) {
         document.getElementById(operate+'_div').style.display='none';
         document.getElementById('mask').style.display='none';
     }
 <?php }
-    if ($_SERVER['is_imgup_path']&&!$_SERVER['admin']) { //当前是图床目录时 ?>
+    if ($_SERVER['is_imgup_path']&&!$_SERVER['admin']) { // is guest upload path. 当前是图床目录时 ?>
     function base64upfile() {
         var $file=document.getElementById('upload_file').files[0];
         var $reader = new FileReader();
@@ -1326,7 +1305,7 @@ function render_list($path, $files)
         $reader.readAsDataURL($file);
     }
 <?php }
-    if ($_SERVER['admin']) { //管理登录后 ?>
+    if ($_SERVER['admin']) { // admin login. 管理登录后 ?>
     function logout() {
         document.cookie = "<?php echo $_SERVER['function_name'] . 'admin';?>=; path=/";
         location.href = location.href;
@@ -1334,7 +1313,7 @@ function render_list($path, $files)
     function enableedit(obj) {
         document.getElementById('txt-a').readOnly=!document.getElementById('txt-a').readOnly;
         //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-        obj.innerHTML=(obj.innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
+        obj.innerHTML=(obj.innerHTML=='<?php echo $constStr['CancelEdit'][$constStr['language']]; ?>')?'<?php echo $constStr['ClicktoEdit'][$constStr['language']]; ?>':'<?php echo $constStr['CancelEdit'][$constStr['language']]; ?>';
         document.getElementById('txt-save').style.display=document.getElementById('txt-save').style.display==''?'none':'';
     }
 <?php   if (!$_GET['preview']) {?>
@@ -1353,7 +1332,7 @@ function render_list($path, $files)
             if (str=='') {
                 str=document.getElementById('file_a'+num).getElementsByTagName("img")[0].alt;
                 if (str=='') {
-                    alert('获取文件名失败！');
+                    alert('<?php echo $constStr['GetFileNameFail'][$constStr['language']]; ?>');
                     operatediv_close(action);
                     return;
                 }
@@ -1439,7 +1418,6 @@ function render_list($path, $files)
         tr1.appendChild(td2);
         tr1.appendChild(td3);
     }
-    //获取指定form中的所有的<input>对象 
     function getElements(formId) { 
         var form = document.getElementById(formId); 
         var elements = new Array(); 
@@ -1457,7 +1435,6 @@ function render_list($path, $files)
         }
         return elements; 
     } 
-    //组合URL 
     function serializeElement(element) { 
         var method = element.tagName.toLowerCase(); 
         var parameter; 
@@ -1492,7 +1469,6 @@ function render_list($path, $files)
             return results.join('&'); 
         } 
     } 
-    //调用方法  
     function serializeForm(formId) { 
         var elements = getElements(formId); 
         var queryComponents = new Array(); 
@@ -1542,9 +1518,9 @@ function render_list($path, $files)
             var td2=document.createElement('td');
             tr1.appendChild(td2);
             td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
-            td2.innerHTML='获取链接 ...';
+            td2.innerHTML='<?php echo $constStr['GetUploadLink'][$constStr['language']]; ?> ...';
             if (file.size>15*1024*1024*1024) {
-                td2.innerHTML='<font color="red">大于15G，终止上传。</font>';
+                td2.innerHTML='<font color="red"><?php echo $constStr['UpFileTooLarge'][$constStr['language']]; ?></font>';
                 uploadbuttonshow();
                 return;
             }
@@ -1560,7 +1536,7 @@ function render_list($path, $files)
                         td2.innerHTML='<font color="red">'+xhr1.responseText+'</font><br>';
                         uploadbuttonshow();
                     } else {
-                        td2.innerHTML='开始上传 ...';
+                        td2.innerHTML='<?php echo $constStr['UploadStart'][$constStr['language']]; ?> ...';
                         binupfile(file,html['uploadUrl'],timea+'_'+i);
                     }
                 }
@@ -1612,11 +1588,11 @@ function render_list($path, $files)
                     StartTime = new Date();
                     newstartsize = asize;
                     if (asize==0) {
-                        StartStr='开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        StartStr='<?php echo $constStr['UploadStartAt'][$constStr['language']]; ?>：' +StartTime.toLocaleString()+'<br>' ;
                     } else {
-                        StartStr='上次上传'+size_format(asize)+ '<br>本次开始于：' +StartTime.toLocaleString()+'<br>' ;
+                        StartStr='<?php echo $constStr['LastUpload'][$constStr['language']]; ?>'+size_format(asize)+ '<br><?php echo $constStr['ThisTime'][$constStr['language']].$constStr['UploadStartAt'][$constStr['language']]; ?>：' +StartTime.toLocaleString()+'<br>' ;
                     }
-                    var chunksize=5*1024*1024; // 每小块上传大小，最大60M，微软建议10M
+                    var chunksize=5*1024*1024; // max 60M. 每小块上传大小，最大60M，微软建议10M
                     if (totalsize>200*1024*1024) chunksize=10*1024*1024;
                     function readblob(start) {
                         var end=start+chunksize;
@@ -1636,7 +1612,7 @@ function render_list($path, $files)
                                 var tmptime = new Date();
                                 var tmpspeed = e.loaded*1000/(tmptime.getTime()-C_starttime.getTime());
                                 var remaintime = (totalsize-asize-e.loaded)/tmpspeed;
-                                label.innerHTML=StartStr+'已经上传 ' +size_format(asize+e.loaded)+ ' / '+size_format(totalsize) + ' = ' + ((asize+e.loaded)*100/totalsize).toFixed(2) + '% 平均速度：'+size_format((asize+e.loaded-newstartsize)*1000/(tmptime.getTime()-StartTime.getTime()))+'/s<br>即时速度 '+size_format(tmpspeed)+'/s 预计还要 '+remaintime.toFixed(1)+'s';
+                                label.innerHTML=StartStr+'<?php echo $constStr['Upload'][$constStr['language']]; ?> ' +size_format(asize+e.loaded)+ ' / '+size_format(totalsize) + ' = ' + ((asize+e.loaded)*100/totalsize).toFixed(2) + '% <?php echo $constStr['AverageSpeed'][$constStr['language']]; ?>：'+size_format((asize+e.loaded-newstartsize)*1000/(tmptime.getTime()-StartTime.getTime()))+'/s<br><?php echo $constStr['CurrentSpeed'][$constStr['language']]; ?> '+size_format(tmpspeed)+'/s <?php echo $constStr['Expect'][$constStr['language']]; ?> '+remaintime.toFixed(1)+'s';
                             }
                         }
                         var C_starttime = new Date();
@@ -1644,7 +1620,7 @@ function render_list($path, $files)
                             if (xhr.status<500) {
                             var response=JSON.parse(xhr.responseText);
                             if (response['size']>0) {
-                                // 有size说明是最终返回，上传结束
+                                // contain size, upload finish. 有size说明是最终返回，上传结束
                                 var xhr3 = new XMLHttpRequest();
                                 xhr3.open("POST", '');
                                 xhr3.setRequestHeader('x-requested-with','XMLHttpRequest');
@@ -1653,13 +1629,13 @@ function render_list($path, $files)
                                     console.log(xhr3.responseText+','+xhr3.status);
                                 }
                                 EndTime=new Date();
-                                MiddleStr = '结束于：'+EndTime.toLocaleString()+'<br>';
+                                MiddleStr = '<?php echo $constStr['EndAt'][$constStr['language']]; ?>：'+EndTime.toLocaleString()+'<br>';
                                 if (newstartsize==0) {
-                                    MiddleStr += '平均速度：'+size_format(totalsize*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                    MiddleStr += '<?php echo $constStr['AverageSpeed'][$constStr['language']]; ?>：'+size_format(totalsize*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
                                 } else {
-                                    MiddleStr += '本次平均速度：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
+                                    MiddleStr += '<?php echo $constStr['ThisTime'][$constStr['language']].$constStr['AverageSpeed'][$constStr['language']]; ?>：'+size_format((totalsize-newstartsize)*1000/(EndTime.getTime()-StartTime.getTime()))+'/s<br>';
                                 }
-                                document.getElementById('upfile_td1_'+tdnum).innerHTML='<font color="green">'+document.getElementById('upfile_td1_'+tdnum).innerHTML+'<br>上传完成</font>';
+                                document.getElementById('upfile_td1_'+tdnum).innerHTML='<font color="green">'+document.getElementById('upfile_td1_'+tdnum).innerHTML+'<br><?php echo $constStr['UploadComplete'][$constStr['language']]; ?></font>';
                                 label.innerHTML=StartStr+MiddleStr;
                                 uploadbuttonshow();
                                 addelement(response);
@@ -1677,7 +1653,7 @@ function render_list($path, $files)
                     }
                 } else {
                     if (window.location.pathname.indexOf('%23')>0||file.name.indexOf('%23')>0) {
-                        label.innerHTML='<font color="red">目录或文件名含有#，上传失败。</font>';
+                        label.innerHTML='<font color="red"><?php echo $constStr['UploadFail23'][$constStr['language']]; ?></font>';
                     } else {
                         label.innerHTML='<font color="red">'+xhr2.responseText+'</font>';
                     }
