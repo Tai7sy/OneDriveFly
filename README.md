@@ -10,6 +10,7 @@ QQ群：943919989
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
 
 # 更新记录：  
+20191116，SCF要国际版，提倡中英双文，安装过程加入设置30s运行时间  
 20191113，原domain_path格式不好在API中提交，修改机制不用“&”用“;”分隔；分文件显示图标  
 20191112，SCFAPI改POST方式，将main里面一些代码拿出来放function，将管理操作的DIV做个css  
 20191108，SCFAPI加入namespace，抛弃config与oauth，直接用SERVER（野路子，不要学）  
@@ -62,8 +63,9 @@ SecretId       ：腾讯云API 的 SecretId。
 SecretKey      ：腾讯云API 的 SecretKey。  
 
 安装时程序自动填写：  
-Region         ：SCF程序所在地区。  
+Region         ：SCF程序所在地区(暂用，只能从API网关长链接读出来用，gz不适用)  
 Onedrive_ver   ：Onedrive版本  
+language       ：程序显示的语言  
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
 
 有选择地添加以下某些环境变量来做设置：  
