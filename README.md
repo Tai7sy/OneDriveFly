@@ -11,7 +11,7 @@ QQ群：943919989
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
 
 # 更新记录：  
-20191121，将登录移左上角，管理横向展开  
+20191121，将登录移左上角，管理菜单横向展开；对于国际版，安装时可以使用自己申请的应用ID跟机密。  
 20191117，多域名机制还是不对，修改。  
 20191116，SCF要国际版，提倡中英双文，安装过程加入设置30s运行时间  
 20191113，原domain_path格式不好在API中提交，-修改机制不用“&”用“;”分隔；- 分文件显示图标  
