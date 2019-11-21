@@ -28,6 +28,15 @@ function config_oauth()
         $_SERVER['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
         $_SERVER['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
     }
+    if (getenv('Onedrive_ver')=='MSC') {
+        // MS Customer
+        // https://portal.azure.com
+        $_SERVER['client_id'] = getenv('client_id');
+        $_SERVER['client_secret'] = base64_decode(equal_replace(getenv('client_secret'),1));
+        $_SERVER['oauth_url'] = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+        $_SERVER['api_url'] = 'https://graph.microsoft.com/v1.0/me/drive/root';
+        $_SERVER['scope'] = 'https://graph.microsoft.com/Files.ReadWrite.All offline_access';
+    }
 
     $_SERVER['client_secret'] = urlencode($_SERVER['client_secret']);
     $_SERVER['scope'] = urlencode($_SERVER['scope']);
@@ -92,6 +101,16 @@ function encode_str_replace($str)
     return $str;
 }
 
+function equal_replace($str, $add = false)
+{
+    if ($add) {
+        while(strlen($str)%4) $str .= '=';
+    } else {
+        while(substr($str,-1)=='=') $str=substr($str,0,-1);
+    }
+    return $str;
+}
+
 function gethiddenpass($path,$passfile)
 {
     $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile),'/'));
@@ -149,7 +168,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
     }
 
     if ($_GET['install2']) {
-        if (getenv('Onedrive_ver')=='MS' || getenv('Onedrive_ver')=='CN') {
+        if (getenv('Onedrive_ver')=='MS' || getenv('Onedrive_ver')=='CN' || getenv('Onedrive_ver')=='MSC') {
             return message('
     <a href="" id="a1">'.$constStr['JumptoOffice'][$constStr['language']].'</a>
     <script>
@@ -165,9 +184,11 @@ function get_refresh_token($function_name, $Region, $Namespace)
 
     if ($_GET['install1']) {
         // echo $_POST['Onedrive_ver'];
-        if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN') {
+        if ($_POST['Onedrive_ver']=='MS' || $_POST['Onedrive_ver']=='CN' || $_POST['Onedrive_ver']=='MSC') {
             $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
             $tmp['language'] = $_COOKIE['language'];
+            $tmp['client_id'] = $_POST['client_id'];
+            $tmp['client_secret'] = equal_replace(base64_encode($_POST['client_secret']));
             $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
             sleep(2);
             $title = $constStr['MayinEnv'][$constStr['language']];
@@ -197,11 +218,24 @@ namespace:' . $Namespace . '<br>
 <button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button>';
             $title = 'Error';
         } else {
+            if ($constStr['language']!='zh-cn') {
+                $linklang='en-us';
+            } else $linklang='zh-cn';
+            $ru = "https://developer.microsoft.com/".$linklang."/graph/quick-start?appID=_appId_&appName=_appName_&redirectUrl=".$_SERVER['redirect_uri']."&platform=option-php";
+            $deepLink = "/quickstart/graphIO?publicClientSupport=false&appName=one_scf&redirectUrl=".$_SERVER['redirect_uri']."&allowImplicitFlow=false&ru=".urlencode($ru);
+            $app_url = "https://apps.dev.microsoft.com/?deepLink=".urlencode($deepLink);
             $html = '
     <form action="?install1" method="post">
         Onedrive_Ver：<br>
         <label><input type="radio" name="Onedrive_ver" value="MS" checked>MS: '.$constStr['OndriveVerMS'][$constStr['language']].'</label><br>
         <label><input type="radio" name="Onedrive_ver" value="CN">CN: '.$constStr['OndriveVerCN'][$constStr['language']].'</label><br>
+        <label><input type="radio" name="Onedrive_ver" value="MSC" onclick="document.getElementById(\'secret\').style.display=\'\';">MSC: '.$constStr['OndriveVerMSC'][$constStr['language']].'
+            <div id="secret" style="display:none">
+                <a href="'.$app_url.'" target="_blank">'.$constStr['GetSecretIDandKEY'][$constStr['language']].'</a><br>
+                client_secret:<input type="text" name="client_secret"><br>
+                client_id(12345678-90ab-cdef-ghij-klmnopqrstuv):<input type="text" name="client_id"><br>
+            </div>
+        </label><br>
         <input type="submit" value="'.$constStr['Submit'][$constStr['language']].'">
     </form>';
             $title = 'Install';
