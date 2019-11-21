@@ -169,8 +169,8 @@ $constStr = [
         'zh-cn' => '首页',
     ],
     'NeedUpdate' => [
-        'en-us' => 'Program can update<br>Click setup in Operate at right.',
-        'zh-cn' => '可以升级程序<br>点右边管理<br>在设置页面升级',
+        'en-us' => 'Program can update<br>Click setup in Operate at top.',
+        'zh-cn' => '可以升级程序<br>在上方管理菜单中<br>进入设置页面升级',
     ],
     'Operate' => [
         'en-us' => 'Operate',
@@ -205,7 +205,7 @@ $constStr = [
         'zh-cn' => '文件',
     ],
     'ShowThumbnails' => [
-        'en-us' => 'ShowThumbnails',
+        'en-us' => 'Thumbnails',
         'zh-cn' => '图片缩略',
     ],
     'EditTime' => [
