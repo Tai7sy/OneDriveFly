@@ -352,6 +352,14 @@ $constStr = [
         'en-us' => 'Onedrive in China',
         'zh-cn' => '世纪互联版',
     ],
+    'OndriveVerMSC' =>[
+        'en-us' => 'default but use customer app id & secret',
+        'zh-cn' => '国际版，自己申请应用ID与机密',
+    ],
+    'GetSecretIDandKEY' =>[
+        'en-us' => 'Get customer app id & secret',
+        'zh-cn' => '申请应用ID与机密',
+    ],
     'Reflesh' => [
         'en-us' => 'Reflesh',
         'zh-cn' => '刷新',
