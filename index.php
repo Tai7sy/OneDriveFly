@@ -261,7 +261,10 @@ function list_files($path)
     }
     if ( isset($files['folder']) || isset($files['file']) ) {
         return render_list($path, $files);
-    } else return list_files($path);
+    } else {
+        echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
+        return list_files($path);
+    }
 }
 
 function adminform($name = '', $pass = '', $path = '')
@@ -625,13 +628,12 @@ function render_list($path, $files)
         a:hover{color:#24292e}
         .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
         .title a{color:#333;text-decoration:none}
-        .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgb(128,128,128);border-radius: 15px;}
-        .list-container{position:relative;overflow:hidden;border-radius: 15px;}
+        .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgb(128,128,128);border-radius:15px;}
+        .list-container{position:relative;overflow:hidden;border-radius:15px;}
         .list-header-container{position:relative}
         .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
         .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
         .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
-        .login{display: inline-table;position: absolute;font-size:16px;padding:30px 20px;vertical-align:middle;right:0px;top:0px}
         .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
         .list-table{width:100%;padding:20px;border-spacing:0}
         .list-table tr{height:40px}
@@ -642,28 +644,46 @@ function render_list($path, $files)
         .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
         .mask{position:absolute;left:0px;top:0px;width:100%;background-color:#000;filter:alpha(opacity=50);opacity:0.5}
 <?php if ($_SERVER['admin']) { ?>
-        .operate{display: inline-table;margin:0;list-style:none;}
-        .operate ul{position: absolute;display: none;background: #fff;border:1px #f7f7f7 solid;border-radius: 5px;margin:-17px 0 0 0;padding: 0;color:#205D67;}
-        .operate:hover ul{position: absolute;display:inline-table;}
-        .operate ul li{padding:1px;list-style:none;}
+        .operate{display:inline-table;margin:0;list-style:none;}
+        .operate ul{position:absolute;display:none;background:#fffaaa;border:0px #f7f7f7 solid;border-radius:5px;margin:-7px 0 0 0;padding:0 7px;color:#205D67;}
+        .operate:hover ul{position:absolute;display:inline-table;}
+        .operate ul li{padding:7px;list-style:none;display:inline-table;}
 <?php } ?>
         .operatediv{position:absolute;border:1px #CCCCCC;background-color:#FFFFCC;}
         .operatediv div{margin:16px}
-        .operatediv_close{position: absolute;right: 3px;top:3px;}
-        .readme{padding:8px;background-color: #fff;}
-        #readme{padding: 20px;text-align: left}
+        .operatediv_close{position:absolute;right:3px;top:3px;}
+        .readme{padding:8px;background-color:#fff;}
+        #readme{padding:20px;text-align:left}
 
         @media only screen and (max-width:480px){
-            .title{margin-bottom: 24px}
+            .title{margin-bottom:24px}
             .list-wrapper{width:95%; margin-bottom:24px;}
-            .list-table {padding: 8px}
+            .list-table {padding:8px}
             .list-table td, .list-table th{padding:0 10px;text-align:left;white-space:nowrap;overflow:auto;max-width:80px}
         }
     </style>
 </head>
 
 <body>
-<?php if ($_SERVER['needUpdate']) { ?>
+<?php
+    if (getenv('admin')!='') if (!$_SERVER['admin']) {
+        if (getenv('adminloginpage')=='') { ?>
+    <a onclick="login();"><?php echo $constStr['Login'][$constStr['language']]; ?></a>
+<?php   }
+    } else { ?>
+    <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?><ul>
+<?php   if (isset($files['folder'])) { ?>
+        <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
+        <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
+<?php       if (!$_GET['preview']) { ?>
+        <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
+<?php       }
+        } ?>
+        <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
+    </ul></li>
+<?php
+    }
+    if ($_SERVER['needUpdate']) { ?>
     <div style='position:absolute;'><font color='red'><?php echo $constStr['NeedUpdate'][$constStr['language']]; ?></font></div>
 <?php } ?>
     <h1 class="title">
@@ -689,25 +709,6 @@ function render_list($path, $files)
                 </a>
 <?php } ?>
                 <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&','&amp;', $path)); ?></h3>
-                <div class="login">
-<?php
-    if (getenv('admin')!='') if (!$_SERVER['admin']) {
-        if (getenv('adminloginpage')=='') { ?>
-                    <a onclick="login();"><?php echo $constStr['Login'][$constStr['language']]; ?></a>
-<?php   }
-    } else { ?>
-                    <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?><ul style="margin:-17px 0 0 -66px;">
-                    <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
-<?php   if (isset($files['folder'])) { ?>
-                    <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
-                    <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
-<?php       if (!$_GET['preview']) { ?>
-                    <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
-<?php       } ?>
-                    </ul></li>
-<?php   }
-    } ?>
-                </div>
             </div>
             <div class="list-body-container">
 <?php
