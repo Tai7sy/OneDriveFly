@@ -675,10 +675,8 @@ function render_list($path, $files)
 <?php   if (isset($files['folder'])) { ?>
         <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
         <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
-<?php       if (!$_GET['preview']) { ?>
+<?php   } ?>
         <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
-<?php       }
-        } ?>
         <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
     </ul></li>
 <?php
@@ -799,7 +797,6 @@ function render_list($path, $files)
                             $filenum++; ?>
                     <tr data-to id="tr<?php echo $filenum;?>">
                         <td class="file">
-                            <ion-icon name="folder"></ion-icon>
 <?php                       if ($_SERVER['admin']) { ?>
                             <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
                             <ul>
@@ -810,6 +807,7 @@ function render_list($path, $files)
                             </ul>
                             </li>&nbsp;&nbsp;&nbsp;
 <?php                       } ?>
+                            <ion-icon name="folder"></ion-icon>
                             <a id="file_a<?php echo $filenum;?>" href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&','&amp;', $file['name']);?></a>
                         </td>
                         <td class="updated_at" id="folder_time<?php echo $filenum;?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
@@ -831,6 +829,15 @@ function render_list($path, $files)
                     <tr data-to id="tr<?php echo $filenum;?>">
                         <td class="file">
 <?php                           $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
+                                if ($_SERVER['admin']) { ?>
+                            <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
+                            <ul>
+                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a></li>
+                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a></li>
+                            </ul>
+                            </li>&nbsp;&nbsp;&nbsp;
+<?php                           }
                                 if (in_array($ext, $exts['music'])) { ?>
                             <ion-icon name="musical-notes"></ion-icon>
 <?php                           } elseif (in_array($ext, $exts['video'])) { ?>
@@ -845,15 +852,6 @@ function render_list($path, $files)
                             <ion-icon name="logo-android"></ion-icon>
 <?php                           } else { ?>
                             <ion-icon name="document"></ion-icon>
-<?php                           }
-                                if ($_SERVER['admin']) { ?>
-                            <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
-                            <ul>
-                                <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a></li>
-                                <li><a onclick="showdiv(event, 'move',<?php echo $filenum;?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a></li>
-                                <li><a onclick="showdiv(event, 'delete',<?php echo $filenum;?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a></li>
-                            </ul>
-                            </li>&nbsp;&nbsp;&nbsp;
 <?php                           } ?>
                             <a id="file_a<?php echo $filenum;?>" name="filelist" href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview" target=_blank><?php echo str_replace('&','&amp;', $file['name']); ?></a>
                             <a href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . str_replace('&','&amp;', $file['name']));?>"><ion-icon name="download"></ion-icon></a>
