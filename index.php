@@ -1292,6 +1292,10 @@ function render_list($path, $files)
     function preup() {
         uploadbuttonhide();
         var files=document.getElementById('upload_file').files;
+	if (files.length<1) {
+            uploadbuttonshow();
+            return;
+        };
         var table1=document.createElement('table');
         document.getElementById('upload_div').appendChild(table1);
         table1.setAttribute('class','list-table');
