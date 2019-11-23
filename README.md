@@ -11,10 +11,12 @@ QQ群：943919989
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
 
 # 更新记录：  
+20191123，流量要收费了，游客上传也就不经过SCF了，可以上传大文件。  
+20191122，感谢 Deomntisa 小可爱，学会z-index。  
 20191121，将登录移左上角，管理菜单横向展开；对于国际版，安装时可以使用自己申请的应用ID跟机密。  
 20191117，多域名机制还是不对，修改。  
 20191116，SCF要国际版，提倡中英双文，安装过程加入设置30s运行时间  
-20191113，原domain_path格式不好在API中提交，-修改机制不用“&”用“;”分隔；- 分文件显示图标  
+20191113，原domain_path格式不好在API中提交，~~修改机制不用“&”用“;”分隔；~~ 分文件显示图标  
 20191112，SCFAPI改POST方式，将main里面一些代码拿出来放function，将管理操作的DIV做个css  
 20191108，SCFAPI加入namespace，抛弃config与oauth，直接用SERVER（野路子，不要学）  
 20191104，世纪互联版本写入环境变量，管理登录后显示可以更新  
