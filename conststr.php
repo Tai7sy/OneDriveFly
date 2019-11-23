@@ -316,6 +316,10 @@ $constStr = [
         'en-us' => 'End At',
         'zh-cn' => '结束于',
     ],
+    'UploadErrorUpAgain' => [
+        'en-us' => 'Maybe error, do upload again.',
+        'zh-cn' => '可能出错，重新上传。',
+    ],
     'UploadComplete' => [
         'en-us' => 'Upload Complete',
         'zh-cn' => '上传完成',
