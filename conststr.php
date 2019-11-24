@@ -156,6 +156,10 @@ $constStr = [
         'en-us' => 'Update Program',
         'zh-cn' => '一键更新',
     ],
+    'UpdateSuccess' => [
+        'en-us' => 'Program update Success!',
+        'zh-cn' => '程序升级成功！',
+    ],
     'Setup' => [
         'en-us' => 'Setup',
         'zh-cn' => '设置',
@@ -164,7 +168,7 @@ $constStr = [
         'en-us' => 'Not Need Update',
         'zh-cn' => '不需要更新',
     ],
-    'Index' => [
+    'Home' => [
         'en-us' => 'Home',
         'zh-cn' => '首页',
     ],
