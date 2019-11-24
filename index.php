@@ -1462,7 +1462,11 @@ function render_list($path, $files)
                                     var filename;
                                     if (xhr4.status==200) filename = JSON.parse(xhr4.responseText)['name'];
                                     if (xhr4.status==409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
-                                    if (filename=='') { alert('<?php echo $constStr['UploadErrorUpAgain'][$constStr['language']]; ?>'); return; }
+                                    if (filename=='') {
+                                        alert('<?php echo $constStr['UploadErrorUpAgain'][$constStr['language']]; ?>');
+                                        uploadbuttonshow();
+                                        return;
+                                    }
                                     var lasturl = location.href;
                                     if (lasturl.substr(lasturl.length-1)!='/') lasturl += '/';
                                     lasturl += filename + '?preview';
