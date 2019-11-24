@@ -269,7 +269,7 @@ function list_files($path)
     }
     if ( isset($files['folder']) || isset($files['file']) ) {
         return render_list($path, $files);
-    } else {
+    } elseif (!isset($files['Error'])) {
         echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
         return list_files($path);
     }
@@ -507,8 +507,21 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
     asort($constEnv);
     $html = '<title>SCF '.$constStr['Setup'][$constStr['language']].'</title>';
     if ($_POST['updateProgram']==$constStr['updateProgram'][$constStr['language']]) {
-        echo updataProgram($function_name, $Region, $namespace);
-        $html .= '<script>location.href=location.href</script>';
+        $response = json_decode(updataProgram($function_name, $Region, $namespace), true)['Response'];
+        if (isset($response['Error'])) {
+            $html = $response['Error']['Code'] . '<br>
+' . $response['Error']['Message'] . '<br><br>
+function_name:' . $_SERVER['function_name'] . '<br>
+Region:' . $_SERVER['Region'] . '<br>
+namespace:' . $namespace . '<br>
+<button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button>';
+            $title = 'Error';
+        } else {
+            $html .= $constStr['UpdateSuccess'][$constStr['language']] . '<br>
+<button onclick="location.href = location.href;">'.$constStr['Reflesh'][$constStr['language']].'</button>';
+            $title = $constStr['Setup'][$constStr['language']];
+        }
+        return message($html, $title);
     }
     if ($_POST['submit1']) {
         foreach ($_POST as $k => $v) {
@@ -584,7 +597,7 @@ function render_list($path, $files)
             $p_path=substr($p_path,strrpos($p_path,'/')+1);
         }
     } else {
-      $pretitle = $constStr['Index'][$constStr['language']];
+      $pretitle = $constStr['Home'][$constStr['language']];
       $n_path=$pretitle;
     }
     $n_path=str_replace('&amp;','&',$n_path);
@@ -810,8 +823,7 @@ function render_list($path, $files)
                                 $filenum++; ?>
                     <tr data-to id="tr<?php echo $filenum;?>">
                         <td class="file">
-<?php                           $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
-                                if ($_SERVER['admin']) { ?>
+<?php                           if ($_SERVER['admin']) { ?>
                             <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
                             <ul>
                                 <li><a onclick="showdiv(event, 'rename',<?php echo $filenum;?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a></li>
@@ -820,6 +832,7 @@ function render_list($path, $files)
                             </ul>
                             </li>&nbsp;&nbsp;&nbsp;
 <?php                           }
+                                $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
                                 if (in_array($ext, $exts['music'])) { ?>
                             <ion-icon name="musical-notes"></ion-icon>
 <?php                           } elseif (in_array($ext, $exts['video'])) { ?>
