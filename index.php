@@ -1009,15 +1009,35 @@ function render_list($path, $files)
         </div>
         <div id="create_div" class="operatediv" style="display:none">
             <div>
-                <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                <a onclick="operatediv_close('create')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="create_form" onsubmit="return submit_operate('create');">
-                <input id="create_sid" name="create_sid" type="hidden" value="">
-                <input id="create_hidden" type="hidden" value="">
-                　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?></label>
-                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked><?php echo $constStr['File'][$constStr['language']]; ?></label><br>
-                <?php echo $constStr['Name'][$constStr['language']]; ?>：<input id="create_input" name="create_name" type="text" value=""><br>
-                <label id="create_text_div"><?php echo $constStr['Content'][$constStr['language']]; ?>：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></label>
-                　　　<input name="operate_action" type="submit" value="<?php echo $constStr['Create'][$constStr['language']]; ?>">
+                    <input id="create_sid" name="create_sid" type="hidden" value="">
+                    <input id="create_hidden" type="hidden" value="">
+                    <table>
+                        <tr>
+                            <td></td>
+                            <td><label id="create_label"></label></td>
+                        </tr>
+                        <tr>
+                            <td>　　　</td>
+                            <td>
+                                <label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?></label>
+                                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked><?php echo $constStr['File'][$constStr['language']]; ?></label>
+                            <td>
+                        </tr>
+                        <tr>
+                            <td><?php echo $constStr['Name'][$constStr['language']]; ?>：</td>
+                            <td><input id="create_input" name="create_name" type="text" value=""></td>
+                        </tr>
+                        <tr id="create_text_div">
+                            <td><?php echo $constStr['Content'][$constStr['language']]; ?>：</td>
+                            <td><textarea id="create_text" name="create_text" rows="6" cols="40"></textarea></td>
+                        </tr>
+                        <tr>
+                            <td>　　　</td>
+                            <td><input name="operate_action" type="submit" value="<?php echo $constStr['Create'][$constStr['language']]; ?>"></td>
+                        </tr>
+                    </table>
                 </form>
             </div>
         </div>
