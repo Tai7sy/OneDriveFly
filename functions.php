@@ -7,7 +7,7 @@ function config_oauth()
     if ($constStr['language']=='') $constStr['language'] = getenv('language');
     if ($constStr['language']=='') $constStr['language'] = 'en-us';
     $_SERVER['sitename'] = getenv('sitename');
-    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = $constStr['SetSitename'][$constStr['language']];
+    if (empty($_SERVER['sitename'])) $_SERVER['sitename'] = $constStr['defaultSitename'][$constStr['language']];
     $_SERVER['redirect_uri'] = 'https://scfonedrive.github.io';
 
     if (getenv('Onedrive_ver')=='MS') {
@@ -363,7 +363,7 @@ function GetPathSetting($event, $context)
     if ($event['headers']['x-requested-with']=='XMLHttpRequest') {
         $_SERVER['ajax']=1;
     }
-    
+/*
     $referer = $event['headers']['referer'];
     $tmpurl = substr($referer,strpos($referer,'//')+2);
     $refererhost = substr($tmpurl,0,strpos($tmpurl,'/'));
@@ -373,6 +373,7 @@ function GetPathSetting($event, $context)
     } else {
         $_SERVER['current_url'] = '';
     }
+*/
     return $path;
 }
 
