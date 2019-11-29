@@ -19,6 +19,17 @@ function post2url($url, $data)
     return $response;
 }
 
+function ReorganizeDate($arr)
+{
+    $str = '';
+    ksort($arr);
+    foreach ($arr as $k1 => $v1) {
+        $str .= '&' . $k1 . '=' . $v1;
+    }
+    $str = substr($str, 1); // remove first '&'. 去掉第一个&
+    return $str;
+}
+
 function getfunctioninfo($function_name, $Region, $Namespace)
 {
     //$meth = 'GET';
@@ -33,11 +44,7 @@ function getfunctioninfo($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    ksort($tmpdata);
-    foreach ($tmpdata as $key1 => $value1) {
-        $data .= '&' . $key1 . '=' . $value1;
-    }
-    $data = substr($data, 1); // remove first '&'. 去掉第一个&
+    $data = ReorganizeDate($tmpdata);
     $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
@@ -81,11 +88,7 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    ksort($tmpdata);
-    foreach ($tmpdata as $key1 => $value1) {
-        $data .= '&' . $key1 . '=' . $value1;
-    }
-    $data = substr($data, 1); // remove first '&'. 去掉第一个&
+    $data = ReorganizeDate($tmpdata);
     $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
@@ -107,11 +110,7 @@ function SetConfig($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    ksort($tmpdata);
-    foreach ($tmpdata as $key1 => $value1) {
-        $data .= '&' . $key1 . '=' . $value1;
-    }
-    $data = substr($data, 1); // remove first '&'. 去掉第一个&
+    $data = ReorganizeDate($tmpdata);
     $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
@@ -133,11 +132,7 @@ function updataProgram($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    ksort($tmpdata);
-    foreach ($tmpdata as $key1 => $value1) {
-        $data .= '&' . $key1 . '=' . $value1;
-    }
-    $data = substr($data, 1); // remove first '&'. 去掉第一个&
+    $data = ReorganizeDate($tmpdata);
     $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
