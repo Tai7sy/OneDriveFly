@@ -26,10 +26,10 @@ global $exts;
 global $constStr;
 
 $exts['img'] = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
-$exts['music'] = ['mp3', 'wma', 'flac', 'wav'];
+$exts['music'] = ['mp3', 'wma', 'flac', 'wav', 'ogg'];
 $exts['office'] = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
-$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'];
-$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'];
+$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'json', 'html', 'c'];
+$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv'];
 
 $constStr = [
     'languages' => [
@@ -332,7 +332,7 @@ $constStr = [
         'en-us' => 'Upload Fail, contain #.',
         'zh-cn' => '目录或文件名含有#，上传失败。',
     ],
-    'SetSitename' => [
+    'defaultSitename' => [
         'en-us' => 'Set sitename in Environments',
         'zh-cn' => '请在环境变量添加sitename',
     ],
