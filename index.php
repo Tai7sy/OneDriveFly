@@ -627,6 +627,7 @@ function render_list($path, $files)
         body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
         a{color:#24292e;cursor:pointer;text-decoration:none}
         a:hover{color:#24292e}
+        .changelanguage{position:absolute;right:5px;}
         .title{text-align:center;margin-top:1rem;letter-spacing:2px;margin-bottom:2rem}
         .title a{color:#333;text-decoration:none}
         .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgb(128,128,128);border-radius:15px;}
@@ -681,7 +682,16 @@ function render_list($path, $files)
         <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
     </ul></li>
 <?php
-    }
+    } ?>
+    <select class="changelanguage" name="language" onchange="changelanguage(this.options[this.options.selectedIndex].value)">
+        <option>Language</option>
+<?php
+    foreach ($constStr['languages'] as $key1 => $value1) { ?>
+        <option value="<?php echo $key1; ?>"><?php echo $value1; ?></option>
+<?php
+    } ?>
+    </select>
+<?php
     if ($_SERVER['needUpdate']) { ?>
     <div style='position:absolute;'><font color='red'><?php echo $constStr['NeedUpdate'][$constStr['language']]; ?></font></div>
 <?php } ?>
@@ -1088,6 +1098,11 @@ function render_list($path, $files)
         e.innerHTML += paths[paths.length - 1];
         e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
     });
+    function changelanguage(str)
+    {
+        document.cookie='language='+str+'; path=/';
+        location.href = location.href;
+    }
     var $readme = document.getElementById('readme');
     if ($readme) {
         $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
