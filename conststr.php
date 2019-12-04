@@ -76,8 +76,8 @@ $constStr = [
             'zh-cn' => '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是\'?此设置的值\'。',
         ],
         'domain_path' => [
-            'en-us' => 'more custom domain, format is a1.com:/dir/path1|b2.com:/path2',
-            'zh-cn' => '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com:/dir/path1|b1.com=/path2，比private_path优先。',
+            'en-us' => 'more custom domain, format is a1.com:/dirto/path1|b2.com:/path2',
+            'zh-cn' => '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com:/dirto/path1|b1.com:/path2，比private_path优先。',
         ],
         'imgup_path' => [
             'en-us' => 'Set guest upload dir, before set this, the files in this dir will show as normal.',
@@ -97,7 +97,7 @@ $constStr = [
         ],
         'sitename' => [
             'en-us' => 'sitename',
-            'zh-cn' => '网站的名称。',
+            'zh-cn' => '网站的名称',
         ],
         'language' => [
             'en-us' => 'en-us or zh-cn',
