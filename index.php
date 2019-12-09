@@ -228,7 +228,8 @@ function list_files($path)
             // rename .scfupload file without login.
             // 无需登录即可重命名.scfupload后缀文件，filemd5为用户提交，可被构造，问题不大，以后处理
             $oldname = spurlencode($_POST['filename']);
-            $ext = strtolower(substr($oldname, strrpos($oldname, '.')));
+            $pos = strrpos($oldname, '.');
+            if ($pos>0) $ext = strtolower(substr($oldname, $pos));
             $oldname = path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . $oldname . '.scfupload' );
             $data = '{"name":"' . $_POST['filemd5'] . $ext . '"}';
             //echo $oldname .'<br>'. $data;
