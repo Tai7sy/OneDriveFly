@@ -1,5 +1,8 @@
+20191211-0922.19
+add back button in setup page. 在设置页加返回链接。
+fix bug, guest upload file ahead with '.'. 游客上传以.开头的文件时，解决后缀判断问题。
+
 20191204-1841.18
 右上角语言切换
-
 20191204-1613.17
 不存在文件只读3次。
