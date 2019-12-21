@@ -536,8 +536,13 @@ namespace:' . $namespace . '<br>
         echo updataEnvironment($tmp, $function_name, $Region, $namespace);
         $html .= '<script>location.href=location.href</script>';
     }
+    if ($_GET['preview']) {
+        $preurl = $_SERVER['PHP_SELF'] . '?preview';
+    } else {
+        $preurl = path_format($_SERVER['PHP_SELF'] . '/');
+    }
     $html .= '
-        <a href="'.$_SERVER['PHP_SELF'].'">'.$constStr['BackHome'][$constStr['language']].'</a>&nbsp;&nbsp;&nbsp;
+        <a href="'.$preurl.'">'.$constStr['Back'][$constStr['language']].'</a>&nbsp;&nbsp;&nbsp;
         <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
     if ($needUpdate) {
         $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
@@ -680,7 +685,7 @@ function render_list($path, $files)
         <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
         <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
 <?php   } ?>
-        <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" <?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
+        <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="<?php echo $_GET['preview']?'?preview&':'?';?>setup" <?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
         <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
     </ul></li>
 <?php
@@ -1375,7 +1380,7 @@ function render_list($path, $files)
             tr1.appendChild(td2);
             td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
             td2.innerHTML='<?php echo $constStr['GetUploadLink'][$constStr['language']]; ?> ...';
-            if (file.size>15*1024*1024*1024) {
+            if (file.size>100*1024*1024*1024) {
                 td2.innerHTML='<font color="red"><?php echo $constStr['UpFileTooLarge'][$constStr['language']]; ?></font>';
                 uploadbuttonshow();
                 return;
