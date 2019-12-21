@@ -11,6 +11,7 @@ QQ群：943919989
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/)  
 
 # 更新记录：  
+20191221，将javascript中上传上限改100G。从preview点设置，再点返回时可以返回preview而不是下载了。  
 20191123，流量要收费了，游客上传也就不经过SCF了，可以上传大文件。  
 20191122，感谢 Deomntisa 小可爱，学会z-index。  
 20191121，将登录移左上角，管理菜单横向展开；对于国际版，安装时可以使用自己申请的应用ID跟机密。  
