@@ -275,7 +275,7 @@ function list_files($path)
     } else {
         echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
         $_SERVER['retry']++;
-        if ($_SERVER['retry']>3) return list_files($path);
+        if ($_SERVER['retry']<3) return list_files($path);
     }
 }
 
