@@ -169,9 +169,9 @@ $constStr = [
         'en-us' => 'Not Need Update',
         'zh-cn' => '不需要更新',
     ],
-    'BackHome' => [
-        'en-us' => 'Back to Home page',
-        'zh-cn' => '返回首页',
+    'Back' => [
+        'en-us' => 'Back',
+        'zh-cn' => '返回',
     ],
     'Home' => [
         'en-us' => 'Home',
