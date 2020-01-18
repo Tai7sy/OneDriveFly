@@ -121,7 +121,7 @@ function updataProgram($function_name, $Region, $Namespace)
     $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
     $tmpdata['Action'] = 'UpdateFunctionCode';
-    $tmpdata['Code.GitUrl'] = 'https://github.com/qkqpttgf/OneDrive_SCF';
+    $tmpdata['Code.GitUrl'] = 'https://github.com/qkqpttgf/OneManager-php';
     $tmpdata['CodeSource'] = 'Git';
     $tmpdata['FunctionName'] = $function_name;
     $tmpdata['Handler'] = 'index.main_handler';
