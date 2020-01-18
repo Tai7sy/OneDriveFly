@@ -1,7 +1,9 @@
+20200118-2242.21
+project turn to OneManager-php, it need reinstall after update. 转到另一个项目，程序三合一，更新后要重新安装。
+
 20191221-2125.20
 upload limit 100G. 将javascript中上传上限改100G。
 fix bug when back to preview in setup. 从preview点设置，再点返回时可以正常返回preview而不是变成下载文件了。
-
 20191211-0922.19
 add back button in setup page. 在设置页加返回链接。
 fix bug, guest upload file ahead with '.'. 游客上传以.开头的文件时，解决后缀判断问题。
