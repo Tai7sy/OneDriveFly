@@ -1,7 +1,3 @@
-# Turn to  
-转到另一个项目：  
-https://github.com/qkqpttgf/OneManager-php  
-
 # OneDrive_SCF
 OneDrive Index with QCloud SCF (https://cloud.tencent.com/product/scf)  
 只能在腾讯无服务器云函数SCF使用。  
@@ -10,7 +6,7 @@ API网关跟SCF分开收费，每小时不足0.01元就不产生帐单。
 用户比较多的话，或被人DDCC，就产生费用了。  
 充值一块钱先用着吧，被人DDCC了也就1块，扣完结束。  
 
-最新更新：(https://github.com/qkqpttgf/OneDrive_SCF)  
+最新更新：(https://github.com/juan-525/OneDrive_SCF)  
 QQ群：943919989  
 
 # Demo
@@ -21,7 +17,8 @@ QQ群：943919989
 安装过程视频：  
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/%E6%97%A0%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%87%BD%E6%95%B0SCF%E6%90%AD%E5%BB%BAOneDrive.mp4?preview](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/%E6%97%A0%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%87%BD%E6%95%B0SCF%E6%90%AD%E5%BB%BAOneDrive.mp4?preview)  
 
-# 更新记录：  
+# 更新记录：
+20200226，腾讯API网关采用新域名，新创建的url，本程序无法从中获取所在区域的代码，故本版本先写死Region值为"ap-shanghai"，选择其他地区请替换scfapi.php中所有的"ap-shanghai"为你的云函数所在地区。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
 20191221，将javascript中上传上限改100G。从preview点设置，再点返回时可以返回preview而不是下载了。  
 20191123，流量要收费了，游客上传也就不经过SCF了，可以上传大文件。  
 20191122，感谢 Deomntisa 小可爱，学会z-index。  
@@ -80,7 +77,7 @@ SecretId       ：腾讯云API 的 SecretId。
 SecretKey      ：腾讯云API 的 SecretKey。  
 
 安装时程序自动填写：  
-Region         ：SCF程序所在地区(暂用，只能从API网关长链接读出来用，gz不适用)  
+Region         ：~~SCF程序所在地区(暂用，只能从API网关长链接读出来用，gz不适用)~~目前已写死为"ap-shanghai"，选择其他地区请替换scfapi.php中所有的"ap-shanghai"为你的云函数所在地区。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
 Onedrive_ver   ：Onedrive版本  
 language       ：程序显示的语言  
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
