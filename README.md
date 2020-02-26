@@ -77,7 +77,7 @@ SecretId       ：腾讯云API 的 SecretId。
 SecretKey      ：腾讯云API 的 SecretKey。  
 
 安装时程序自动填写：  
-Region         ：~~SCF程序所在地区(暂用，只能从API网关长链接读出来用，gz不适用)~~目前已写死为"ap-shanghai"，选择其他地区请替换scfapi.php中所有的"ap-shanghai"为你的云函数所在地区。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
+Region         ：目前已写死为"ap-shanghai"，选择其他地区请替换scfapi.php中所有的"ap-shanghai"为你的云函数所在地区。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
 Onedrive_ver   ：Onedrive版本  
 language       ：程序显示的语言  
 t1,t2,t3,t4,t5,t6,t7：把refresh_token按128字节切开来放在环境变量，方便更新版本。  
