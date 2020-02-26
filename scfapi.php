@@ -39,7 +39,7 @@ function getfunctioninfo($function_name, $Region, $Namespace)
     $tmpdata['FunctionName'] = $function_name;
     $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
-    $tmpdata['Region'] = 'ap-shanghai';
+    $tmpdata['Region'] = getenv('Region');
     $tmpdata['SecretId'] = getenv('SecretId');
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
@@ -68,7 +68,7 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
         $tmp_env[$key1] = $value1;
     }
     $tmp_env = array_filter($tmp_env, 'array_value_isnot_null'); // remove null. 清除空值
-    $tmp_env['Region'] = 'ap-shanghai';
+    $tmp_env['Region'] = getenv('Region');
     ksort($tmp_env);
 
     $i = 0;
@@ -83,7 +83,7 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
     $tmpdata['FunctionName'] = $function_name;
     $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
-    $tmpdata['Region'] = 'ap-shanghai';
+    $tmpdata['Region'] = getenv('Region');
     $tmpdata['SecretId'] = getenv('SecretId');
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
@@ -105,7 +105,7 @@ function SetConfig($function_name, $Region, $Namespace)
     $tmpdata['Timeout'] = 30;
     $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
-    $tmpdata['Region'] = 'ap-shanghai';
+    $tmpdata['Region'] = getenv('Region');
     $tmpdata['SecretId'] = getenv('SecretId');
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
@@ -127,7 +127,7 @@ function updataProgram($function_name, $Region, $Namespace)
     $tmpdata['Handler'] = 'index.main_handler';
     $tmpdata['Namespace'] = $Namespace;
     $tmpdata['Nonce'] = time();
-    $tmpdata['Region'] = 'ap-shanghai';
+    $tmpdata['Region'] = getenv('Region');
     $tmpdata['SecretId'] = getenv('SecretId');
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
