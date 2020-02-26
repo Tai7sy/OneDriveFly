@@ -22,7 +22,7 @@ QQ群：943919989
 [https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/%E6%97%A0%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%87%BD%E6%95%B0SCF%E6%90%AD%E5%BB%BAOneDrive.mp4?preview](https://service-pgxgvop2-1258064400.ap-hongkong.apigateway.myqcloud.com/test/abcdef/%E6%97%A0%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%87%BD%E6%95%B0SCF%E6%90%AD%E5%BB%BAOneDrive.mp4?preview)  
 
 # 更新记录：
-20200226，腾讯API网关采用新域名，新创建的url，本程序无法从中获取所在区域的代码，现采取预先在环境变量中添加Region的方式解决该问题。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
+20200226，腾讯API网关采用新域名，新创建的url，本程序无法从中获取所在区域的代码，现采取预先在环境变量中添加Region的方式（已测试上海、香港）解决该问题。[官方地域列表](https://cloud.tencent.com/document/api/583/17238#.E5.9C.B0.E5.9F.9F.E5.88.97.E8.A1.A8)<br>
 20191221，将javascript中上传上限改100G。从preview点设置，再点返回时可以返回preview而不是下载了。  
 20191123，流量要收费了，游客上传也就不经过SCF了，可以上传大文件。  
 20191122，感谢 Deomntisa 小可爱，学会z-index。  
@@ -79,7 +79,7 @@ QQ群：943919989
 
 必填环境变量：  
 SecretId       ：腾讯云API 的 SecretId。  
-SecretKey      ：腾讯云API 的 SecretKey。
+SecretKey      ：腾讯云API 的 SecretKey。<br>
 Region         ：腾讯云API 所在的地理位置。
 
 安装时程序自动填写：  
