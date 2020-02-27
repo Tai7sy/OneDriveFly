@@ -57,7 +57,7 @@ function main_handler($event, $context)
         $url = path_format($_SERVER['PHP_SELF'] . '/');
         return output('<script>alert(\''.$constStr['SetSecretsFirst'][$constStr['language']].'\');</script>', 302, [ 'Location' => $url ]);
     }
-
+    $_SERVER['retry'] = 0;
     return list_files($path);
 }
 
@@ -228,7 +228,8 @@ function list_files($path)
             // rename .scfupload file without login.
             // 无需登录即可重命名.scfupload后缀文件，filemd5为用户提交，可被构造，问题不大，以后处理
             $oldname = spurlencode($_POST['filename']);
-            $ext = strtolower(substr($oldname, strrpos($oldname, '.')));
+            $pos = strrpos($oldname, '.');
+            if ($pos>0) $ext = strtolower(substr($oldname, $pos));
             $oldname = path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . $oldname . '.scfupload' );
             $data = '{"name":"' . $_POST['filemd5'] . $ext . '"}';
             //echo $oldname .'<br>'. $data;
@@ -269,9 +270,12 @@ function list_files($path)
     }
     if ( isset($files['folder']) || isset($files['file']) ) {
         return render_list($path, $files);
-    } elseif (!isset($files['Error'])) {
+    } elseif (isset($files['error'])) {
+	    return output('<div style="margin:8px;">' . $files['error']['message'] . '</div>', 404);
+    } else {
         echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
-        return list_files($path);
+        $_SERVER['retry']++;
+        if ($_SERVER['retry']<3) return list_files($path);
     }
 }
 
@@ -532,7 +536,13 @@ namespace:' . $namespace . '<br>
         echo updataEnvironment($tmp, $function_name, $Region, $namespace);
         $html .= '<script>location.href=location.href</script>';
     }
+    if ($_GET['preview']) {
+        $preurl = $_SERVER['PHP_SELF'] . '?preview';
+    } else {
+        $preurl = path_format($_SERVER['PHP_SELF'] . '/');
+    }
     $html .= '
+        <a href="'.$preurl.'">'.$constStr['Back'][$constStr['language']].'</a>&nbsp;&nbsp;&nbsp;
         <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
     if ($needUpdate) {
         $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
@@ -624,7 +634,8 @@ function render_list($path, $files)
         body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
         a{color:#24292e;cursor:pointer;text-decoration:none}
         a:hover{color:#24292e}
-        .title{text-align:center;margin-top:2rem;letter-spacing:2px;margin-bottom:2rem}
+        .changelanguage{position:absolute;right:5px;}
+        .title{text-align:center;margin-top:1rem;letter-spacing:2px;margin-bottom:2rem}
         .title a{color:#333;text-decoration:none}
         .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgb(128,128,128);border-radius:15px;}
         .list-container{position:relative;overflow:hidden;border-radius:15px;}
@@ -674,11 +685,20 @@ function render_list($path, $files)
         <li><a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a></li>
         <li><a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a></li>
 <?php   } ?>
-        <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="?setup" target="_blank"<?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
+        <li><a <?php if (getenv('SecretId')!='' && getenv('SecretKey')!='') { ?>href="<?php echo $_GET['preview']?'?preview&':'?';?>setup" <?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a></li>
         <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
     </ul></li>
 <?php
-    }
+    } ?>
+    <select class="changelanguage" name="language" onchange="changelanguage(this.options[this.options.selectedIndex].value)">
+        <option>Language</option>
+<?php
+    foreach ($constStr['languages'] as $key1 => $value1) { ?>
+        <option value="<?php echo $key1; ?>"><?php echo $value1; ?></option>
+<?php
+    } ?>
+    </select>
+<?php
     if ($_SERVER['needUpdate']) { ?>
     <div style='position:absolute;'><font color='red'><?php echo $constStr['NeedUpdate'][$constStr['language']]; ?></font></div>
 <?php } ?>
@@ -843,8 +863,14 @@ function render_list($path, $files)
                             <ion-icon name="paper"></ion-icon>
 <?php                           } elseif (in_array($ext, $exts['txt'])) { ?>
                             <ion-icon name="clipboard"></ion-icon>
+<?php                           } elseif (in_array($ext, $exts['zip'])) { ?>
+                            <ion-icon name="filing"></ion-icon>
+<?php                           } elseif ($ext=='iso') { ?>
+                            <ion-icon name="disc"></ion-icon>
 <?php                           } elseif ($ext=='apk') { ?>
                             <ion-icon name="logo-android"></ion-icon>
+<?php                           } elseif ($ext=='exe') { ?>
+                            <ion-icon name="logo-windows"></ion-icon>
 <?php                           } else { ?>
                             <ion-icon name="document"></ion-icon>
 <?php                           } ?>
@@ -1009,15 +1035,35 @@ function render_list($path, $files)
         </div>
         <div id="create_div" class="operatediv" style="display:none">
             <div>
-                <label id="create_label"></label><br><a onclick="operatediv_close('create')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                <a onclick="operatediv_close('create')" class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
                 <form id="create_form" onsubmit="return submit_operate('create');">
-                <input id="create_sid" name="create_sid" type="hidden" value="">
-                <input id="create_hidden" type="hidden" value="">
-                　　　<label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?></label>
-                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked><?php echo $constStr['File'][$constStr['language']]; ?></label><br>
-                <?php echo $constStr['Name'][$constStr['language']]; ?>：<input id="create_input" name="create_name" type="text" value=""><br>
-                <label id="create_text_div"><?php echo $constStr['Content'][$constStr['language']]; ?>：<textarea id="create_text" name="create_text" rows="6" cols="40"></textarea><br></label>
-                　　　<input name="operate_action" type="submit" value="<?php echo $constStr['Create'][$constStr['language']]; ?>">
+                    <input id="create_sid" name="create_sid" type="hidden" value="">
+                    <input id="create_hidden" type="hidden" value="">
+                    <table>
+                        <tr>
+                            <td></td>
+                            <td><label id="create_label"></label></td>
+                        </tr>
+                        <tr>
+                            <td>　　　</td>
+                            <td>
+                                <label><input id="create_type_folder" name="create_type" type="radio" value="folder" onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?></label>
+                                <label><input id="create_type_file" name="create_type" type="radio" value="file" onclick="document.getElementById('create_text_div').style.display='';" checked><?php echo $constStr['File'][$constStr['language']]; ?></label>
+                            <td>
+                        </tr>
+                        <tr>
+                            <td><?php echo $constStr['Name'][$constStr['language']]; ?>：</td>
+                            <td><input id="create_input" name="create_name" type="text" value=""></td>
+                        </tr>
+                        <tr id="create_text_div">
+                            <td><?php echo $constStr['Content'][$constStr['language']]; ?>：</td>
+                            <td><textarea id="create_text" name="create_text" rows="6" cols="40"></textarea></td>
+                        </tr>
+                        <tr>
+                            <td>　　　</td>
+                            <td><input name="operate_action" type="submit" value="<?php echo $constStr['Create'][$constStr['language']]; ?>"></td>
+                        </tr>
+                    </table>
                 </form>
             </div>
         </div>
@@ -1065,6 +1111,11 @@ function render_list($path, $files)
         e.innerHTML += paths[paths.length - 1];
         e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
     });
+    function changelanguage(str)
+    {
+        document.cookie='language='+str+'; path=/';
+        location.href = location.href;
+    }
     var $readme = document.getElementById('readme');
     if ($readme) {
         $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
@@ -1137,16 +1188,44 @@ function render_list($path, $files)
         );
     }
     function createDplayers(videos) {
-        for (i = 0; i < videos.length; i++) {
-            console.log(videos[i]);
-            new DPlayer({
-                container: document.getElementById('video-a' + i),
-                screenshot: true,
-                video: {
-                    url: videos[i]
-                }
-            });
-        }
+        var url = '<?php echo str_replace('%2523', '%23', str_replace('%26amp%3B','&amp;',spurlencode(path_format($_SERVER['base_path'] . '/' . $path), '/'))); ?>' , subtitle = url.replace(/\.[^\.]+?(\?|$)/,'.vtt$1');
+        var dp = new DPlayer({
+            container: document.getElementById('video-a0'),
+            autoplay: false,
+            screenshot: true,
+            hotkey: true,
+            volume: 1,
+            preload: 'auto',
+            mutex: true,
+            video:{
+                url: url,
+            },
+            subtitle: {
+                url: subtitle,
+                fontSize: '25px',
+                bottom: '7%',
+            },
+        });
+        // 防止出现401 token过期
+        dp.on('error', function () {
+            console.log('获取资源错误，开始重新加载！');
+            let last = dp.video.currentTime;
+            dp.video.src = url;
+            dp.video.load();
+            dp.video.currentTime = last;
+            dp.play();
+        });
+        // 如果是播放状态 & 没有播放完 每25分钟重载视频防止卡死
+        setInterval(function () {
+            if (!dp.video.paused && !dp.video.ended) {
+                console.log('开始重新加载！');
+                let last = dp.video.currentTime;
+                dp.video.src = url;
+                dp.video.load();
+                dp.video.currentTime = last;
+                dp.play();
+            }
+        }, 1000 * 60 * 25)
     }
     addVideos(['<?php echo $DPvideo;?>']);
 <?php   } 
@@ -1329,7 +1408,7 @@ function render_list($path, $files)
             tr1.appendChild(td2);
             td2.setAttribute('id','upfile_td2_'+timea+'_'+i);
             td2.innerHTML='<?php echo $constStr['GetUploadLink'][$constStr['language']]; ?> ...';
-            if (file.size>15*1024*1024*1024) {
+            if (file.size>100*1024*1024*1024) {
                 td2.innerHTML='<font color="red"><?php echo $constStr['UpFileTooLarge'][$constStr['language']]; ?></font>';
                 uploadbuttonshow();
                 return;

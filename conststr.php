@@ -26,10 +26,11 @@ global $exts;
 global $constStr;
 
 $exts['img'] = ['ico', 'bmp', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif', 'tif', 'tiff', 'png', 'heic', 'webp'];
-$exts['music'] = ['mp3', 'wma', 'flac', 'wav'];
+$exts['music'] = ['mp3', 'wma', 'flac', 'wav', 'ogg'];
 $exts['office'] = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
-$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'html', 'c'];
-$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv', 'ogg'];
+$exts['txt'] = ['txt', 'bat', 'sh', 'php', 'asp', 'js', 'json', 'html', 'c'];
+$exts['video'] = ['mp4', 'webm', 'mkv', 'mov', 'flv', 'blv', 'avi', 'wmv'];
+$exts['zip'] = ['zip', 'rar', '7z', 'gz', 'tar'];
 
 $constStr = [
     'languages' => [
@@ -76,8 +77,8 @@ $constStr = [
             'zh-cn' => '如果设置，登录按钮及页面隐藏。管理登录的页面不再是\'?admin\'，而是\'?此设置的值\'。',
         ],
         'domain_path' => [
-            'en-us' => 'more custom domain, format is a1.com:/dir/path1|b2.com:/path2',
-            'zh-cn' => '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com:/dir/path1|b1.com=/path2，比private_path优先。',
+            'en-us' => 'more custom domain, format is a1.com:/dirto/path1|b2.com:/path2',
+            'zh-cn' => '使用多个自定义域名时，指定每个域名看到的目录。格式为a1.com:/dirto/path1|b1.com:/path2，比private_path优先。',
         ],
         'imgup_path' => [
             'en-us' => 'Set guest upload dir, before set this, the files in this dir will show as normal.',
@@ -97,7 +98,7 @@ $constStr = [
         ],
         'sitename' => [
             'en-us' => 'sitename',
-            'zh-cn' => '网站的名称。',
+            'zh-cn' => '网站的名称',
         ],
         'language' => [
             'en-us' => 'en-us or zh-cn',
@@ -167,6 +168,10 @@ $constStr = [
     'NotNeedUpdate' => [
         'en-us' => 'Not Need Update',
         'zh-cn' => '不需要更新',
+    ],
+    'Back' => [
+        'en-us' => 'Back',
+        'zh-cn' => '返回',
     ],
     'Home' => [
         'en-us' => 'Home',
@@ -332,7 +337,7 @@ $constStr = [
         'en-us' => 'Upload Fail, contain #.',
         'zh-cn' => '目录或文件名含有#，上传失败。',
     ],
-    'SetSitename' => [
+    'defaultSitename' => [
         'en-us' => 'Set sitename in Environments',
         'zh-cn' => '请在环境变量添加sitename',
     ],
@@ -345,7 +350,7 @@ $constStr = [
         'zh-cn' => '稍等',
     ],
     'WaitJumpIndex' => [
-        'en-us' => 'Wait 5s jump to index page',
+        'en-us' => 'Wait 5s jump to Home page',
         'zh-cn' => '等5s跳到首页',
     ],
     'JumptoOffice' => [
