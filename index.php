@@ -1,17 +1,27 @@
 <?php
 
+use Doctrine\Common\Cache\FilesystemCache;
+use Library\Ext;
+use Library\Lang;
+use Library\OneDrive;
+use Platforms\Platform;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
 include __DIR__ . '/vendor/autoload.php';
 include __DIR__ . '/config.php';
 include __DIR__ . '/library/Helper.php';
 
 /**
- * @param \Symfony\Component\HttpFoundation\Request $request
+ * @param Request $request
+ * @return array|Response
  */
 function handler($request)
 {
     global $config;
 
-    \Library\Lang::init($request->cookies->get('language'));
+    define('APP_DEBUG', $config['debug']);
+    Lang::init($request->cookies->get('language'));
     date_default_timezone_set(get_timezone($request->cookies->get('timezone')));
 
     $path = array_filter(
@@ -47,25 +57,105 @@ function handler($request)
         $account['path'] = '/';
     }
 
-    $relative_path = join('/', $path);
-    $absolute_path = path_format($account['path'] . '/' . $relative_path);
-
+    $path = [
+        'relative' => join('/', $path),
+        'absolute' => path_format($account['path'] . '/' . join('/', $path))
+    ];
     try {
-        $drive = new \Library\OneDrive($account['refresh_token'], @$account['version'] ?? 'MS', @$account['oauth'] ?? []);
-        $files = $drive->files($absolute_path);
-        return render_list($account, $relative_path, $files);
-    } catch (\Throwable $e) {
-        throw $e;
-        return message($e->getMessage(), 'exception');
+        $account['driver'] = new OneDrive($account['refresh_token'],
+            !empty($account['version']) ? $account['version'] : 'MS',
+            !empty($account['oauth']) ? $account['oauth'] : []);
+
+        if ($request->query->has('thumbnails')) {
+            return redirect($account['driver']->info($path['absolute'], true)['url']);
+        }
+
+        if ($request->isXmlHttpRequest()) {
+            $response = ['error' => 'invalid action'];
+            switch ($request->get('action')) {
+                case trans('Create'):
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('create_name')));
+                    switch ($request->get('create_type')) {
+                        default:
+                        case 'file':
+                            $response = $account['driver']->put($file_path, $request->get('create_content'));
+                            break;
+                        case 'folder':
+                            $response = $account['driver']->makeDirectory($file_path);
+                            break;
+                    }
+                    break;
+                case trans('Encrypt'):
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('encrypt_folder') . '/' . urlencode2($config['password_file'])));
+                    $response = $account['driver']->put($file_path, $request->get('encrypt_newpass'));
+                    break;
+                case trans('Move'):
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('move_name')));
+                    if ($request->get('move_folder') === '/../') {
+                        if ($path['absolute'] == '/') {
+                            $response = ['error' => 'cannot move'];
+                            break;
+                        }
+                        $new_path = path_format($path['absolute'] . '/../');
+
+                    } else {
+                        $new_path = path_format($path['absolute'] . '/' . urlencode2($request->get('move_folder')) . '/');
+                    }
+                    $new_path .= urlencode2($request->get('move_name'));
+                    $response = $account['driver']->move($file_path, $new_path);
+                    break;
+                case trans('Rename'):
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('rename_oldname')));
+                    $response = $account['driver']->move($file_path, path_format($path['absolute'] . '/' . $request->get('rename_newname')));
+                    break;
+                case trans('Delete'):
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('delete_name')));
+                    $response = $account['driver']->delete($file_path);
+                    break;
+                case 'upload':
+                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('filename')));
+                    $response = $account['driver']->uploadLink($file_path);
+                    break;
+            }
+            return response($response, !$response || isset($response['error']) ? 500 : 200);
+        } elseif ($request->isMethod('POST')) {
+            if ($request->query->has('preview')) {
+                $account['driver']->put($path['absolute'], $request->get('content'));
+            }
+        }
+
+        $files = $account['driver']->infos($path['absolute'], (int)$request->get('page', 1));
+
+        if (!$request->query->has('preview')) {
+            if (isset($files['@microsoft.graph.downloadUrl'])) {
+                return redirect($files['@microsoft.graph.downloadUrl']);
+            }
+        }
+        return render($account, $path, $files);
+    } catch (Throwable $e) {
+        @ob_clean();
+        try {
+            $error = ['error' => ['message' => $e->getMessage()]];
+            if ($config['debug']) {
+                $error['error']['message'] = trace_error($e);
+            }
+            return render($account, $path, $error);
+        } catch (Throwable $e) {
+            @ob_clean();
+            if ($config['debug']) {
+                return message(trace_error($e), 'Error', 500);
+            }
+            return message($e->getMessage(), 'Error', 500);
+        }
     }
 }
 
 if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
     global $config;
-    $config['platform'] = \Platforms\Platform::PLATFORM_NORMAL;
-    return \Platforms\Platform::response(
+    $config['platform'] = Platform::PLATFORM_NORMAL;
+    return Platform::response(
         handler(
-            \Platforms\Platform::request()
+            Platform::request()
         )
     );
 }
@@ -80,63 +170,13 @@ if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
 function main_handler($event, $context)
 {
     global $config;
-    $config['platform'] = \Platforms\Platform::PLATFORM_QCLOUD_SCF;
+    $config['platform'] = Platform::PLATFORM_QCLOUD_SCF;
 
-    return \Platforms\Platform::response(
+    return Platform::response(
         handler(
-            \Platforms\Platform::request()
+            Platform::request()
         )
     );
-
-    global $constStr;
-    $event = json_decode(json_encode($event), true);
-    $context = json_decode(json_encode($context), true);
-    printInput($event, $context);
-
-    unset($_POST);
-    unset($_GET);
-    unset($_COOKIE);
-    unset($_SERVER);
-    GetGlobalVariable($event);
-    config_oauth();
-    $path = GetPathSetting($event, $context);
-    $_SERVER['refresh_token'] = getenv('t1') . getenv('t2') . getenv('t3') . getenv('t4') . getenv('t5') . getenv('t6') . getenv('t7');
-    if (!$_SERVER['refresh_token']) return get_refresh_token($_SERVER['function_name'], $_SERVER['Region'], $context['namespace']);
-
-    if (getenv('adminloginpage') == '') {
-        $adminloginpage = 'admin';
-    } else {
-        $adminloginpage = getenv('adminloginpage');
-    }
-    if ($_GET[$adminloginpage]) {
-        if ($_GET['preview']) {
-            $url = $_SERVER['PHP_SELF'] . '?preview';
-        } else {
-            $url = path_format($_SERVER['PHP_SELF'] . '/');
-        }
-        if (getenv('admin') != '') {
-            if ($_POST['password1'] == getenv('admin')) {
-                return adminform($_SERVER['function_name'] . 'admin', md5($_POST['password1']), $url);
-            } else return adminform();
-        } else {
-            return output('', 302, ['Location' => $url]);
-        }
-    }
-    if (getenv('admin') != '') if ($_COOKIE[$_SERVER['function_name'] . 'admin'] == md5(getenv('admin')) || $_POST['password1'] == getenv('admin')) {
-        $is_admin = 1;
-    } else {
-        $is_admin = 0;
-    }
-
-    if ($_GET['setup']) if ($is_admin && getenv('SecretId') != '' && getenv('SecretKey') != '') {
-        // setup Environments. 设置，对环境变量操作
-        return EnvOpt($_SERVER['function_name'], $_SERVER['Region'], $context['namespace'], $_SERVER['needUpdate']);
-    } else {
-        $url = path_format($_SERVER['PHP_SELF'] . '/');
-        return output('<script>alert(\'' . trans('SetSecretsFirst') . '\');</script>', 302, ['Location' => $url]);
-    }
-    $_SERVER['retry'] = 0;
-    return list_files($path);
 }
 
 
@@ -205,343 +245,6 @@ function message($message, $title, $status = 200, $headers = [])
 }
 
 
-function fetch_files($path = '/')
-{
-    $path1 = path_format($path);
-    $path = path_format($_SERVER['list_path'] . path_format($path));
-    $cache = null;
-    $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
-    if (!($files = $cache->fetch('path_' . $path))) {
-
-        // https://docs.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0
-        // https://docs.microsoft.com/zh-cn/graph/api/driveitem-put-content?view=graph-rest-1.0&tabs=http
-        // https://developer.microsoft.com/zh-cn/graph/graph-explorer
-
-        $url = $_SERVER['api_url'];
-        if ($path !== '/') {
-            $url .= ':' . $path;
-            if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-        }
-        $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
-        $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-        // echo $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
-
-        if (isset($files['folder'])) {
-            if ($files['folder']['childCount'] > 200) {
-                // files num > 200 , then get nextlink
-                $page = $_POST['pagenum'] == '' ? 1 : $_POST['pagenum'];
-                $files = fetch_files_children($files, $path, $page, $cache);
-            } else {
-                // files num < 200 , then cache
-                $cache->save('path_' . $path, $files, 60);
-            }
-        }
-    }
-    return $files;
-}
-
-function list_files($path)
-{
-    global $exts;
-    global $constStr;
-    $path = path_format($path);
-    $cache = null;
-    $cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
-    if (!($_SERVER['access_token'] = $cache->fetch('access_token'))) {
-        $ret = json_decode(curl_request(
-            $_SERVER['oauth_url'] . 'token',
-            'client_id=' . $_SERVER['client_id'] . '&client_secret=' . $_SERVER['client_secret'] . '&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $_SERVER['refresh_token']
-        ), true);
-        if (!isset($ret['access_token'])) {
-            error_log('failed to get access_token. response' . json_encode($ret));
-            throw new Exception('failed to get access_token.');
-        }
-        $_SERVER['access_token'] = $ret['access_token'];
-        $cache->save('access_token', $_SERVER['access_token'], $ret['expires_in'] - 60);
-    }
-
-    if ($_SERVER['ajax']) {
-        if ($_POST['action'] == 'del_upload_cache' && substr($_POST['filename'], -4) == '.tmp') {
-            // del '.tmp' without login. 无需登录即可删除.tmp后缀文件
-            $tmp = MSAPI('DELETE', path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . spurlencode($_POST['filename'])), '', $_SERVER['access_token']);
-            return output($tmp['body'], $tmp['stat']);
-        }
-        if ($_POST['action'] == 'uploaded_rename') {
-            // rename .scfupload file without login.
-            // 无需登录即可重命名.scfupload后缀文件，filemd5为用户提交，可被构造，问题不大，以后处理
-            $oldname = spurlencode($_POST['filename']);
-            $pos = strrpos($oldname, '.');
-            if ($pos > 0) $ext = strtolower(substr($oldname, $pos));
-            $oldname = path_format(path_format($_SERVER['list_path'] . path_format($path)) . '/' . $oldname . '.scfupload');
-            $data = '{"name":"' . $_POST['filemd5'] . $ext . '"}';
-            //echo $oldname .'<br>'. $data;
-            $tmp = MSAPI('PATCH', $oldname, $data, $_SERVER['access_token']);
-            if ($tmp['stat'] == 409) echo MSAPI('DELETE', $oldname, '', $_SERVER['access_token'])['body'];
-            return output($tmp['body'], $tmp['stat']);
-        }
-        if ($_POST['action'] == 'upbigfile') return bigfileupload($path);
-    }
-    if ($is_admin) {
-        $tmp = adminoperate($path);
-        if ($tmp['statusCode'] > 0) {
-            $path1 = path_format($_SERVER['list_path'] . path_format($path));
-            $cache->save('path_' . $path1, json_decode('{}', true), 1);
-            return $tmp;
-        }
-    } else {
-        if ($_SERVER['ajax']) return output(trans('RefleshtoLogin'), 401);
-    }
-    $_SERVER['ishidden'] = passhidden($path);
-    if ($_GET['thumbnails']) {
-        if ($_SERVER['ishidden'] < 4) {
-            if (in_array(strtolower(substr($path, strrpos($path, '.') + 1)), $exts['img'])) {
-                return get_thumbnails_url($path);
-            } else return output(json_encode($exts['img']), 400);
-        } else return output('', 401);
-    }
-    if ($is_image_view && !$is_admin) {
-        $files = json_decode('{"folder":{}}', true);
-    } elseif ($_SERVER['ishidden'] == 4) {
-        $files = json_decode('{"folder":{}}', true);
-    } else {
-        $files = fetch_files($path);
-    }
-    if (isset($files['file']) && !$_GET['preview']) {
-        // is file && not preview mode
-        if ($_SERVER['ishidden'] < 4) return output('', 302, ['Location' => $files['@microsoft.graph.downloadUrl']]);
-    }
-    if (isset($files['folder']) || isset($files['file'])) {
-        return render_list($path, $files);
-    } elseif (isset($files['error'])) {
-        return output('<div style="margin:8px;">' . $files['error']['message'] . '</div>', 404);
-    } else {
-        echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
-        $_SERVER['retry']++;
-        if ($_SERVER['retry'] < 3) return list_files($path);
-    }
-}
-
-function adminform($name = '', $pass = '', $path = '')
-{
-    global $constStr;
-    $status_code = 401;
-    $html = '<html><head><title>' . trans('AdminLogin') . '</title><meta charset=utf-8></head>';
-    if ($name != '' && $pass != '') {
-        $html .= '<body>' . trans('LoginSuccess') . '</body></html>';
-        $status_code = 302;
-        $header = [
-            'Set-Cookie' => $name . '=' . $pass . '; path=/; expires=' . date(DATE_COOKIE, strtotime('+1hour')),
-            'Location' => $path,
-            'Content-Type' => 'text/html'
-        ];
-        return output($html, $status_code, $header);
-    }
-    $html .= '
-    <body>
-	<div>
-	  <center><h4>' . trans('InputPassword') . '</h4>
-	  <form action="" method="post">
-		  <div>
-		    <input name="password1" type="password"/>
-		    <input type="submit" value="' . trans('Login') . '">
-          </div>
-	  </form>
-      </center>
-	</div>
-';
-    $html .= '</body></html>';
-    return output($html, $status_code);
-}
-
-function bigfileupload($path)
-{
-    $path1 = path_format($_SERVER['list_path'] . path_format($path));
-    if (substr($path1, -1) == '/') $path1 = substr($path1, 0, -1);
-    if ($_POST['upbigfilename'] != '' && $_POST['filesize'] > 0) {
-        $fileinfo['name'] = $_POST['upbigfilename'];
-        $fileinfo['size'] = $_POST['filesize'];
-        $fileinfo['lastModified'] = $_POST['lastModified'];
-        $filename = spurlencode($fileinfo['name']);
-        $cachefilename = '.' . $fileinfo['lastModified'] . '_' . $fileinfo['size'] . '_' . $filename . '.tmp';
-        $getoldupinfo = fetch_files(path_format($path . '/' . $cachefilename));
-        //echo json_encode($getoldupinfo, JSON_PRETTY_PRINT);
-        if (isset($getoldupinfo['file']) && $getoldupinfo['size'] < 5120) {
-            $getoldupinfo_j = curl_request($getoldupinfo['@microsoft.graph.downloadUrl']);
-            $getoldupinfo = json_decode($getoldupinfo_j, true);
-            if (json_decode(curl_request($getoldupinfo['uploadUrl']), true)['@odata.context'] != '') return output($getoldupinfo_j);
-        }
-        if (!$is_admin) $filename = spurlencode($fileinfo['name']) . '.scfupload';
-        $response = MSAPI('createUploadSession', path_format($path1 . '/' . $filename), '{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}', $_SERVER['access_token']);
-        $responsearry = json_decode($response['body'], true);
-        if (isset($responsearry['error'])) return output($response['body'], $response['stat']);
-        $fileinfo['uploadUrl'] = $responsearry['uploadUrl'];
-        echo MSAPI('PUT', path_format($path1 . '/' . $cachefilename), json_encode($fileinfo, JSON_PRETTY_PRINT), $_SERVER['access_token'])['body'];
-        return output($response['body'], $response['stat']);
-    }
-    return output('error', 400);
-}
-
-function adminoperate($path)
-{
-    global $constStr;
-    $path1 = path_format($_SERVER['list_path'] . path_format($path));
-    if (substr($path1, -1) == '/') $path1 = substr($path1, 0, -1);
-    $tmparr['statusCode'] = 0;
-
-    if ($_POST['rename_newname'] != $_POST['rename_oldname'] && $_POST['rename_newname'] != '') {
-        // rename 重命名
-        $oldname = spurlencode($_POST['rename_oldname']);
-        $oldname = path_format($path1 . '/' . $oldname);
-        $data = '{"name":"' . $_POST['rename_newname'] . '"}';
-        //echo $oldname;
-        $result = MSAPI('PATCH', $oldname, $data, $_SERVER['access_token']);
-        return output($result['body'], $result['stat']);
-    }
-    if ($_POST['delete_name'] != '') {
-        // delete 删除
-        $filename = spurlencode($_POST['delete_name']);
-        $filename = path_format($path1 . '/' . $filename);
-        //echo $filename;
-        $result = MSAPI('DELETE', $filename, '', $_SERVER['access_token']);
-        return output($result['body'], $result['stat']);
-    }
-    if ($_POST['operate_action'] == trans('encrypt')) {
-        // encrypt 加密
-        if (getenv('passfile') == '') return message(trans('SetpassfileBfEncrypt'), '', 403);
-        if ($_POST['encrypt_folder'] == '/') $_POST['encrypt_folder'] == '';
-        $foldername = spurlencode($_POST['encrypt_folder']);
-        $filename = path_format($path1 . '/' . $foldername . '/' . getenv('passfile'));
-        //echo $foldername;
-        $result = MSAPI('PUT', $filename, $_POST['encrypt_newpass'], $_SERVER['access_token']);
-        return output($result['body'], $result['stat']);
-    }
-    if ($_POST['move_folder'] != '') {
-        // move 移动
-        $moveable = 1;
-        if ($path == '/' && $_POST['move_folder'] == '/../') $moveable = 0;
-        if ($_POST['move_folder'] == $_POST['move_name']) $moveable = 0;
-        if ($moveable) {
-            $filename = spurlencode($_POST['move_name']);
-            $filename = path_format($path1 . '/' . $filename);
-            $foldername = path_format('/' . urldecode($path1) . '/' . $_POST['move_folder']);
-            $data = '{"parentReference":{"path": "/drive/root:' . $foldername . '"}}';
-            $result = MSAPI('PATCH', $filename, $data, $_SERVER['access_token']);
-            return output($result['body'], $result['stat']);
-        } else {
-            return output('{"error":"Can not Move!"}', 403);
-        }
-    }
-    if ($_POST['editfile'] != '') {
-        // edit 编辑
-        $data = $_POST['editfile'];
-        /*TXT一般不会超过4M，不用二段上传
-        $filename = $path1 . ':/createUploadSession';
-        $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "replace"  }}',$_SERVER['access_token']);
-        $uploadurl=json_decode($response,true)['uploadUrl'];
-        echo MSAPI('PUT',$uploadurl,$data,$_SERVER['access_token']);*/
-        $result = MSAPI('PUT', $path1, $data, $_SERVER['access_token'])['body'];
-        echo $result;
-        $resultarry = json_decode($result, true);
-        if (isset($resultarry['error'])) return message($resultarry['error']['message'] . '<hr><a href="javascript:history.back(-1)">上一页</a>', 'Error', 403);
-    }
-    if ($_POST['create_name'] != '') {
-        // create 新建
-        if ($_POST['create_type'] == 'file') {
-            $filename = spurlencode($_POST['create_name']);
-            $filename = path_format($path1 . '/' . $filename);
-            $result = MSAPI('PUT', $filename, $_POST['create_text'], $_SERVER['access_token']);
-        }
-        if ($_POST['create_type'] == 'folder') {
-            $data = '{ "name": "' . $_POST['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
-            $result = MSAPI('children', $path1, $data, $_SERVER['access_token']);
-        }
-        return output($result['body'], $result['stat']);
-    }
-    return $tmparr;
-}
-
-function MSAPI($method, $path, $data = '', $access_token)
-{
-    if (substr($path, 0, 7) == 'http://' or substr($path, 0, 8) == 'https://') {
-        $url = $path;
-        $lenth = strlen($data);
-        $headers['Content-Length'] = $lenth;
-        $lenth--;
-        $headers['Content-Range'] = 'bytes 0-' . $lenth . '/' . $headers['Content-Length'];
-    } else {
-        $url = $_SERVER['api_url'];
-        if ($path == '' or $path == '/') {
-            $url .= '/';
-        } else {
-            $url .= ':' . $path;
-            if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-        }
-        if ($method == 'PUT') {
-            if ($path == '' or $path == '/') {
-                $url .= 'content';
-            } else {
-                $url .= ':/content';
-            }
-            $headers['Content-Type'] = 'text/plain';
-        } elseif ($method == 'PATCH') {
-            $headers['Content-Type'] = 'application/json';
-        } elseif ($method == 'POST') {
-            $headers['Content-Type'] = 'application/json';
-        } elseif ($method == 'DELETE') {
-            $headers['Content-Type'] = 'application/json';
-        } else {
-            if ($path == '' or $path == '/') {
-                $url .= $method;
-            } else {
-                $url .= ':/' . $method;
-            }
-            $method = 'POST';
-            $headers['Content-Type'] = 'application/json';
-        }
-    }
-    $headers['Authorization'] = 'Bearer ' . $access_token;
-    if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
-    if (!isset($headers['Referer'])) $headers['Referer'] = $url;
-    $sendHeaders = array();
-    foreach ($headers as $headerName => $headerVal) {
-        $sendHeaders[] = $headerName . ': ' . $headerVal;
-    }
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_HEADER, 0);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
-    $response['body'] = curl_exec($ch);
-    $response['stat'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    echo $response['stat'] . '
-';
-    return $response;
-}
-
-function get_thumbnails_url($path = '/')
-{
-    $path1 = path_format($path);
-    $path = path_format($_SERVER['list_path'] . path_format($path));
-    $url = $_SERVER['api_url'];
-    if ($path !== '/') {
-        $url .= ':' . $path;
-        if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-    }
-    $url .= ':/thumbnails/0/medium';
-    $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-    if (isset($files['url'])) return output($files['url']);
-    return output('', 404);
-}
-
 function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
 {
     global $constStr;
@@ -603,7 +306,7 @@ namespace:' . $namespace . '<br>
             <td><label>' . $key . '</label></td>
             <td width=100%>
                 <select name="' . $key . '">';
-            foreach (\Library\Lang::all()['languages'] as $key1 => $value1) {
+            foreach (Lang::all()['languages'] as $key1 => $value1) {
                 $html .= '
                     <option value="' . $key1 . '" ' . ($key1 == getenv($key) ? 'selected="selected"' : '') . '>' . $value1 . '</option>';
             }
@@ -623,57 +326,43 @@ namespace:' . $namespace . '<br>
     return message($html, trans('Setup'));
 }
 
-function render_list($account, $path, $files)
+/**
+ * render view
+ * @param array $account
+ * @param array $path
+ * @param array $files
+ * @return array|Response
+ * @throws Exception
+ */
+function render($account, $path, $files)
 {
     global $config;
-    $path = str_replace('%20', '%2520', $path);
-    $path = str_replace('+', '%2B', $path);
-    $path = str_replace('&', '&amp;', path_format(urldecode($path)));
-    $path = str_replace('%20', ' ', $path);
-    $path = str_replace('#', '%23', $path);
-    $p_path = '';
-    if ($path !== '/') {
-        if (isset($files['file'])) {
-            $title = str_replace('&', '&amp;', $files['name']);
-            $n_path = $title;
-        } else {
-            $title = substr($path, -1) == '/' ? substr($path, 0, -1) : $path;
-            $n_path = substr($title, strrpos($title, '/') + 1);
-            $title = substr($title, 1);
-        }
-        if (strrpos($path, '/') != 0) {
-            $p_path = substr($path, 0, strrpos($path, '/'));
-            $p_path = substr($p_path, strrpos($p_path, '/') + 1);
-        }
-    } else {
-        $title = trans('Home');
-        $n_path = $title;
-    }
-    $n_path = str_replace('&amp;', '&', $n_path);
-    $p_path = str_replace('&amp;', '&', $p_path);
-    $title = str_replace('%23', '#', $title);
 
+    $request = request();
+    $is_admin = $request->cookies->get('admin_password') === $config['admin_password'];
+    $base_url = $request->getBaseUrl();
+    if ($base_url == '') $base_url = '/';
     $status_code = 200;
-    $is_image_view = in_array($path, $account['path_image']);
-    $is_admin = request()->cookies->get('admin_password') === $config['admin_password'];
-    
-    $base_url = request()->getBaseUrl();
+
+    $is_image_path = in_array($path['relative'], $account['path_image']);
+    $is_video = false;
+    $readme = false;
     @ob_start();
     ?>
     <!DOCTYPE html>
-    <html lang="<?php echo \Library\Lang::language(); ?>">
+    <html lang="<?php echo Lang::language(); ?>">
     <head>
-        <title><?php echo $title; ?> - <?php echo $config['name']; ?></title>
+        <title><?php echo ($path['relative'] === '' ? '/' : urldecode($path['relative'])) . ' - ' . $config['name']; ?></title>
         <!--
         https://github.com/Tai7sy/OneDriveFly
         -->
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
-        <meta name="keywords" content="<?php echo $n_path; ?>,<?php if ($p_path != '') echo $p_path . ',';
-        echo $config['name']; ?>,OneDrive_SCF,OneDriveFly">
-        <link rel="icon" href="<?php echo $base_url ?>/favicon.ico" type="image/x-icon"/>
-        <link rel="shortcut icon" href="<?php echo $base_url ?>/favicon.ico" type="image/x-icon"/>
+        <meta name="keywords" content="<?php
+        echo htmlspecialchars(str_replace('/', ',', $path['relative']) . ',' . $config['name']); ?>,OneDrive_SCF,OneDriveFly">
+        <link rel="icon" href="<?php echo $base_url ?>favicon.ico" type="image/x-icon"/>
+        <link rel="shortcut icon" href="<?php echo $base_url ?>favicon.ico" type="image/x-icon"/>
         <style type="text/css">
             body {
                 font-family: 'Microsoft Yahei UI', 'PingFang TC', 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -700,9 +389,8 @@ function render_list($account, $path, $files)
 
             .title {
                 text-align: center;
-                margin-top: 1rem;
+                margin: 2rem 0;
                 letter-spacing: 2px;
-                margin-bottom: 2rem
             }
 
             .title a {
@@ -782,7 +470,8 @@ function render_list($account, $path, $files)
 
             .list-table td, .list-table th {
                 padding: 0 10px;
-                text-align: left
+                text-align: left;
+                cursor: pointer;
             }
 
             .list-table .size, .list-table .updated_at {
@@ -800,6 +489,7 @@ function render_list($account, $path, $files)
                 left: 0;
                 top: 0;
                 width: 100%;
+                height: 100%;
                 background-color: #000;
                 filter: alpha(opacity=50);
                 opacity: 0.5;
@@ -817,7 +507,7 @@ function render_list($account, $path, $files)
                 position: absolute;
                 display: none;
                 background: #fffaaa;
-                border: 0px #f7f7f7 solid;
+                border: 0 #f7f7f7 solid;
                 border-radius: 5px;
                 margin: -7px 0 0 0;
                 padding: 0 7px;
@@ -837,18 +527,18 @@ function render_list($account, $path, $files)
             }
 
             <?php } ?>
-            .operatediv {
+            .operate-model {
                 position: absolute;
                 border: 1px #CCCCCC;
                 background-color: #FFFFCC;
                 z-index: 2;
             }
 
-            .operatediv div {
+            .operate-model div {
                 margin: 16px
             }
 
-            .operatediv_close {
+            .closeModel {
                 position: absolute;
                 right: 3px;
                 top: 3px;
@@ -887,43 +577,114 @@ function render_list($account, $path, $files)
                 }
             }
         </style>
+        <script type="text/javascript">
+            function setCookie(name, value, expire) {
+                if (expire !== undefined) {
+                    var expTime = new Date();
+                    expTime.setTime(expTime.getTime() + expire);
+                    document.cookie = name + '=' + encodeURI(value) + '; expires=' + expTime.toUTCString() + '; path=/'
+                } else {
+                    document.cookie = name + '=' + encodeURI(value) + '; path=/'
+                }
+            }
+
+            function getCookie(name) {
+                var parts = ('; ' + document.cookie).split('; ' + name + '=');
+                if (parts.length >= 2) return parts.pop().split(';').shift();
+            }
+
+            function loadResources(type, src, callback) {
+                var script = document.createElement(type);
+                var loaded = false;
+                if (typeof callback === 'function') {
+                    script.onload = script.onreadystatechange = function () {
+                        if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
+                            script.onload = script.onreadystatechange = null;
+                            loaded = true;
+                            callback();
+                        }
+                    }
+                }
+                if (type === 'link') {
+                    script.href = src;
+                    script.rel = 'stylesheet';
+                } else {
+                    script.src = src;
+                }
+                document.getElementsByTagName('head')[0].appendChild(script);
+            }
+
+            String.prototype.between = function (before, after) {
+                var index1 = this.indexOf(before);
+                var index2 = this.indexOf(after, index1 + 1);
+                if (index1 === -1 || index2 === -1) return null;
+                return this.substring(index1 + before.length, index2)
+            };
+
+            (function timezone() {
+                if (!getCookie('timezone')) {
+                    var now = new Date();
+                    var timezone = parseInt(0 - now.getTimezoneOffset() / 60);
+                    setCookie('timezone', timezone, 7 * 24 * 3600 * 1000); // 7 days
+                    if (timezone !== 8) {
+                        alert('Your timezone is ' + timezone + ', reload local timezone.');
+                        location.reload();
+                    }
+                }
+            })();
+        </script>
     </head>
 
     <body>
     <?php
-    if (getenv('admin') != '') if (!$is_admin) {
-        if (getenv('adminloginpage') == '') { ?>
+    if (!empty($config['admin_password'])) {
+        if (!$is_admin) {
+            ?>
             <a onclick="login();"><?php echo trans('Login'); ?></a>
-        <?php }
-    } else { ?>
-        <li class="operate"><?php echo trans('Operate'); ?>
-            <ul>
-                <?php if (isset($files['folder'])) { ?>
-                    <li>
-                        <a onclick="showdiv(event,'create','');"><?php echo trans('Create'); ?></a>
-                    </li>
-                    <li>
-                        <a onclick="showdiv(event,'encrypt','');"><?php echo trans('encrypt'); ?></a>
-                    </li>
-                <?php } ?>
-                <li>
-                    <a <?php if (getenv('SecretId') != '' && getenv('SecretKey') != '') { ?>href="<?php echo request()->query->has('preview') ? '?preview&' : '?'; ?>setup"
-                       <?php } else { ?>onclick="alert('<?php echo trans('SetSecretsFirst'); ?>');"<?php } ?>><?php echo trans('Setup'); ?></a>
-                </li>
-                <li><a onclick="logout()"><?php echo trans('Logout'); ?></a></li>
-            </ul>
-        </li>
-        <?php
-    } ?>
-    <select class="select-language" name="language"
-            onchange="changeLanguage(this.options[this.options.selectedIndex].value)">
-        <option>Language</option>
-        <?php
-        foreach (\Library\Lang::all()['languages'] as $key1 => $value1) { ?>
-            <option value="<?php echo $key1; ?>"><?php echo $value1; ?></option>
             <?php
-        } ?>
-    </select>
+        } else { ?>
+            <li class="operate"><?php echo trans('Operate'); ?>
+                <ul>
+                    <?php if (isset($files['folder'])) { ?>
+                        <li>
+                            <a onclick="showModel(event,'create');"><?php echo trans('Create'); ?></a>
+                        </li>
+                        <li>
+                            <a onclick="showModel(event,'encrypt');"><?php echo trans('Encrypt'); ?></a>
+                        </li>
+                    <?php } ?>
+                    <li>
+                        <a <?php
+                           if (getenv('SecretId') != '' && getenv('SecretKey') != '')
+                           {
+                           ?>href="<?php echo request()->query->has('preview') ? '?preview&' : '?'; ?>setup"
+                           <?php
+                           } else {
+                           ?>onclick="alert('<?php echo trans('SetSecretsFirst'); ?>');"
+                            <?php
+                            }
+                            ?>
+                        >
+                            <?php echo trans('Setup'); ?>
+                        </a>
+                    </li>
+                    <li><a onclick="logout()"><?php echo trans('Logout'); ?></a></li>
+                </ul>
+            </li>
+            <?php
+        }
+    }
+    ?>
+    <label class="select-language">
+        <select name="language" onchange="changeLanguage(this.value)">
+            <option value="-1">Language</option>
+            <?php
+            foreach (Lang::all()['languages'] as $key1 => $value1) {
+                echo '<option value="' . $key1 . '" ' . (Lang::language() === $key1 ? 'selected="true"' : '') . '">' . $value1 . '</option>';
+            }
+            ?>
+        </select>
+    </label>
     <!-- update -->
     <div style='position:absolute; display: none'><span style="color: red"><?php echo trans('NeedUpdate'); ?></span>
     </div>
@@ -933,9 +694,8 @@ function render_list($account, $path, $files)
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
-                <?php
-                if ($path !== '/') {
-                    $current_url = $_SERVER['PHP_SELF'];
+                <?php if ($path !== '/') {
+                    $current_url = $request->getUri();
                     while (substr($current_url, -1) === '/') {
                         $current_url = substr($current_url, 0, -1);
                     }
@@ -945,52 +705,60 @@ function render_list($account, $path, $files)
                         $parent_url = $current_url;
                     }
                     ?>
-                    <a href="<?php echo $parent_url . '/'; ?>" class="back-link">
+                    <a href="<?php echo $parent_url; ?>" class="back-link">
                         <ion-icon name="arrow-back"></ion-icon>
                     </a>
                 <?php } ?>
-                <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&', '&amp;', $path)); ?></h3>
+                <h3 class="table-header">/<?php echo htmlspecialchars(urldecode($path['relative'])); ?></h3>
             </div>
             <div class="list-body-container">
                 <?php
-                if ($is_image_view && !$is_admin) { ?>
-                    <div id="upload_div" style="margin:10px">
-                        <center>
+                if ($is_image_path && !$is_admin) { ?>
+                    <div id="upload_div" style="margin: 12px; text-align: center">
+                        <div>
                             <input id="upload_file" type="file" name="upload_filename">
-                            <input id="upload_submit" onclick="preup();"
+                            <input id="upload_submit" onclick="uploadPrepare();"
                                    value="<?php echo trans('Upload'); ?>" type="button">
-                            <center>
+                        </div>
                     </div>
-                <?php } else {
-                    $folder_password = !empty($config['password_file']) ? \Library\OneDrive::instance()->getContent($path . '/' . $config['password_file']) : false;
-                    if (empty($folder_password) || $folder_password === request()->query->get('password')) {
+                    <?php
+                } else {
+                    $folder_password = false;
+                    if (!empty($config['password_file']) && !empty($account['driver'])) {
+                        $folder_password = $account['driver']->get(path_format($path['absolute'] . '/' . $config['password_file']));
+                    }
+                    if ($is_admin || empty($folder_password) || $folder_password === request()->cookies->get('password')) {
                         if (isset($files['error'])) {
-                            echo '<div style="margin:8px;">' . $files['error']['message'] . '</div>';
+                            echo '<div style="margin: 8px;">' . $files['error']['message'] . '</div>';
                             $status_code = 404;
                         } else {
                             if (isset($files['file'])) {
+                                // request is a file
                                 ?>
                                 <div style="margin: 12px 4px 4px; text-align: center">
                                     <div style="margin: 24px">
-                                        <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;"
-                                                  readonly><?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($base_url . '/' . $path), '/'))); ?></textarea>
-                                        <a href="<?php echo path_format($base_url . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>">
+                                        <label>
+                                        <textarea id="url" rows="1" style="width: 100%; margin-top: 2px;"
+                                                  readonly><?php echo path_format($base_url . '/' . $path['relative']); ?></textarea>
+                                        </label>
+                                        <a style="display: inline-block; margin: 8px 0 0"
+                                           href="<?php echo path_format($base_url . '/' . $path['relative']);//$files['@microsoft.graph.downloadUrl'] ?>">
                                             <ion-icon name="download"
                                                       style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo trans('Download'); ?>
                                         </a>
                                     </div>
                                     <div style="margin: 24px">
-                                        <?php $ext = strtolower(substr($path, strrpos($path, '.') + 1));
-                                        $DPvideo = '';
-                                        if (in_array($ext, \Library\Ext::IMG)) {
+                                        <?php
+                                        $ext = strtolower(substr($path['relative'], strrpos($path['relative'], '.') + 1));
+                                        if (in_array($ext, Ext::IMG)) {
                                             echo '
-                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
+                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path['relative'], strrpos($path['relative'], '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
 ';
-                                        } elseif (in_array($ext, \Library\Ext::VIDEO)) {
+                                        } elseif (in_array($ext, Ext::VIDEO)) {
                                             //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
-                                            $DPvideo = $files['@microsoft.graph.downloadUrl'];
-                                            echo '<div id="video-a0"></div>';
-                                        } elseif (in_array($ext, \Library\Ext::MUSIC)) {
+                                            $is_video = true;
+                                            echo '<div id="video-a0" data-url="' . $files['@microsoft.graph.downloadUrl'] . '"></div>';
+                                        } elseif (in_array($ext, Ext::MUSIC)) {
                                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
 ';
@@ -998,11 +766,11 @@ function render_list($account, $path, $files)
                                             echo '
                         <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
 ';
-                                        } elseif (in_array($ext, \Library\Ext::OFFICE)) {
+                                        } elseif (in_array($ext, Ext::OFFICE)) {
                                             echo '
-                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
+                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px; border: 0"></iframe>
 ';
-                                        } elseif (in_array($ext, \Library\Ext::TXT)) {
+                                        } elseif (in_array($ext, Ext::TXT)) {
                                             $txt_content = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
                                             ?>
                                             <div id="txt">
@@ -1013,7 +781,8 @@ function render_list($account, $path, $files)
                                                     <a id="txt-save"
                                                        style="display:none"><?php echo trans('Save'); ?></a>
                                                     <?php } ?>
-                                                    <textarea id="txt-a" name="editfile" readonly
+                                                    <label for="txt-a"></label>
+                                                    <textarea id="txt-a" name="content" readonly
                                                               style="width: 100%; margin-top: 2px;" <?php if ($is_admin) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"'; ?> ><?php echo $txt_content; ?></textarea>
                                                     <?php if ($is_admin) echo '</form>'; ?>
                                             </div>
@@ -1028,56 +797,54 @@ function render_list($account, $path, $files)
                                         } ?>
                                     </div>
                                 </div>
-                            <?php } elseif (isset($files['folder'])) {
-                                $filenum = $files['folder']['childCount'];
-                                if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page'] - 1) * 200;
-                                $readme = false; ?>
+                                <?php
+                            } elseif (isset($files['folder'])) {
+                                $index = 0;
+                                ?>
                                 <table class="list-table" id="list-table">
                                     <tr id="tr0">
-                                        <th class="file"
-                                            onclick="sortby('a');"><?php echo trans('File'); ?>
-                                            &nbsp;&nbsp;&nbsp;<button
-                                                    onclick="showthumbnails(this);"><?php echo trans('ShowThumbnails'); ?></button>
+                                        <th class="file" onclick="sortTable(event, 0);"><?php echo trans('File'); ?>
+                                            &nbsp;&nbsp;&nbsp;
+                                            <button onclick="showThumbnails(this)"><?php echo trans('ShowThumbnails'); ?></button>
                                         </th>
-                                        <th class="updated_at" width="25%"
-                                            onclick="sortby('time');"><?php echo trans('EditTime'); ?></th>
-                                        <th class="size" width="15%"
-                                            onclick="sortby('size');"><?php echo trans('Size'); ?></th>
+                                        <th class="updated_at" style="width: 25%"
+                                            onclick="sortTable(event, 1);"><?php echo trans('EditTime'); ?></th>
+                                        <th class="size" style="width: 15%"
+                                            onclick="sortTable(event, 2);"><?php echo trans('Size'); ?></th>
                                     </tr>
                                     <!-- Dirs -->
-                                    <?php //echo json_encode($files['children'], JSON_PRETTY_PRINT);
+                                    <?php
+                                    // echo json_encode($files['children'], JSON_PRETTY_PRINT);
                                     foreach ($files['children'] as $file) {
                                         // Folders
                                         if (isset($file['folder'])) {
-                                            $filenum++; ?>
-                                            <tr data-to id="tr<?php echo $filenum; ?>">
+                                            $index++; ?>
+                                            <tr data-to id="tr<?php echo $index; ?>">
                                                 <td class="file">
                                                     <?php if ($is_admin) { ?>
                                                         <li class="operate"><?php echo trans('Operate'); ?>
                                                             <ul>
                                                                 <li>
-                                                                    <a onclick="showdiv(event,'encrypt',<?php echo $filenum; ?>);"><?php echo trans('encrypt'); ?></a>
+                                                                    <a onclick="showModel(event,'encrypt',<?php echo $index; ?>);"><?php echo trans('Encrypt'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo trans('Rename'); ?></a>
+                                                                    <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo trans('Move'); ?></a>
+                                                                    <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo trans('Delete'); ?></a>
+                                                                    <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
                                                                 </li>
                                                             </ul>
                                                         </li>&nbsp;&nbsp;&nbsp;
                                                     <?php } ?>
                                                     <ion-icon name="folder"></ion-icon>
-                                                    <a id="file_a<?php echo $filenum; ?>"
-                                                       href="<?php echo path_format($base_url . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&', '&amp;', $file['name']); ?></a>
+                                                    <a id="filename_<?php echo $index; ?>"
+                                                       href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'] . '/')); ?>"><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
                                                 </td>
-                                                <td class="updated_at"
-                                                    id="folder_time<?php echo $filenum; ?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                                <td class="size"
-                                                    id="folder_size<?php echo $filenum; ?>"><?php echo size_format($file['size']); ?></td>
+                                                <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                                                <td class="size"><?php echo size_format($file['size']); ?></td>
                                             </tr>
                                         <?php }
                                     }
@@ -1085,42 +852,46 @@ function render_list($account, $path, $files)
                                     foreach ($files['children'] as $file) {
                                         // Files
                                         if (isset($file['file'])) {
-                                            if ($is_admin or (substr($file['name'], 0, 1) !== '.' and $file['name'] !== getenv('passfile'))) {
-                                                if (strtolower($file['name']) === 'readme.md') $readme = $file;
-                                                if (strtolower($file['name']) === 'index.html') {
-                                                    $html = curl_request(fetch_files(spurlencode(path_format($path . '/' . $file['name']), '/'))['@microsoft.graph.downloadUrl']);
-                                                    return output($html, 200);
+                                            if ($is_admin || (substr($file['name'], 0, 1) !== '.' && $file['name'] !== $config['password_file'])) {
+                                                if (strtolower($file['name']) === 'readme.md' || strtolower($file['name']) === 'readme') {
+                                                    $readme = $file;
                                                 }
-                                                $filenum++; ?>
-                                                <tr data-to id="tr<?php echo $filenum; ?>">
+                                                if (strtolower($file['name']) === 'index.html' || strtolower($file['name']) === 'index.htm') {
+                                                    $html = $account['driver']->get(path_format($path['absolute'] . '/' . $file['name']));
+                                                    @ob_clean();
+                                                    return response($html);
+                                                }
+                                                $index++;
+                                                ?>
+                                                <tr data-to id="tr<?php echo $index; ?>">
                                                     <td class="file">
                                                         <?php if ($is_admin) { ?>
                                                             <li class="operate"><?php echo trans('Operate'); ?>
                                                                 <ul>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo trans('Rename'); ?></a>
+                                                                        <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
                                                                     </li>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo trans('Move'); ?></a>
+                                                                        <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
                                                                     </li>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo trans('Delete'); ?></a>
+                                                                        <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
                                                                     </li>
                                                                 </ul>
                                                             </li>&nbsp;&nbsp;&nbsp;
                                                         <?php }
                                                         $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
-                                                        if (in_array($ext, \Library\Ext::MUSIC)) { ?>
+                                                        if (in_array($ext, Ext::MUSIC)) { ?>
                                                             <ion-icon name="musical-notes"></ion-icon>
-                                                        <?php } elseif (in_array($ext, \Library\Ext::VIDEO)) { ?>
+                                                        <?php } elseif (in_array($ext, Ext::VIDEO)) { ?>
                                                             <ion-icon name="logo-youtube"></ion-icon>
-                                                        <?php } elseif (in_array($ext, \Library\Ext::IMG)) { ?>
+                                                        <?php } elseif (in_array($ext, Ext::IMG)) { ?>
                                                             <ion-icon name="image"></ion-icon>
-                                                        <?php } elseif (in_array($ext, \Library\Ext::OFFICE)) { ?>
+                                                        <?php } elseif (in_array($ext, Ext::OFFICE)) { ?>
                                                             <ion-icon name="paper"></ion-icon>
-                                                        <?php } elseif (in_array($ext, \Library\Ext::TXT)) { ?>
+                                                        <?php } elseif (in_array($ext, Ext::TXT)) { ?>
                                                             <ion-icon name="clipboard"></ion-icon>
-                                                        <?php } elseif (in_array($ext, \Library\Ext::ZIP)) { ?>
+                                                        <?php } elseif (in_array($ext, Ext::ZIP)) { ?>
                                                             <ion-icon name="filing"></ion-icon>
                                                         <?php } elseif ($ext == 'iso') { ?>
                                                             <ion-icon name="disc"></ion-icon>
@@ -1131,73 +902,67 @@ function render_list($account, $path, $files)
                                                         <?php } else { ?>
                                                             <ion-icon name="document"></ion-icon>
                                                         <?php } ?>
-                                                        <a id="file_a<?php echo $filenum; ?>" name="filelist"
-                                                           href="<?php echo path_format($base_url . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview"
-                                                           target=_blank><?php echo str_replace('&', '&amp;', $file['name']); ?></a>
-                                                        <a href="<?php echo path_format($base_url . '/' . $path . '/' . str_replace('&', '&amp;', $file['name'])); ?>">
+                                                        <a id="filename_<?php echo $index; ?>"
+                                                           class="filename"
+                                                           href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>?preview"
+                                                           target=_blank><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
+                                                        <a href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>">
                                                             <ion-icon name="download"></ion-icon>
                                                         </a>
                                                     </td>
-                                                    <td class="updated_at"
-                                                        id="file_time<?php echo $filenum; ?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                                    <td class="size"
-                                                        id="file_size<?php echo $filenum; ?>"><?php echo size_format($file['size']); ?></td>
+                                                    <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+                                                    <td class="size"><?php echo size_format($file['size']); ?></td>
                                                 </tr>
                                             <?php }
                                         }
                                     } ?>
                                 </table>
-                                <?php if ($files['folder']['childCount'] > 200) {
-                                    $pagenum = $files['folder']['page'];
-                                    $maxpage = ceil($files['folder']['childCount'] / 200);
-                                    $prepagenext = '
-                <form action="" method="POST" id="nextpageform">
-                    <input type="hidden" id="pagenum" name="pagenum" value="' . $pagenum . '">
-                    <table width=100% border=0>
+                                <?php if ($files['folder']['childCount'] > $files['folder']['perPage']) {
+                                    $pageForm = '
+                <form action="" method="GET" id="pageForm">
+                    <input type="hidden" id="page" name="page" value="' . $files['folder']['currentPage'] . '">
+                    <table style="width: 100%; border: none">
                         <tr>
-                            <td width=60px align=center>';
-                                    if ($pagenum != 1) {
-                                        $prepagenum = $pagenum - 1;
-                                        $prepagenext .= '
-                                <a onclick="nextpage(' . $prepagenum . ');">' . trans('PrePage') . '</a>';
+                            <td style="width: 60px; text-align: center">';
+                                    if ($files['folder']['currentPage'] !== 1) {
+                                        $pageForm .= '
+                                <a href="?page=' . ($files['folder']['currentPage'] - 1) . '">' . trans('PrePage') . '</a>';
                                     }
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
-                            <td class="updated_at">';
-                                    for ($page = 1; $page <= $maxpage; $page++) {
-                                        if ($page == $pagenum) {
-                                            $prepagenext .= '
-                                <font color=red>' . $page . '</font> ';
+                            <td style="color: #888">';
+                                    for ($page = 1; $page <= $files['folder']['lastPage']; $page++) {
+                                        if ($page == $files['folder']['currentPage']) {
+                                            $pageForm .= '
+                                <span style="color: red">' . $page . '</span>';
                                         } else {
-                                            $prepagenext .= '
-                                <a onclick="nextpage(' . $page . ');">' . $page . '</a> ';
+                                            $pageForm .= '
+                                <a href="?page=' . $page . '">' . $page . '</a>';
                                         }
                                     }
-                                    $prepagenext = substr($prepagenext, 0, -1);
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
-                            <td width=60px align=center>';
-                                    if ($pagenum != $maxpage) {
-                                        $nextpagenum = $pagenum + 1;
-                                        $prepagenext .= '
-                                <a onclick="nextpage(' . $nextpagenum . ');">' . trans('NextPage') . '</a>';
+                            <td style="width: 60px; text-align: center">';
+                                    if ($files['folder']['currentPage'] != $files['folder']['lastPage']) {
+                                        $pageForm .= '
+                                <a href="?page=' . ($files['folder']['lastPage'] + 1) . '">' . trans('NextPage') . '</a>';
                                     }
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
                         </tr>
                     </table>
                 </form>';
-                                    echo $prepagenext;
+                                    echo $pageForm;
                                 }
                                 if ($is_admin) { ?>
                                     <div id="upload_div" style="margin:0 0 16px 0">
-                                        <center>
+                                        <div style="text-align: center">
                                             <input id="upload_file" type="file" name="upload_filename"
                                                    multiple="multiple">
-                                            <input id="upload_submit" onclick="preup();"
+                                            <input id="upload_submit" onclick="uploadPrepare();"
                                                    value="<?php echo trans('Upload'); ?>"
                                                    type="button">
-                                        </center>
+                                        </div>
                                     </div>
                                 <?php }
                             } else {
@@ -1205,7 +970,7 @@ function render_list($account, $path, $files)
                                 echo 'Unknown path or file.';
                                 echo json_encode($files, JSON_PRETTY_PRINT);
                             }
-                            if (isset($readme)) {
+                            if ($readme) {
                                 echo '
             </div>
         </div>
@@ -1218,7 +983,7 @@ function render_list($account, $path, $files)
                     <span style="line-height: 16px;vertical-align: top;">' . $readme['name'] . '</span>
                     <div class="markdown-body" id="readme">
                         <textarea id="readme-md" style="display:none;">' .
-                                    \Library\OneDrive::instance()->getContent($path . '/' . $readme['name']) . '
+                                    $account['driver']->get(path_format($path['absolute'] . '/' . $readme['name'])) . '
                         </textarea>
                     </div>
                 </div>
@@ -1228,12 +993,10 @@ function render_list($account, $path, $files)
                     } else {
                         echo '
                 <div style="padding:20px">
-	            <center>
-	                <form action="" method="post">
-		            <input name="password1" type="password" placeholder="' . trans('InputPassword') . '">
-		            <input type="submit" value="' . trans('Submit') . '">
-	                </form>
-                </center>
+	            <div style="text-align: center">
+		            <input id="password" type="password" placeholder="' . trans('InputPassword') . '">
+		            <button onclick="inputPassword()">' . trans('Submit') . '</button>
+                </div>
                 </div>';
                         $status_code = 401;
                     }
@@ -1244,144 +1007,157 @@ function render_list($account, $path, $files)
     <div id="mask" class="mask" style="display:none;"></div>
     <?php
     if ($is_admin) {
-        if (!$_GET['preview']) { ?>
-            <div>
-                <div id="rename_div" class="operatediv" style="display:none">
-                    <div>
-                        <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')"
-                                                                    class="operatediv_close"><?php echo trans('Close'); ?></a>
-                        <form id="rename_form" onsubmit="return submit_operate('rename');">
-                            <input id="rename_sid" name="rename_sid" type="hidden" value="">
-                            <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
-                            <input id="rename_input" name="rename_newname" type="text" value="">
-                            <input name="operate_action" type="submit"
-                                   value="<?php echo trans('Rename'); ?>">
-                        </form>
-                    </div>
-                </div>
-                <div id="delete_div" class="operatediv" style="display:none">
-                    <div>
-                        <br><a onclick="operatediv_close('delete')"
-                               class="operatediv_close"><?php echo trans('Close'); ?></a>
-                        <label id="delete_label"></label>
-                        <form id="delete_form" onsubmit="return submit_operate('delete');">
-                            <label id="delete_input"><?php echo trans('Delete'); ?>?</label>
-                            <input id="delete_sid" name="delete_sid" type="hidden" value="">
-                            <input id="delete_hidden" name="delete_name" type="hidden" value="">
-                            <input name="operate_action" type="submit"
-                                   value="<?php echo trans('Submit'); ?>">
-                        </form>
-                    </div>
-                </div>
-                <div id="encrypt_div" class="operatediv" style="display:none">
-                    <div>
-                        <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')"
-                                                                     class="operatediv_close"><?php echo trans('Close'); ?></a>
-                        <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
-                            <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
-                            <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
-                            <input id="encrypt_input" name="encrypt_newpass" type="text" value=""
-                                   placeholder="<?php echo trans('InputPasswordUWant'); ?>">
-                            <?php if (getenv('passfile') != '') { ?><input name="operate_action" type="submit"
-                                                                           value="<?php echo trans('encrypt'); ?>"><?php } else { ?>
-                                <br>
-                                <label><?php echo trans('SetpassfileBfEncrypt'); ?></label><?php } ?>
-                        </form>
-                    </div>
-                </div>
-                <div id="move_div" class="operatediv" style="display:none">
-                    <div>
-                        <label id="move_label"></label><br><br><a onclick="operatediv_close('move')"
-                                                                  class="operatediv_close"><?php echo trans('Close'); ?></a>
-                        <form id="move_form" onsubmit="return submit_operate('move');">
-                            <input id="move_sid" name="move_sid" type="hidden" value="">
-                            <input id="move_hidden" name="move_name" type="hidden" value="">
-                            <select id="move_input" name="move_folder">
-                                <?php if ($path != '/') { ?>
-                                    <option value="/../"><?php echo trans('ParentDir'); ?></option>
-                                <?php }
-                                if (isset($files['children'])) foreach ($files['children'] as $file) {
-                                    if (isset($file['folder'])) { ?>
-                                        <option value="<?php echo str_replace('&', '&amp;', $file['name']); ?>"><?php echo str_replace('&', '&amp;', $file['name']); ?></option>
-                                    <?php }
-                                } ?>
-                            </select>
-                            <input name="operate_action" type="submit"
-                                   value="<?php echo trans('Move'); ?>">
-                        </form>
-                    </div>
-                </div>
-                <div id="create_div" class="operatediv" style="display:none">
-                    <div>
-                        <a onclick="operatediv_close('create')"
-                           class="operatediv_close"><?php echo trans('Close'); ?></a>
-                        <form id="create_form" onsubmit="return submit_operate('create');">
-                            <input id="create_sid" name="create_sid" type="hidden" value="">
-                            <input id="create_hidden" type="hidden" value="">
-                            <table>
-                                <tr>
-                                    <td></td>
-                                    <td><label id="create_label"></label></td>
-                                </tr>
-                                <tr>
-                                    <td>　　　</td>
-                                    <td>
-                                        <label><input id="create_type_folder" name="create_type" type="radio"
-                                                      value="folder"
-                                                      onclick="document.getElementById('create_text_div').style.display='none';"><?php echo trans('Folder'); ?>
-                                        </label>
-                                        <label><input id="create_type_file" name="create_type" type="radio" value="file"
-                                                      onclick="document.getElementById('create_text_div').style.display='';"
-                                                      checked><?php echo trans('File'); ?>
-                                        </label>
-                                    <td>
-                                </tr>
-                                <tr>
-                                    <td><?php echo trans('Name'); ?>：</td>
-                                    <td><input id="create_input" name="create_name" type="text" value=""></td>
-                                </tr>
-                                <tr id="create_text_div">
-                                    <td><?php echo trans('Content'); ?>：</td>
-                                    <td><textarea id="create_text" name="create_text" rows="6" cols="40"></textarea>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>　　　</td>
-                                    <td><input name="operate_action" type="submit"
-                                               value="<?php echo trans('Create'); ?>"></td>
-                                </tr>
-                            </table>
-                        </form>
-                    </div>
+        if (!$request->query->has('preview')) { ?>
+
+            <div id="rename_div" class="operate-model" style="display:none">
+                <div>
+                    <label id="rename_label"></label><br><br>
+                    <a onclick="closeModel('rename')"
+                       class="closeModel"><?php echo trans('Close'); ?></a>
+                    <form id="rename_form" onsubmit="return submitOperate('rename');">
+                        <input id="rename_sid" name="rename_sid" type="hidden" value="">
+                        <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
+                        <label for="rename_input"></label>
+                        <input id="rename_input" name="rename_newname" type="text" value="">
+                        <input name="action" type="submit" value="<?php echo trans('Rename'); ?>">
+                    </form>
                 </div>
             </div>
+
+            <div id="delete_div" class="operate-model" style="display:none">
+                <div>
+                    <br><a onclick="closeModel('delete')"
+                           class="closeModel"><?php echo trans('Close'); ?></a>
+                    <label id="delete_label"></label>
+                    <form id="delete_form" onsubmit="return submitOperate('delete');">
+                        <label id="delete_input"><?php echo trans('Delete'); ?>?</label>
+                        <input id="delete_sid" name="delete_sid" type="hidden" value="">
+                        <input id="delete_hidden" name="delete_name" type="hidden" value="">
+                        <input name="action" type="submit"
+                               value="<?php echo trans('Delete'); ?>">
+                    </form>
+                </div>
+            </div>
+
+            <div id="encrypt_div" class="operate-model" style="display:none">
+                <div>
+                    <label id="encrypt_label"></label><br><br>
+                    <a onclick="closeModel('encrypt')" class="closeModel"><?php echo trans('Close'); ?></a>
+                    <form id="encrypt_form" onsubmit="return submitOperate('encrypt');">
+                        <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
+                        <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
+                        <label for="encrypt_input"></label>
+                        <input id="encrypt_input" name="encrypt_newpass" type="text"
+                               placeholder="<?php echo trans('InputPasswordUWant'); ?>">
+
+                        <?php if (!empty($config['password_file'])) { ?>
+                            <input name="action" type="submit" value="<?php echo trans('Encrypt'); ?>">
+                        <?php } else { ?>
+                            <br>
+                            <label><?php echo trans('SetpassfileBfEncrypt'); ?></label><?php } ?>
+                    </form>
+                </div>
+            </div>
+
+            <div id="move_div" class="operate-model" style="display:none">
+                <div>
+                    <label id="move_label"></label><br><br>
+                    <a onclick="closeModel('move')" class="closeModel"><?php echo trans('Close'); ?></a>
+                    <form id="move_form" onsubmit="return submitOperate('move');">
+                        <input id="move_sid" name="move_sid" type="hidden" value="">
+                        <input id="move_hidden" name="move_name" type="hidden" value="">
+                        <label for="move_input"></label>
+                        <select id="move_input" name="move_folder">
+                            <?php if ($path != '/') { ?>
+                                <option value="/../"><?php echo trans('ParentDir'); ?></option>
+                            <?php }
+                            if (isset($files['children'])) foreach ($files['children'] as $file) {
+                                if (isset($file['folder'])) { ?>
+                                    <option value="<?php echo str_replace('&', '&amp;', $file['name']); ?>"><?php echo str_replace('&', '&amp;', $file['name']); ?></option>
+                                <?php }
+                            } ?>
+                        </select>
+                        <input name="action" type="submit"
+                               value="<?php echo trans('Move'); ?>">
+                    </form>
+                </div>
+            </div>
+
+            <div id="create_div" class="operate-model" style="display:none">
+                <div>
+                    <a onclick="closeModel('create')" class="closeModel"><?php echo trans('Close'); ?></a>
+                    <form id="create_form" onsubmit="return submitOperate('create');">
+                        <input id="create_sid" name="create_sid" type="hidden" value="">
+                        <input id="create_hidden" type="hidden" value="">
+                        <table>
+                            <tr>
+                                <td></td>
+                                <td><label id="create_label"></label></td>
+                            </tr>
+                            <tr>
+                                <td>　　　</td>
+                                <td>
+                                    <label>
+                                        <input id="create_type_folder" name="create_type" type="radio" value="folder"
+                                               onclick="document.getElementById('create_content_div').style.display='none';">
+                                        <?php echo trans('Folder'); ?>
+                                    </label>
+                                    <label>
+                                        <input id="create_type_file" name="create_type" type="radio" value="file"
+                                               onclick="document.getElementById('create_content_div').style.display='';"
+                                               checked>
+                                        <?php echo trans('File'); ?>
+                                    </label>
+                                <td>
+                            </tr>
+                            <tr>
+                                <td><?php echo trans('Name'); ?>：</td>
+                                <td><label><input id="create_input" name="create_name" type="text" value=""></label>
+                                </td>
+                            </tr>
+                            <tr id="create_content_div">
+                                <td><?php echo trans('Content'); ?>：</td>
+                                <td><label><textarea id="create_content" name="create_content" rows="6"
+                                                     cols="40"></textarea></label>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>　　　</td>
+                                <td><input name="action" type="submit" value="<?php echo trans('Create'); ?>">
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+            </div>
+
         <?php }
     } else {
-        if (getenv('admin') != '') if (getenv('adminloginpage') == '') { ?>
-            <div id="login_div" class="operatediv" style="display:none">
-                <div style="margin:50px">
-                    <a onclick="operatediv_close('login')"
-                       class="operatediv_close"><?php echo trans('Close'); ?></a>
-                    <center>
-                        <form action="<?php echo $_GET['preview'] ? '?preview&' : '?'; ?>admin" method="post">
-                            <input id="login_input" name="password1" type="password"
-                                   placeholder="<?php echo trans('InputPassword'); ?>">
-                            <input type="submit" value="<?php echo trans('Login'); ?>">
-                        </form>
-                    </center>
+        ?>
+        <div id="login_div" class="operate-model" style="display: none">
+            <div style="margin:50px">
+                <a onclick="closeModel('login')"
+                   class="closeModel"><?php echo trans('Close'); ?></a>
+                <div style="text-align: center">
+                    <label>
+                        <input id="admin_password" type="password" placeholder="<?php echo trans('InputPassword'); ?>">
+                    </label>
+                    <button onclick="inputAdminPassword()"><?php echo trans('Login'); ?></button>
                 </div>
             </div>
-        <?php }
+        </div>
+        <?php
     } ?>
-    <font color="#f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $_SERVER['REMOTE_ADDR']; ?></font>
+    <span style="color: #f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $_SERVER['REMOTE_ADDR']; ?></span>
     </body>
 
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
     <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
-    <?php if (isset($files['folder']) && $is_image_view && !$is_admin) { ?>
-        <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script><?php } ?>
+    <?php if (isset($files['folder']) && $is_image_path && !$is_admin) { ?>
+        <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script>
+    <?php } ?>
     <script type="text/javascript">
-        var root = '<?php echo $_SERVER["base_path"]; ?>';
+        var root = '/';
 
         function path_format(path) {
             path = '/' + path + '/';
@@ -1392,20 +1168,18 @@ function render_list($account, $path, $files)
         }
 
         document.querySelectorAll('.table-header').forEach(function (e) {
-            var path = e.innerText;
-            var paths = path.split('/');
-            if (paths <= 2) return;
+            var path = e.innerText.split('/');
             e.innerHTML = '/ ';
-            for (var i = 1; i < paths.length - 1; i++) {
-                var to = path_format(root + paths.slice(0, i + 1).join('/'));
-                e.innerHTML += '<a href="' + to + '">' + paths[i] + '</a> / '
+            for (var i = 1; i < path.length - 1; i++) {
+                var to = path_format(root + path.slice(0, i + 1).join('/'));
+                e.innerHTML += '<a href="' + to + '">' + path[i] + '</a> / '
             }
-            e.innerHTML += paths[paths.length - 1];
+            e.innerHTML += path[path.length - 1];
             e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
         });
 
-        function changeLanguage(str) {
-            document.cookie = 'language=' + str + '; path=/';
+        function changeLanguage(lang) {
+            setCookie('language', lang, 7 * 24 * 3600 * 1000);
             location.reload();
         }
 
@@ -1413,8 +1187,21 @@ function render_list($account, $path, $files)
         if ($readme) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
         }
+
+        function inputPassword() {
+            setCookie('password', document.getElementById('password').value);
+            location.reload()
+        }
+
+        function inputAdminPassword() {
+            setCookie('admin_password', document.getElementById('admin_password').value);
+            location.reload()
+        }
+
         <?php
-        if ($_GET['preview']) { //is preview mode. 在预览时处理 ?>
+        //is preview mode. 在预览时处理
+        if ($request->query->has('preview')) {
+        ?>
         var $url = document.getElementById('url');
         if ($url) {
             $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
@@ -1428,38 +1215,65 @@ function render_list($account, $path, $files)
         if ($textarea) {
             $textarea.style.height = $textarea.scrollHeight + 'px';
         }
-        <?php   if (!!$DPvideo) { ?>
-        function loadResources(type, src, callback) {
-            let script = document.createElement(type);
-            let loaded = false;
-            if (typeof callback === 'function') {
-                script.onload = script.onreadystatechange = () => {
-                    if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
-                        script.onload = script.onreadystatechange = null;
-                        loaded = true;
-                        callback();
-                    }
-                }
-            }
-            if (type === 'link') {
-                script.href = src;
-                script.rel = 'stylesheet';
-            } else {
-                script.src = src;
-            }
-            document.getElementsByTagName('head')[0].appendChild(script);
-        }
 
-        function addVideos(videos) {
-            let host = 'https://s0.pstatp.com/cdn/expire-1-M';
-            let unloadedResourceCount = 4;
-            let callback = (() => {
-                return () => {
+        <?php
+        if ($is_video) {
+        ?>
+        (function loadDPlayer() {
+
+            function createDPlayers() {
+                var container = document.getElementById('video-a0');
+                var url = container.getAttribute('data-url');
+                var subtitle = url.replace(/\.[^\.]+?(\?|$)/, '.vtt$1');
+                var dp = new DPlayer({
+                    container: container,
+                    autoplay: false,
+                    screenshot: true,
+                    hotkey: true,
+                    volume: 1,
+                    preload: 'auto',
+                    mutex: true,
+                    video: {
+                        url: url
+                    },
+                    subtitle: {
+                        url: subtitle,
+                        fontSize: '25px',
+                        bottom: '7%'
+                    }
+                });
+                // 防止出现401 token过期
+                dp.on('error', function () {
+                    console.log('获取资源错误，开始重新加载！');
+                    var last = dp.video.currentTime;
+                    dp.video.src = url;
+                    dp.video.load();
+                    dp.video.currentTime = last;
+                    dp.play();
+                });
+                // 如果是播放状态 & 没有播放完 每25分钟重载视频防止卡死
+                setInterval(function () {
+                    if (!dp.video.paused && !dp.video.ended) {
+                        console.log('开始重新加载！');
+                        var last = dp.video.currentTime;
+                        dp.video.src = url;
+                        dp.video.load();
+                        dp.video.currentTime = last;
+                        dp.play();
+                    }
+                }, 1000 * 60 * 25)
+            }
+
+            var host = 'https://s0.pstatp.com/cdn/expire-1-M';
+            var unloadedResourceCount = 4;
+            var callback = (function () {
+                return function () {
                     if (!--unloadedResourceCount) {
-                        createDplayers(videos);
+                        createDPlayers(videos);
                     }
                 };
-            })(unloadedResourceCount, videos);
+            })
+            (unloadedResourceCount, videos);
             loadResources(
                 'link',
                 host + '/dplayer/1.25.0/DPlayer.min.css',
@@ -1480,269 +1294,106 @@ function render_list($account, $path, $files)
                 host + '/flv.js/1.5.0/flv.min.js',
                 callback
             );
+        })();
+        <?php
         }
+        ?>
 
-        function createDplayers(videos) {
-            var url = '<?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($base_url . '/' . $path), '/'))); ?>',
-                subtitle = url.replace(/\.[^\.]+?(\?|$)/, '.vtt$1');
-            var dp = new DPlayer({
-                container: document.getElementById('video-a0'),
-                autoplay: false,
-                screenshot: true,
-                hotkey: true,
-                volume: 1,
-                preload: 'auto',
-                mutex: true,
-                video: {
-                    url: url,
-                },
-                subtitle: {
-                    url: subtitle,
-                    fontSize: '25px',
-                    bottom: '7%',
-                },
-            });
-            // 防止出现401 token过期
-            dp.on('error', function () {
-                console.log('获取资源错误，开始重新加载！');
-                let last = dp.video.currentTime;
-                dp.video.src = url;
-                dp.video.load();
-                dp.video.currentTime = last;
-                dp.play();
-            });
-            // 如果是播放状态 & 没有播放完 每25分钟重载视频防止卡死
-            setInterval(function () {
-                if (!dp.video.paused && !dp.video.ended) {
-                    console.log('开始重新加载！');
-                    let last = dp.video.currentTime;
-                    dp.video.src = url;
-                    dp.video.load();
-                    dp.video.currentTime = last;
-                    dp.play();
+        <?php
+        }
+        else
+        {
+        // view folder. 不预览，即浏览目录时
+        ?>
+
+        function showThumbnails(obj) {
+            var files = document.querySelectorAll('td.file>.filename');
+            for (var i = 0; i < files.length; i++) {
+                var filename = files[i].innerText;
+                while (filename.substr(-1) === ' ') filename = filename.substr(0, filename.length - 1);
+                if (!filename) return;
+                var ext = filename.split('.').pop().toLowerCase();
+                if ((<?php echo json_encode(Ext::IMG); ?>).indexOf(ext) > -1) {
+                    files[i].innerHTML = '<img src="' + location.href + '/' + encodeURIComponent(filename) + '?thumbnails" alt="' + filename + '" title="' + filename + '">';
                 }
-            }, 1000 * 60 * 25)
-        }
-
-        addVideos(['<?php echo $DPvideo;?>']);
-        <?php   }
-        } else { // view folder. 不预览，即浏览目录时?>
-        var sort = 0;
-
-        function showthumbnails(obj) {
-            var files = document.getElementsByName('filelist');
-            for ($i = 0; $i < files.length; $i++) {
-                str = files[$i].innerText;
-                if (str.substr(-1) == ' ') str = str.substr(0, str.length - 1);
-                if (!str) return;
-                strarry = str.split('.');
-                ext = strarry[strarry.length - 1].toLowerCase();
-                images = [<?php foreach (\Library\Ext::IMG as $imgext) echo '\'' . $imgext . '\', '; ?>];
-                if (images.indexOf(ext) > -1) get_thumbnails_url(str, files[$i]);
             }
             obj.disabled = 'disabled';
         }
 
-        function get_thumbnails_url(str, filea) {
-            if (!str) return;
-            var nurl = window.location.href;
-            if (nurl.substr(-1) != "/") nurl += "/";
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", nurl + str + '?thumbnails', true);
-            //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
-            xhr.send('');
-            xhr.onload = function (e) {
-                if (xhr.status == 200) {
-                    if (xhr.responseText != '') filea.innerHTML = '<img src="' + xhr.responseText + '" alt="' + str + '">';
-                } else console.log(xhr.status + '\n' + xhr.responseText);
+        var sortDirection = [];
+
+        function sortTable(event, n) {
+            if (event.target.tagName !== 'TH') return;
+            var rows = document.getElementById("list-table").rows;
+            var i, j;
+            var cells;
+
+            sortDirection[n] = sortDirection[n] === undefined || sortDirection[n] === 'desc' ? 'asc' : 'desc';
+
+            function compare(a, b) {
+                if (a[n] === b[n]) {
+                    return 0;
+                }
+                if (n === 0) {
+                    if (a[n].between('<a', '/a>').between('>', '<') > b[n].between('<a', '/a>').between('>', '<')) {
+                        return sortDirection[n] === "asc" ? 1 : -1;
+                    }
+                } else if (n === 2) {
+                    // sort by size
+                    if (parseSize(a[n]) > parseSize(b[n])) {
+                        return sortDirection[n] === "asc" ? 1 : -1;
+                    }
+                } else {
+                    if (a[n] > b[n]) {
+                        return sortDirection[n] === "asc" ? 1 : -1;
+                    }
+                }
+                return sortDirection[n] === "asc" ? -1 : 1;
+            }
+
+            var arr = [];
+            for (i = 1; i < rows.length; i++) {
+                cells = rows[i].cells;
+
+                arr[i - 1] = [];
+                for (j = 0; j < cells.length; j++) {
+                    arr[i - 1][j] = cells[j].innerHTML;
+                }
+            }
+
+            // sorting
+            arr.sort(compare);
+            // replace existing rows with new rows created from the sorted array
+            for (i = 1; i < rows.length; i++) {
+                cells = rows[i].cells;
+                for (j = 0; j < cells.length; j++) {
+                    cells[j].innerHTML = arr[i - 1][j];
+                }
             }
         }
 
-        function sortby(string) {
-            if (string == 'a') if (sort != 0) {
-                for (i = 1; i <= <?php echo $filenum ? $filenum : 0;?>; i++) document.getElementById('tr' + i).parentNode.insertBefore(document.getElementById('tr' + i), document.getElementById('tr' + (i - 1)).nextSibling);
-                sort = 0;
-                return;
-            } else return;
-            sort1 = sort;
-            sortby('a');
-            sort = sort1;
-            var a = [];
-            for (i = 1; i <= <?php echo $filenum ? $filenum : 0;?>; i++) {
-                a[i] = i;
-                if (!!document.getElementById('folder_' + string + i)) {
-                    var td1 = document.getElementById('folder_' + string + i);
-                    for (j = 1; j < i; j++) {
-                        if (!!document.getElementById('folder_' + string + a[j])) {
-                            var c = false;
-                            if (string == 'time') if (sort == -1) {
-                                c = (td1.innerText < document.getElementById('folder_' + string + a[j]).innerText);
-                            } else {
-                                c = (td1.innerText > document.getElementById('folder_' + string + a[j]).innerText);
-                            }
-                            if (string == 'size') if (sort == 2) {
-                                c = (size_reformat(td1.innerText) < size_reformat(document.getElementById('folder_' + string + a[j]).innerText));
-                            } else {
-                                c = (size_reformat(td1.innerText) > size_reformat(document.getElementById('folder_' + string + a[j]).innerText));
-                            }
-                            if (c) {
-                                document.getElementById('tr' + i).parentNode.insertBefore(document.getElementById('tr' + i), document.getElementById('tr' + a[j]));
-                                for (k = i; k > j; k--) {
-                                    a[k] = a[k - 1];
-                                }
-                                a[j] = i;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!!document.getElementById('file_' + string + i)) {
-                    var td1 = document.getElementById('file_' + string + i);
-                    for (j = 1; j < i; j++) {
-                        if (!!document.getElementById('file_' + string + a[j])) {
-                            var c = false;
-                            if (string == 'time') if (sort == -1) {
-                                c = (td1.innerText < document.getElementById('file_' + string + a[j]).innerText);
-                            } else {
-                                c = (td1.innerText > document.getElementById('file_' + string + a[j]).innerText);
-                            }
-                            if (string == 'size') if (sort == 2) {
-                                c = (size_reformat(td1.innerText) < size_reformat(document.getElementById('file_' + string + a[j]).innerText));
-                            } else {
-                                c = (size_reformat(td1.innerText) > size_reformat(document.getElementById('file_' + string + a[j]).innerText));
-                            }
-                            if (c) {
-                                document.getElementById('tr' + i).parentNode.insertBefore(document.getElementById('tr' + i), document.getElementById('tr' + a[j]));
-                                for (k = i; k > j; k--) {
-                                    a[k] = a[k - 1];
-                                }
-                                a[j] = i;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if (string == 'time') if (sort == -1) {
-                sort = 1;
-            } else {
-                sort = -1;
-            }
-            if (string == 'size') if (sort == 2) {
-                sort = -2;
-            } else {
-                sort = 2;
-            }
-        }
-
-        function size_reformat(str) {
-            if (str.substr(-1) == ' ') str = str.substr(0, str.length - 1);
-            if (str.substr(-2) == 'GB') num = str.substr(0, str.length - 3) * 1024 * 1024 * 1024;
-            if (str.substr(-2) == 'MB') num = str.substr(0, str.length - 3) * 1024 * 1024;
-            if (str.substr(-2) == 'KB') num = str.substr(0, str.length - 3) * 1024;
-            if (str.substr(-2) == ' B') num = str.substr(0, str.length - 2);
-            return num;
+        function parseSize(str) {
+            if (str.substr(-1) === ' ') str = str.substr(0, str.length - 1);
+            if (str.substr(-2) === 'GB') return str.substr(0, str.length - 3) * 1024 * 1024 * 1024;
+            if (str.substr(-2) === 'MB') return str.substr(0, str.length - 3) * 1024 * 1024;
+            if (str.substr(-2) === 'KB') return str.substr(0, str.length - 3) * 1024;
+            if (str.substr(-2) === ' B') return str.substr(0, str.length - 2);
         }
         <?php
         }
-        if ($_COOKIE['timezone'] == '') { // cookie timezone. 无时区写时区 ?>
-        var nowtime = new Date();
-        var timezone = 0 - nowtime.getTimezoneOffset() / 60;
-        var expd = new Date();
-        expd.setTime(expd.getTime() + (2 * 60 * 60 * 1000));
-        var expires = "expires=" + expd.toGMTString();
-        document.cookie = "timezone=" + timezone + "; path=/; " + expires;
-        if (timezone != '8') {
-            alert('Your timezone is ' + timezone + ', reload local timezone.');
-            location.href = location.protocol + "//" + location.host + "<?php echo path_format($base_url . '/' . $path);?>";
-        }
-        <?php }
-        if ($files['folder']['childCount'] > 200) { // more than 200. 有下一页 ?>
-        function nextpage(num) {
-            document.getElementById('pagenum').value = num;
-            document.getElementById('nextpageform').submit();
-        }
-        <?php }
-        if (getenv('admin') != '') { // close div. 有登录或操作，需要关闭DIV时 ?>
-        function operatediv_close(operate) {
+        ?>
+
+        function closeModel(operate) {
             document.getElementById(operate + '_div').style.display = 'none';
             document.getElementById('mask').style.display = 'none';
         }
-        <?php }
-        if (isset($files['folder']) && ($is_image_view || $is_admin)) { // is folder and is admin or guest upload path. 当前是admin登录或图床目录时 ?>
-        function uploadbuttonhide() {
-            document.getElementById('upload_submit').disabled = 'disabled';
-            document.getElementById('upload_file').disabled = 'disabled';
-            document.getElementById('upload_submit').style.display = 'none';
-            document.getElementById('upload_file').style.display = 'none';
-        }
 
-        function uploadbuttonshow() {
-            document.getElementById('upload_file').disabled = '';
-            document.getElementById('upload_submit').disabled = '';
-            document.getElementById('upload_submit').style.display = '';
-            document.getElementById('upload_file').style.display = '';
-        }
+        <?php
+        if (isset($files['folder']) && ($is_image_path || $is_admin)) {
+        // is folder and is admin or guest upload path. 当前是admin登录或图床目录时
+        ?>
 
-        function preup() {
-            uploadbuttonhide();
-            var files = document.getElementById('upload_file').files;
-            if (files.length < 1) {
-                uploadbuttonshow();
-                return;
-            }
-            ;
-            var table1 = document.createElement('table');
-            document.getElementById('upload_div').appendChild(table1);
-            table1.setAttribute('class', 'list-table');
-            var timea = new Date().getTime();
-            var i = 0;
-            getuplink(i);
-
-            function getuplink(i) {
-                var file = files[i];
-                var tr1 = document.createElement('tr');
-                table1.appendChild(tr1);
-                tr1.setAttribute('data-to', 1);
-                var td1 = document.createElement('td');
-                tr1.appendChild(td1);
-                td1.setAttribute('style', 'width:30%');
-                td1.setAttribute('id', 'upfile_td1_' + timea + '_' + i);
-                td1.innerHTML = file.name + '<br>' + size_format(file.size);
-                var td2 = document.createElement('td');
-                tr1.appendChild(td2);
-                td2.setAttribute('id', 'upfile_td2_' + timea + '_' + i);
-                td2.innerHTML = '<?php echo trans('GetUploadLink'); ?> ...';
-                if (file.size > 100 * 1024 * 1024 * 1024) {
-                    td2.innerHTML = '<font color="red"><?php echo trans('UpFileTooLarge'); ?></font>';
-                    uploadbuttonshow();
-                    return;
-                }
-                var xhr1 = new XMLHttpRequest();
-                xhr1.open("POST", '');
-                xhr1.setRequestHeader('x-requested-with', 'XMLHttpRequest');
-                xhr1.send('action=upbigfile&upbigfilename=' + encodeURIComponent(file.name) + '&filesize=' + file.size + '&lastModified=' + file.lastModified);
-                xhr1.onload = function (e) {
-                    td2.innerHTML = '<font color="red">' + xhr1.responseText + '</font>';
-                    if (xhr1.status == 200) {
-                        var html = JSON.parse(xhr1.responseText);
-                        if (!html['uploadUrl']) {
-                            td2.innerHTML = '<font color="red">' + xhr1.responseText + '</font><br>';
-                            uploadbuttonshow();
-                        } else {
-                            td2.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
-                            binupfile(file, html['uploadUrl'], timea + '_' + i);
-                        }
-                    }
-                    if (i < files.length - 1) {
-                        i++;
-                        getuplink(i);
-                    }
-                }
-            }
-        }
-
-        function size_format(num) {
+        function sizeFormat(num) {
             if (num > 1024) {
                 num = num / 1024;
             } else {
@@ -1761,7 +1412,80 @@ function render_list($account, $path, $files)
             return num.toFixed(2) + ' GB';
         }
 
-        function binupfile(file, url, tdnum) {
+        function hideUploadBtn() {
+            document.getElementById('upload_submit').disabled = 'disabled';
+            document.getElementById('upload_file').disabled = 'disabled';
+            document.getElementById('upload_submit').style.display = 'none';
+            document.getElementById('upload_file').style.display = 'none';
+        }
+
+        function showUploadBtn() {
+            document.getElementById('upload_file').disabled = '';
+            document.getElementById('upload_submit').disabled = '';
+            document.getElementById('upload_submit').style.display = '';
+            document.getElementById('upload_file').style.display = '';
+        }
+
+        function uploadPrepare() {
+            hideUploadBtn();
+            var files = document.getElementById('upload_file').files;
+            if (files.length < 1) {
+                showUploadBtn();
+                return;
+            }
+            var table1 = document.createElement('table');
+            document.getElementById('upload_div').appendChild(table1);
+            table1.setAttribute('class', 'list-table');
+            var timea = new Date().getTime();
+            var i = 0;
+            getUploadUrl(i);
+
+            function getUploadUrl(i) {
+                var file = files[i];
+                var tr1 = document.createElement('tr');
+                table1.appendChild(tr1);
+                tr1.setAttribute('data-to', 1);
+                var td1 = document.createElement('td');
+                tr1.appendChild(td1);
+                td1.setAttribute('style', 'width:30%');
+                td1.setAttribute('id', 'upfile_td1_' + timea + '_' + i);
+                td1.innerHTML = file.name + '<br>' + sizeFormat(file.size);
+                var td2 = document.createElement('td');
+                tr1.appendChild(td2);
+                td2.setAttribute('id', 'upfile_td2_' + timea + '_' + i);
+                td2.innerHTML = '<?php echo trans('GetUploadLink'); ?> ...';
+                if (file.size > 100 * 1024 * 1024 * 1024) {
+                    td2.innerHTML = '<font color="red"><?php echo trans('UpFileTooLarge'); ?></font>';
+                    showUploadBtn();
+                    return;
+                }
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '');
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.send('action=upload&filename=' + encodeURIComponent(file.name) + '&filesize=' + file.size + '&lastModified=' + file.lastModified);
+                xhr.onload = function (e) {
+                    td2.innerHTML = '<span style="color: red">' + xhr.responseText + '</span>';
+                    if (xhr.status === 200) {
+                        var html = JSON.parse(xhr.responseText);
+                        if (!html['uploadUrl']) {
+                            td2.innerHTML = '<span style="color: red">' + xhr.responseText + '</span><br>';
+                            showUploadBtn();
+                        } else {
+                            td2.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
+                            upload(file, html['uploadUrl'], timea + '_' + i);
+                        }
+                    }
+                    if (i < files.length - 1) {
+                        i++;
+                        getUploadUrl(i);
+                    }
+                }
+            }
+        }
+
+
+        function upload(file, url, tdnum) {
             var label = document.getElementById('upfile_td2_' + tdnum);
             var reader = new FileReader();
             var StartStr = '';
@@ -1774,10 +1498,10 @@ function render_list($account, $path, $files)
                 var totalsize = file.size;
                 var xhr2 = new XMLHttpRequest();
                 xhr2.open("GET", url);
-                //xhr2.setRequestHeader('x-requested-with','XMLHttpRequest');
+                //xhr2.setRequestHeader('X-Requested-With','XMLHttpRequest');
                 xhr2.send(null);
                 xhr2.onload = function (e) {
-                    if (xhr2.status == 200) {
+                    if (xhr2.status === 200) {
                         var html = JSON.parse(xhr2.responseText);
                         var a = html['nextExpectedRanges'][0];
                         newstartsize = Number(a.slice(0, a.indexOf("-")));
@@ -1785,10 +1509,10 @@ function render_list($account, $path, $files)
                         <?php if ($is_admin) { ?>
                         asize = newstartsize;
                         <?php } ?>
-                        if (newstartsize == 0) {
+                        if (newstartsize === 0) {
                             StartStr = '<?php echo trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
                         } else {
-                            StartStr = '<?php echo trans('LastUpload'); ?>' + size_format(newstartsize) + '<br><?php echo trans('ThisTime') . trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
+                            StartStr = '<?php echo trans('LastUpload'); ?>' + sizeFormat(newstartsize) + '<br><?php echo trans('ThisTime') . trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
                         }
                         var chunksize = 5 * 1024 * 1024; // chunk size, max 60M. 每小块上传大小，最大60M，微软建议10M
                         if (totalsize > 200 * 1024 * 1024) chunksize = 10 * 1024 * 1024;
@@ -1815,7 +1539,7 @@ function render_list($account, $path, $files)
                             <?php } ?>
                             var xhr = new XMLHttpRequest();
                             xhr.open("PUT", url, true);
-                            //xhr.setRequestHeader('x-requested-with','XMLHttpRequest');
+                            //xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
                             bsize = asize + e.loaded - 1;
                             xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize + '/' + totalsize);
                             xhr.upload.onprogress = function (e) {
@@ -1823,9 +1547,9 @@ function render_list($account, $path, $files)
                                     var tmptime = new Date();
                                     var tmpspeed = e.loaded * 1000 / (tmptime.getTime() - C_starttime.getTime());
                                     var remaintime = (totalsize - asize - e.loaded) / tmpspeed;
-                                    label.innerHTML = StartStr + '<?php echo trans('Upload'); ?> ' + size_format(asize + e.loaded) + ' / ' + size_format(totalsize) + ' = ' + ((asize + e.loaded) * 100 / totalsize).toFixed(2) + '% <?php echo trans('AverageSpeed'); ?>:' + size_format((asize + e.loaded - newstartsize) * 1000 / (tmptime.getTime() - StartTime.getTime())) + '/s<br><?php echo trans('CurrentSpeed'); ?> ' + size_format(tmpspeed) + '/s <?php echo trans('Expect'); ?> ' + remaintime.toFixed(1) + 's';
+                                    label.innerHTML = StartStr + '<?php echo trans('Upload'); ?> ' + sizeFormat(asize + e.loaded) + ' / ' + sizeFormat(totalsize) + ' = ' + ((asize + e.loaded) * 100 / totalsize).toFixed(2) + '% <?php echo trans('AverageSpeed'); ?>:' + sizeFormat((asize + e.loaded - newstartsize) * 1000 / (tmptime.getTime() - StartTime.getTime())) + '/s<br><?php echo trans('CurrentSpeed'); ?> ' + sizeFormat(tmpspeed) + '/s <?php echo trans('Expect'); ?> ' + remaintime.toFixed(1) + 's';
                                 }
-                            }
+                            };
                             var C_starttime = new Date();
                             xhr.onload = function (e) {
                                 if (xhr.status < 500) {
@@ -1834,50 +1558,50 @@ function render_list($account, $path, $files)
                                         // contain size, upload finish. 有size说明是最终返回，上传结束
                                         var xhr3 = new XMLHttpRequest();
                                         xhr3.open("POST", '');
-                                        xhr3.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+                                        xhr3.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                                         xhr3.send('action=del_upload_cache&filename=.' + file.lastModified + '_' + file.size + '_' + encodeURIComponent(file.name) + '.tmp');
                                         xhr3.onload = function (e) {
                                             console.log(xhr3.responseText + ',' + xhr3.status);
-                                        }
+                                        };
                                         <?php if (!$is_admin) { ?>
                                         var xhr4 = new XMLHttpRequest();
                                         xhr4.open("POST", '');
-                                        xhr4.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+                                        xhr4.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                                         var filemd5 = spark.end();
                                         xhr4.send('action=uploaded_rename&filename=' + encodeURIComponent(file.name) + '&filemd5=' + filemd5);
                                         xhr4.onload = function (e) {
                                             console.log(xhr4.responseText + ',' + xhr4.status);
                                             var filename;
-                                            if (xhr4.status == 200) filename = JSON.parse(xhr4.responseText)['name'];
-                                            if (xhr4.status == 409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
+                                            if (xhr4.status === 200) filename = JSON.parse(xhr4.responseText)['name'];
+                                            if (xhr4.status === 409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
                                             if (filename == '') {
                                                 alert('<?php echo trans('UploadErrorUpAgain'); ?>');
-                                                uploadbuttonshow();
+                                                showUploadBtn();
                                                 return;
                                             }
                                             var lasturl = location.href;
-                                            if (lasturl.substr(lasturl.length - 1) != '/') lasturl += '/';
+                                            if (lasturl.substr(lasturl.length - 1) !== '/') lasturl += '/';
                                             lasturl += filename + '?preview';
                                             //alert(lasturl);
                                             window.open(lasturl);
-                                        }
+                                        };
                                         <?php } ?>
                                         EndTime = new Date();
                                         MiddleStr = '<?php echo trans('EndAt'); ?>:' + EndTime.toLocaleString() + '<br>';
-                                        if (newstartsize == 0) {
-                                            MiddleStr += '<?php echo trans('AverageSpeed'); ?>:' + size_format(totalsize * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
+                                        if (newstartsize === 0) {
+                                            MiddleStr += '<?php echo trans('AverageSpeed'); ?>:' + sizeFormat(totalsize * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
                                         } else {
-                                            MiddleStr += '<?php echo trans('ThisTime') . trans('AverageSpeed'); ?>:' + size_format((totalsize - newstartsize) * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
+                                            MiddleStr += '<?php echo trans('ThisTime') . trans('AverageSpeed'); ?>:' + sizeFormat((totalsize - newstartsize) * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
                                         }
                                         document.getElementById('upfile_td1_' + tdnum).innerHTML = '<font color="green"><?php if (!$is_admin) { ?>' + filemd5 + '<br><?php } ?>' + document.getElementById('upfile_td1_' + tdnum).innerHTML + '<br><?php echo trans('UploadComplete'); ?></font>';
                                         label.innerHTML = StartStr + MiddleStr;
-                                        uploadbuttonshow();
+                                        showUploadBtn();
                                         <?php if ($is_admin) { ?>
-                                        addelement(response);
+                                        addFileToList(response);
                                         <?php } ?>
                                     } else {
                                         if (!response['nextExpectedRanges']) {
-                                            label.innerHTML = '<font color="red">' + xhr.responseText + '</font><br>';
+                                            label.innerHTML = '<span style="color: red">' + xhr.responseText + '</span><br>';
                                         } else {
                                             var a = response['nextExpectedRanges'][0];
                                             asize = Number(a.slice(0, a.indexOf("-")));
@@ -1885,68 +1609,72 @@ function render_list($account, $path, $files)
                                         }
                                     }
                                 } else readblob(asize);
-                            }
+                            };
                             xhr.send(binary);
                         }
                     } else {
                         if (window.location.pathname.indexOf('%23') > 0 || file.name.indexOf('%23') > 0) {
-                            label.innerHTML = '<font color="red"><?php echo trans('UploadFail23'); ?></font>';
+                            label.innerHTML = '<span style="color:red;"><?php echo trans('UploadFail23'); ?></span>';
                         } else {
-                            label.innerHTML = '<font color="red">' + xhr2.responseText + '</font>';
+                            label.innerHTML = '<span style="color:red;">' + xhr2.responseText + '</span>';
                         }
-                        uploadbuttonshow();
+                        showUploadBtn();
                     }
                 }
             }
         }
-        <?php }
+
+        <?php
+        }
+
+
         if ($is_admin) { // admin login. 管理登录后 ?>
+
         function logout() {
-            document.cookie = "<?php echo $_SERVER['function_name'] . 'admin';?>=; path=/";
-            location.href = location.href;
+            setCookie('admin_password', null, -1);
+            location.reload();
         }
 
         function enableedit(obj) {
             document.getElementById('txt-a').readOnly = !document.getElementById('txt-a').readOnly;
             //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-            obj.innerHTML = (obj.innerHTML == '<?php echo trans('CancelEdit'); ?>') ? '<?php echo trans('ClicktoEdit'); ?>' : '<?php echo trans('CancelEdit'); ?>';
-            document.getElementById('txt-save').style.display = document.getElementById('txt-save').style.display == '' ? 'none' : '';
+            obj.innerHTML = (obj.innerHTML === '<?php echo trans('CancelEdit'); ?>') ? '<?php echo trans('ClicktoEdit'); ?>' : '<?php echo trans('CancelEdit'); ?>';
+            document.getElementById('txt-save').style.display = document.getElementById('txt-save').style.display === '' ? 'none' : '';
         }
-        <?php   if (!$_GET['preview']) {?>
-        function showdiv(event, action, num) {
-            var $operatediv = document.getElementsByName('operatediv');
-            for ($i = 0; $i < $operatediv.length; $i++) {
-                $operatediv[$i].style.display = 'none';
+
+        function showModel(event, action, index) {
+            var models = document.getElementsByName('operate-model');
+            for (var i = 0; i < models.length; i++) {
+                models.style.display = 'none';
             }
-            document.getElementById('mask').style.display = '';
-            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
-            document.getElementById('mask').style.height = document.documentElement.scrollHeight < window.innerHeight ? window.innerHeight : document.documentElement.scrollHeight + 'px';
-            if (num == '') {
-                var str = '';
-            } else {
-                var str = document.getElementById('file_a' + num).innerText;
-                if (str == '') {
-                    str = document.getElementById('file_a' + num).getElementsByTagName("img")[0].alt;
-                    if (str == '') {
+            document.getElementById('mask').style.display = 'block';
+
+            var filename = '';
+            if (index !== undefined) {
+                filename = document.getElementById('filename_' + index).innerText;
+                if (filename === '') {
+                    filename = document.getElementById('filename_' + index).getElementsByTagName("img")[0].alt;
+                    if (filename === '') {
                         alert('<?php echo trans('GetFileNameFail'); ?>');
-                        operatediv_close(action);
+                        closeModel(action);
                         return;
                     }
                 }
-                if (str.substr(-1) == ' ') str = str.substr(0, str.length - 1);
+                while (filename.substr(-1) === ' ')
+                    filename = filename.substr(0, filename.length - 1);
             }
             document.getElementById(action + '_div').style.display = '';
-            document.getElementById(action + '_label').innerText = str;//.replace(/&/,'&amp;');
-            document.getElementById(action + '_sid').value = num;
-            document.getElementById(action + '_hidden').value = str;
-            if (action == 'rename') document.getElementById(action + '_input').value = str;
+            document.getElementById(action + '_label').innerText = filename;
+            document.getElementById(action + '_sid').value = index;
+            document.getElementById(action + '_hidden').value = filename;
+            if (action === 'rename') document.getElementById(action + '_input').value = filename;
 
             var $e = event || window.event;
             var $scrollX = document.documentElement.scrollLeft || document.body.scrollLeft;
             var $scrollY = document.documentElement.scrollTop || document.body.scrollTop;
             var $x = $e.pageX || $e.clientX + $scrollX;
             var $y = $e.pageY || $e.clientY + $scrollY;
-            if (action == 'create') {
+            if (action === 'create') {
                 document.getElementById(action + '_div').style.left = (document.body.clientWidth - document.getElementById(action + '_div').offsetWidth) / 2 + 'px';
                 document.getElementById(action + '_div').style.top = (window.innerHeight - document.getElementById(action + '_div').offsetHeight) / 2 + $scrollY + 'px';
             } else {
@@ -1960,55 +1688,65 @@ function render_list($account, $path, $files)
             document.getElementById(action + '_input').focus();
         }
 
-        function submit_operate(str) {
-            var num = document.getElementById(str + '_sid').value;
+        function submitOperate(action) {
+            var submit = document.querySelector('#' + action + '_form input[type=submit]');
+            var index = document.getElementById(action + '_sid').value;
+            submit.setAttribute('disabled', 'disabled');
+
             var xhr = new XMLHttpRequest();
-            xhr.open("POST", '', true);
-            xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
-            xhr.send(serializeForm(str + '_form'));
-            xhr.onload = function (e) {
-                var html;
+            xhr.open('POST', '', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.send(serializeForm(action + '_form'));
+            xhr.onload = function () {
+                var obj;
                 if (xhr.status < 300) {
-                    if (str == 'rename') {
-                        html = JSON.parse(xhr.responseText);
-                        var file_a = document.getElementById('file_a' + num);
-                        file_a.innerText = html.name;
-                        file_a.href = (file_a.href.substr(-8) == '?preview') ? (html.name.replace(/#/, '%23') + '?preview') : (html.name.replace(/#/, '%23') + '/');
+                    if (action === 'rename') {
+                        obj = JSON.parse(xhr.responseText);
+                        var filename = document.getElementById('filename_' + index);
+                        filename.innerText = obj.name;
+                        if (obj.file) {
+                            filename.href = location.href + '/' + obj.name + '?preview';
+                            filename.nextElementSibling.href = location.href + '/' + obj.name;
+                        } else if (obj.folder) {
+                            filename.href = location.href + '/' + obj.name;
+                        }
+                    } else if (action === 'move' || action === 'delete')
+                        document.getElementById('tr' + index).parentNode.removeChild(document.getElementById('tr' + index));
+                    else if (action === 'create') {
+                        addFileToList(JSON.parse(xhr.responseText));
                     }
-                    if (str == 'move' || str == 'delete') document.getElementById('tr' + num).parentNode.removeChild(document.getElementById('tr' + num));
-                    if (str == 'create') {
-                        html = JSON.parse(xhr.responseText);
-                        addelement(html);
-                    }
-                } else alert(xhr.status + '\n' + xhr.responseText);
-                document.getElementById(str + '_div').style.display = 'none';
+                } else {
+                    alert(xhr.status + '\n' + xhr.responseText);
+                }
+                document.getElementById(action + '_div').style.display = 'none';
                 document.getElementById('mask').style.display = 'none';
-            }
+                submit.removeAttribute('disabled');
+            };
             return false;
         }
 
-        function addelement(html) {
+        function addFileToList(obj) {
             var tr1 = document.createElement('tr');
             tr1.setAttribute('data-to', 1);
             var td1 = document.createElement('td');
             td1.setAttribute('class', 'file');
             var a1 = document.createElement('a');
-            a1.href = html.name.replace(/#/, '%23');
-            a1.innerText = html.name;
+            a1.href = location.href + '/' + obj.name;
+            a1.innerText = obj.name;
             a1.target = '_blank';
             var td2 = document.createElement('td');
             td2.setAttribute('class', 'updated_at');
-            td2.innerText = html.lastModifiedDateTime.replace(/T/, ' ').replace(/Z/, '');
+            td2.innerText = obj.lastModifiedDateTime.replace(/T/, ' ').replace(/Z/, '');
             var td3 = document.createElement('td');
             td3.setAttribute('class', 'size');
-            td3.innerText = size_format(html.size);
-            if (!!html.folder) {
+            td3.innerText = sizeFormat(obj.size);
+            if (obj.folder) {
                 a1.href += '/';
                 document.getElementById('tr0').parentNode.insertBefore(tr1, document.getElementById('tr0').nextSibling);
-            }
-            if (!!html.file) {
+            } else if (obj.file) {
                 a1.href += '?preview';
-                a1.name = 'filelist';
+                a1.className = 'filename';
                 document.getElementById('tr0').parentNode.appendChild(tr1);
             }
             tr1.appendChild(td1);
@@ -2017,62 +1755,64 @@ function render_list($account, $path, $files)
             tr1.appendChild(td3);
         }
 
-        function getElements(formId) {
-            var form = document.getElementById(formId);
-            var elements = new Array();
-            var tagElements = form.getElementsByTagName('input');
-            for (var j = 0; j < tagElements.length; j++) {
-                elements.push(tagElements[j]);
-            }
-            var tagElements = form.getElementsByTagName('select');
-            for (var j = 0; j < tagElements.length; j++) {
-                elements.push(tagElements[j]);
-            }
-            var tagElements = form.getElementsByTagName('textarea');
-            for (var j = 0; j < tagElements.length; j++) {
-                elements.push(tagElements[j]);
-            }
-            return elements;
-        }
-
-        function serializeElement(element) {
-            var method = element.tagName.toLowerCase();
-            var parameter;
-            if (method == 'select') {
-                parameter = [element.name, element.value];
-            }
-            switch (element.type.toLowerCase()) {
-                case 'submit':
-                case 'hidden':
-                case 'password':
-                case 'text':
-                case 'date':
-                case 'textarea':
-                    parameter = [element.name, element.value];
-                    break;
-                case 'checkbox':
-                case 'radio':
-                    if (element.checked) {
-                        parameter = [element.name, element.value];
-                    }
-                    break;
-            }
-            if (parameter) {
-                var key = encodeURIComponent(parameter[0]);
-                if (key.length == 0) return;
-                if (parameter[1].constructor != Array) parameter[1] = [parameter[1]];
-                var values = parameter[1];
-                var results = [];
-                for (var i = 0; i < values.length; i++) {
-                    results.push(key + '=' + encodeURIComponent(values[i]));
-                }
-                return results.join('&');
-            }
-        }
 
         function serializeForm(formId) {
+
+            function getElements(formId) {
+                var form = document.getElementById(formId);
+                var elements = [];
+                var tagElements = form.getElementsByTagName('input');
+                for (var j = 0; j < tagElements.length; j++) {
+                    elements.push(tagElements[j]);
+                }
+                tagElements = form.getElementsByTagName('select');
+                for (var j = 0; j < tagElements.length; j++) {
+                    elements.push(tagElements[j]);
+                }
+                tagElements = form.getElementsByTagName('textarea');
+                for (var j = 0; j < tagElements.length; j++) {
+                    elements.push(tagElements[j]);
+                }
+                return elements;
+            }
+
+            function serializeElement(element) {
+                var method = element.tagName.toLowerCase();
+                var parameter;
+                if (method === 'select') {
+                    parameter = [element.name, element.value];
+                }
+                switch (element.type.toLowerCase()) {
+                    case 'submit':
+                    case 'hidden':
+                    case 'password':
+                    case 'text':
+                    case 'date':
+                    case 'textarea':
+                        parameter = [element.name, element.value];
+                        break;
+                    case 'checkbox':
+                    case 'radio':
+                        if (element.checked) {
+                            parameter = [element.name, element.value];
+                        }
+                        break;
+                }
+                if (parameter) {
+                    var key = encodeURIComponent(parameter[0]);
+                    if (key.length === 0) return;
+                    if (parameter[1].constructor !== Array) parameter[1] = [parameter[1]];
+                    var values = parameter[1];
+                    var results = [];
+                    for (var i = 0; i < values.length; i++) {
+                        results.push(key + '=' + encodeURIComponent(values[i]));
+                    }
+                    return results.join('&');
+                }
+            }
+
             var elements = getElements(formId);
-            var queryComponents = new Array();
+            var queryComponents = [];
             for (var i = 0; i < elements.length; i++) {
                 var queryComponent = serializeElement(elements[i]);
                 if (queryComponent) {
@@ -2081,23 +1821,22 @@ function render_list($account, $path, $files)
             }
             return queryComponents.join('&');
         }
-        <?php   }
-        } else if (getenv('admin') != '') if (getenv('adminloginpage') == '') { ?>
+        <?php
+        }
+        ?>
+
         function login() {
-            document.getElementById('mask').style.display = '';
-            //document.getElementById('mask').style.width=document.documentElement.scrollWidth+'px';
-            document.getElementById('mask').style.height = document.documentElement.scrollHeight < window.innerHeight ? window.innerHeight : document.documentElement.scrollHeight + 'px';
+            document.getElementById('mask').style.display = 'block';
             document.getElementById('login_div').style.display = '';
             document.getElementById('login_div').style.left = (document.body.clientWidth - document.getElementById('login_div').offsetWidth) / 2 + 'px';
             document.getElementById('login_div').style.top = (window.innerHeight - document.getElementById('login_div').offsetHeight) / 2 + document.body.scrollTop + 'px';
-            document.getElementById('login_input').focus();
+            document.getElementById('admin_password').focus();
         }
-        <?php } ?>
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
     </html>
     <?php
     $html = ob_get_clean();
-    return response($html,$status_code);
+    return response($html, $status_code);
 }
 

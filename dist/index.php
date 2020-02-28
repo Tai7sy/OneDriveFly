@@ -9,43 +9,116 @@
 global $config;
 $config = [
     'name' => 'yes',
-    'platform' => 'Normal'
+    'platform' => 'Normal',
+    'multi' => 0,
+    'accounts' => [
+        [
+            'name' => '测试',
+            'path' => '',
+            'path_image' => [],
+            'refresh_token' => 'AQABAAAAAABeAFzDwllzTYGDLh_qYbH8RSINlnQph1lIPwBEkhcrlvtjXrSAe1duxCxPlPNzLQmAYeJu8009GDRLMLFSCRCIIHn2dW2BWL2ZzZEHAPTzZTnoSJzIfsHD3InFXF2Dcp6yacV83emsSa6sGQN8LZS80JUvZPzhj-D4oAiCJz0rZiGajfrHsfIBaT5odr0FGBTi6KeLcMR5XhRR1hYlX4Uaj-PSBHdXvcFrCwWW_EpFr6tbP8TriOxk9weAhOfVAsXWCjFr4V01q5_aQnFeA7yFL1ihSbsOzUMi8r0l_ILvNfO2StumIVCefOm6DtI_fUUwqObbuJhlQo_hKObYlM-fY_r6NUwCeMmmIInV6bK20StwIsTQvQJaUIyUl6ZOHH1gzZl2cMjt34IV_O-3Z8acwsaGTz2Ucs3vHclWe_IvXuZhlAc6hz9zQPfmajuyixCjC6--6h0dbJZSmeFM2Pw0h7QrL6DE-ElOZZTRnTT-yaj0i1M1ad_qigB5HFhddMcgfF0F25RDlP8UHgGnwxvmHj0j9hlfg96-CdOo_WTUIXKtSX0oni0kJuRHl7aTUnnggfNWb9KQfSDsL59Wa1pckqR3HK4_ElkEoulDWg8YSP0T1YEGyeHlT02HR2oNrLi8-45nmZUvca2jFScVACpfr0YF_r56UQT2QCrHcMbwXR8lmZRAEktENCJbvmy9wcMQEl8QoVTNKWjCYE7-Kma9COtKiOND9nA-awUr5oSbaxcuor1N3_P_ffAcwwoWkO1lNwE4PzIIWfY8Pt_nJSdka9P_s8e1DZ0T471zxOCTAyAA',
+            'oauth' => [
+                'client_id' => '298004f7-c751-4d56-aba3-b058c0154fd2',
+                'client_secret' => '-^(!BpF-l9/z#[+*5t)alg;[V@;;)_];)@j#^E;T(&^4uD;*&?#2)>H?'
+            ]
+        ]
+    ],
+    'debug' => true,
+    'proxy' => '127.0.0.1:10809',
+    'admin_password' => '123456',
+    'password_file' => '.password'
 ];
-
-
 
 ?>
 <?php
 
-include __DIR__ . '/dist/vendor.php';
-
-function response($content = '', $status = 200, array $headers = ['content-type' => 'text/html'])
-{
-    return new \Symfony\Component\HttpFoundation\Response(
-        $content,
-        $status,
-        $headers
-    );
-}
+include __DIR__ . '/vendor/autoload.php';
+include __DIR__ . '/config.php';
+include __DIR__ . '/library/Helper.php';
 
 /**
  * @param \Symfony\Component\HttpFoundation\Request $request
  */
 function handler($request)
 {
-    $uri = $request->getUri();
+    global $config;
 
-    return response($uri);
+    define('APP_DEBUG', $config['debug']);
+    \Library\Lang::init($request->cookies->get('language'));
+    date_default_timezone_set(get_timezone($request->cookies->get('timezone')));
+
+    $path = array_filter(
+        explode('/', $request->getPathInfo()),
+        function ($path) {
+            return !empty($path);
+        }
+    );
+
+    $account = null;
+    // multi-account enabled
+    if ($config['multi']) {
+        if (empty($path[0])) {
+            $account = $config['accounts'][0];
+            return redirect($request->getUriForPath('/' . $account['name']));
+        } else {
+            foreach ($config['accounts'] as $i) {
+                if ($i['name'] === $path[0]) {
+                    $account = $i;
+                    break;
+                }
+            }
+            if ($account == null) {
+                return message('此账号未找到', 'Error', 500);
+            }
+        }
+        $path = array_shift($path);
+    } else {
+        $account = $config['accounts'][0];
+    }
+
+    if (empty($account['path'])) {
+        $account['path'] = '/';
+    }
+
+    $path = [
+        'relative' => urldecode(join('/', $path)),
+        'absolute' => path_format($account['path'] . '/' . join('/', $path))
+    ];
+    try {
+        $account['driver'] = new \Library\OneDrive($account['refresh_token'], @$account['version'] ?? 'MS', @$account['oauth'] ?? []);
+        $files = $account['driver']->files($path['absolute'], $request->get('page', 1));
+        return render_list($account, $path, $files);
+    } catch (\Throwable $e) {
+        @ob_clean();
+        try {
+            $error = [
+                'error' => [
+                    'message' => $e->getMessage(),
+                ]
+            ];
+            if ($config['debug']) {
+                $error['error']['message'] = trace_error($e);
+            }
+            return render_list($account, $path, $error);
+        } catch (\Throwable $e) {
+            @ob_clean();
+            if ($config['debug']) {
+                return message(trace_error($e), 'Error', 500);
+            }
+            return message($e->getMessage(), 'Error', 500);
+        }
+    }
 }
 
 if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
-    die(\Platforms\Normal\Normal::response(
+    global $config;
+    $config['platform'] = \Platforms\Platform::PLATFORM_NORMAL;
+    return \Platforms\Platform::response(
         handler(
-            \Platforms\Normal\Normal::request()
+            \Platforms\Platform::request()
         )
-    ));
+    );
 }
-
 
 /**
  * QCloud SCF Handler
@@ -59,9 +132,9 @@ function main_handler($event, $context)
     global $config;
     $config['platform'] = \Platforms\Platform::PLATFORM_QCLOUD_SCF;
 
-    return \Platforms\QCloudSCF\QCloudSCF::response(
+    return \Platforms\Platform::response(
         handler(
-            \Platforms\QCloudSCF\QCloudSCF::request()
+            \Platforms\Platform::request()
         )
     );
 
@@ -100,20 +173,85 @@ function main_handler($event, $context)
         }
     }
     if (getenv('admin') != '') if ($_COOKIE[$_SERVER['function_name'] . 'admin'] == md5(getenv('admin')) || $_POST['password1'] == getenv('admin')) {
-        $_SERVER['admin'] = 1;
+        $is_admin = 1;
     } else {
-        $_SERVER['admin'] = 0;
+        $is_admin = 0;
     }
-    $_SERVER['needUpdate'] = needUpdate();
-    if ($_GET['setup']) if ($_SERVER['admin'] && getenv('SecretId') != '' && getenv('SecretKey') != '') {
+
+    if ($_GET['setup']) if ($is_admin && getenv('SecretId') != '' && getenv('SecretKey') != '') {
         // setup Environments. 设置，对环境变量操作
         return EnvOpt($_SERVER['function_name'], $_SERVER['Region'], $context['namespace'], $_SERVER['needUpdate']);
     } else {
         $url = path_format($_SERVER['PHP_SELF'] . '/');
-        return output('<script>alert(\'' . $constStr['SetSecretsFirst'][$constStr['language']] . '\');</script>', 302, ['Location' => $url]);
+        return output('<script>alert(\'' . trans('SetSecretsFirst') . '\');</script>', 302, ['Location' => $url]);
     }
     $_SERVER['retry'] = 0;
     return list_files($path);
+}
+
+
+function message($message, $title, $status = 200, $headers = [])
+{
+    @ob_start();
+    ?>
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title><?php echo $title; ?></title>
+
+        <!-- Fonts -->
+        <link href="https://fonts.googleapis.com/css?family=Raleway:100,600" rel="stylesheet" type="text/css">
+
+        <!-- Styles -->
+        <style type="text/css">
+            html, body {
+                background-color: #fff;
+                color: #636b6f;
+                font-family: 'Microsoft Yahei UI', 'PingFang SC', 'Raleway', sans-serif;
+                font-weight: 100;
+                height: 100vh;
+                margin: 0
+            }
+
+            .full-height {
+                height: 100vh
+            }
+
+            .flex-center {
+                display: flex;
+                justify-content: center
+            }
+
+            .position-ref {
+                position: relative
+            }
+
+            .content {
+                text-align: center;
+                padding-top: 30vh
+            }
+
+            .title {
+                font-size: 36px;
+                padding: 20px
+            }
+        </style>
+    </head>
+    <body>
+    <div class="flex-center position-ref full-height">
+        <div class="content">
+            <div class="title"><?php echo $message; ?></div>
+        </div>
+    </div>
+    </body>
+    </html>
+    <?php
+    $html = ob_get_clean();
+    return response($html, $status, $headers);
 }
 
 
@@ -146,108 +284,6 @@ function fetch_files($path = '/')
             } else {
                 // files num < 200 , then cache
                 $cache->save('path_' . $path, $files, 60);
-            }
-        }
-    }
-    return $files;
-}
-
-function fetch_files_children($files, $path, $page, $cache)
-{
-    $cachefilename = '.SCFcache_' . $_SERVER['function_name'];
-    $maxpage = ceil($files['folder']['childCount'] / 200);
-
-    if (!($files['children'] = $cache->fetch('files_' . $path . '_page_' . $page))) {
-        // down cache file get jump info. 下载cache文件获取跳页链接
-        $cachefile = fetch_files(path_format($path1 . '/' . $cachefilename));
-        if ($cachefile['size'] > 0) {
-            $pageinfo = curl_request($cachefile['@microsoft.graph.downloadUrl']);
-            $pageinfo = json_decode($pageinfo, true);
-            for ($page4 = 1; $page4 < $maxpage; $page4++) {
-                $cache->save('nextlink_' . $path . '_page_' . $page4, $pageinfo['nextlink_' . $path . '_page_' . $page4], 60);
-                $pageinfocache['nextlink_' . $path . '_page_' . $page4] = $pageinfo['nextlink_' . $path . '_page_' . $page4];
-            }
-        }
-        $pageinfochange = 0;
-        for ($page1 = $page; $page1 >= 1; $page1--) {
-            $page3 = $page1 - 1;
-            $url = $cache->fetch('nextlink_' . $path . '_page_' . $page3);
-            if ($url == '') {
-                if ($page1 == 1) {
-                    $url = $_SERVER['api_url'];
-                    if ($path !== '/') {
-                        $url .= ':' . $path;
-                        if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-                        $url .= ':/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
-                    } else {
-                        $url .= '/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
-                    }
-                    $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-                    // echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
-                    $cache->save('files_' . $path . '_page_' . $page1, $children['value'], 60);
-                    $nextlink = $cache->fetch('nextlink_' . $path . '_page_' . $page1);
-                    if ($nextlink != $children['@odata.nextLink']) {
-                        $cache->save('nextlink_' . $path . '_page_' . $page1, $children['@odata.nextLink'], 60);
-                        $pageinfocache['nextlink_' . $path . '_page_' . $page1] = $children['@odata.nextLink'];
-                        $pageinfocache = clearbehindvalue($path, $page1, $maxpage, $pageinfocache);
-                        $pageinfochange = 1;
-                    }
-                    $url = $children['@odata.nextLink'];
-                    for ($page2 = $page1 + 1; $page2 <= $page; $page2++) {
-                        sleep(1);
-                        $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-                        $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
-                        $nextlink = $cache->fetch('nextlink_' . $path . '_page_' . $page2);
-                        if ($nextlink != $children['@odata.nextLink']) {
-                            $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
-                            $pageinfocache['nextlink_' . $path . '_page_' . $page2] = $children['@odata.nextLink'];
-                            $pageinfocache = clearbehindvalue($path, $page2, $maxpage, $pageinfocache);
-                            $pageinfochange = 1;
-                        }
-                        $url = $children['@odata.nextLink'];
-                    }
-                    //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
-                    $files['children'] = $children['value'];
-                    $files['folder']['page'] = $page;
-                    $pageinfocache['filenum'] = $files['folder']['childCount'];
-                    $pageinfocache['dirsize'] = $files['size'];
-                    $pageinfocache['cachesize'] = $cachefile['size'];
-                    $pageinfocache['size'] = $files['size'] - $cachefile['size'];
-                    if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path . '/' . $cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $_SERVER['access_token'])['body'];
-                    return $files;
-                }
-            } else {
-                for ($page2 = $page3 + 1; $page2 <= $page; $page2++) {
-                    sleep(1);
-                    $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $_SERVER['access_token']]), true);
-                    $cache->save('files_' . $path . '_page_' . $page2, $children['value'], 60);
-                    $nextlink = $cache->fetch('nextlink_' . $path . '_page_' . $page2);
-                    if ($nextlink != $children['@odata.nextLink']) {
-                        $cache->save('nextlink_' . $path . '_page_' . $page2, $children['@odata.nextLink'], 60);
-                        $pageinfocache['nextlink_' . $path . '_page_' . $page2] = $children['@odata.nextLink'];
-                        $pageinfocache = clearbehindvalue($path, $page2, $maxpage, $pageinfocache);
-                        $pageinfochange = 1;
-                    }
-                    $url = $children['@odata.nextLink'];
-                }
-                //echo $url . '<br><pre>' . json_encode($children, JSON_PRETTY_PRINT) . '</pre>';
-                $files['children'] = $children['value'];
-                $files['folder']['page'] = $page;
-                $pageinfocache['filenum'] = $files['folder']['childCount'];
-                $pageinfocache['dirsize'] = $files['size'];
-                $pageinfocache['cachesize'] = $cachefile['size'];
-                $pageinfocache['size'] = $files['size'] - $cachefile['size'];
-                if ($pageinfochange == 1) echo MSAPI('PUT', path_format($path . '/' . $cachefilename), json_encode($pageinfocache, JSON_PRETTY_PRINT), $_SERVER['access_token'])['body'];
-                return $files;
-            }
-        }
-    } else {
-        $files['folder']['page'] = $page;
-        for ($page4 = 1; $page4 <= $maxpage; $page4++) {
-            if (!($url = $cache->fetch('nextlink_' . $path . '_page_' . $page4))) {
-                if ($files['folder'][$path . '_' . $page4] != '') $cache->save('nextlink_' . $path . '_page_' . $page4, $files['folder'][$path . '_' . $page4], 60);
-            } else {
-                $files['folder'][$path . '_' . $page4] = $url;
             }
         }
     }
@@ -295,7 +331,7 @@ function list_files($path)
         }
         if ($_POST['action'] == 'upbigfile') return bigfileupload($path);
     }
-    if ($_SERVER['admin']) {
+    if ($is_admin) {
         $tmp = adminoperate($path);
         if ($tmp['statusCode'] > 0) {
             $path1 = path_format($_SERVER['list_path'] . path_format($path));
@@ -303,7 +339,7 @@ function list_files($path)
             return $tmp;
         }
     } else {
-        if ($_SERVER['ajax']) return output($constStr['RefleshtoLogin'][$constStr['language']], 401);
+        if ($_SERVER['ajax']) return output(trans('RefleshtoLogin'), 401);
     }
     $_SERVER['ishidden'] = passhidden($path);
     if ($_GET['thumbnails']) {
@@ -313,7 +349,7 @@ function list_files($path)
             } else return output(json_encode($exts['img']), 400);
         } else return output('', 401);
     }
-    if ($_SERVER['is_imgup_path'] && !$_SERVER['admin']) {
+    if ($is_image_view && !$is_admin) {
         $files = json_decode('{"folder":{}}', true);
     } elseif ($_SERVER['ishidden'] == 4) {
         $files = json_decode('{"folder":{}}', true);
@@ -327,7 +363,7 @@ function list_files($path)
     if (isset($files['folder']) || isset($files['file'])) {
         return render_list($path, $files);
     } elseif (isset($files['error'])) {
-        return output('<div style="margin:8px;">' . $files['error']['message'] . '</div>', 404);
+        return output('<div style="margin: 8px; text-align: center">' . $files['error']['message'] . '</div>', 404);
     } else {
         echo 'Error $files' . json_encode($files, JSON_PRETTY_PRINT);
         $_SERVER['retry']++;
@@ -338,34 +374,33 @@ function list_files($path)
 function adminform($name = '', $pass = '', $path = '')
 {
     global $constStr;
-    $statusCode = 401;
-    $html = '<html><head><title>' . $constStr['AdminLogin'][$constStr['language']] . '</title><meta charset=utf-8></head>';
+    $status_code = 401;
+    $html = '<html><head><title>' . trans('AdminLogin') . '</title><meta charset=utf-8></head>';
     if ($name != '' && $pass != '') {
-        $html .= '<body>' . $constStr['LoginSuccess'][$constStr['language']] . '</body></html>';
-        $statusCode = 302;
-        date_default_timezone_set('UTC');
+        $html .= '<body>' . trans('LoginSuccess') . '</body></html>';
+        $status_code = 302;
         $header = [
             'Set-Cookie' => $name . '=' . $pass . '; path=/; expires=' . date(DATE_COOKIE, strtotime('+1hour')),
             'Location' => $path,
             'Content-Type' => 'text/html'
         ];
-        return output($html, $statusCode, $header);
+        return output($html, $status_code, $header);
     }
     $html .= '
     <body>
 	<div>
-	  <center><h4>' . $constStr['InputPassword'][$constStr['language']] . '</h4>
+	  <center><h4>' . trans('InputPassword') . '</h4>
 	  <form action="" method="post">
 		  <div>
 		    <input name="password1" type="password"/>
-		    <input type="submit" value="' . $constStr['Login'][$constStr['language']] . '">
+		    <input type="submit" value="' . trans('Login') . '">
           </div>
 	  </form>
       </center>
 	</div>
 ';
     $html .= '</body></html>';
-    return output($html, $statusCode);
+    return output($html, $status_code);
 }
 
 function bigfileupload($path)
@@ -385,7 +420,7 @@ function bigfileupload($path)
             $getoldupinfo = json_decode($getoldupinfo_j, true);
             if (json_decode(curl_request($getoldupinfo['uploadUrl']), true)['@odata.context'] != '') return output($getoldupinfo_j);
         }
-        if (!$_SERVER['admin']) $filename = spurlencode($fileinfo['name']) . '.scfupload';
+        if (!$is_admin) $filename = spurlencode($fileinfo['name']) . '.scfupload';
         $response = MSAPI('createUploadSession', path_format($path1 . '/' . $filename), '{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}', $_SERVER['access_token']);
         $responsearry = json_decode($response['body'], true);
         if (isset($responsearry['error'])) return output($response['body'], $response['stat']);
@@ -420,9 +455,9 @@ function adminoperate($path)
         $result = MSAPI('DELETE', $filename, '', $_SERVER['access_token']);
         return output($result['body'], $result['stat']);
     }
-    if ($_POST['operate_action'] == $constStr['encrypt'][$constStr['language']]) {
+    if ($_POST['operate_action'] == trans('encrypt')) {
         // encrypt 加密
-        if (getenv('passfile') == '') return message($constStr['SetpassfileBfEncrypt'][$constStr['language']], '', 403);
+        if (getenv('passfile') == '') return message(trans('SetpassfileBfEncrypt'), '', 403);
         if ($_POST['encrypt_folder'] == '/') $_POST['encrypt_folder'] == '';
         $foldername = spurlencode($_POST['encrypt_folder']);
         $filename = path_format($path1 . '/' . $foldername . '/' . getenv('passfile'));
@@ -565,8 +600,8 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
         'adminloginpage', 'domain_path', 'imgup_path', 'passfile', 'private_path', 'public_path', 'sitename', 'language'
     ];
     asort($constEnv);
-    $html = '<title>SCF ' . $constStr['Setup'][$constStr['language']] . '</title>';
-    if ($_POST['updateProgram'] == $constStr['updateProgram'][$constStr['language']]) {
+    $html = '<title>SCF ' . trans('Setup') . '</title>';
+    if ($_POST['updateProgram'] == trans('updateProgram')) {
         $response = json_decode(updataProgram($function_name, $Region, $namespace), true)['Response'];
         if (isset($response['Error'])) {
             $html = $response['Error']['Code'] . '<br>
@@ -574,12 +609,12 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
 function_name:' . $_SERVER['function_name'] . '<br>
 Region:' . $_SERVER['Region'] . '<br>
 namespace:' . $namespace . '<br>
-<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button>';
+<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
             $title = 'Error';
         } else {
-            $html .= $constStr['UpdateSuccess'][$constStr['language']] . '<br>
-<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button>';
-            $title = $constStr['Setup'][$constStr['language']];
+            $html .= trans('UpdateSuccess') . '<br>
+<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
+            $title = trans('Setup');
         }
         return message($html, $title);
     }
@@ -598,15 +633,15 @@ namespace:' . $namespace . '<br>
         $preurl = path_format($_SERVER['PHP_SELF'] . '/');
     }
     $html .= '
-        <a href="' . $preurl . '">' . $constStr['Back'][$constStr['language']] . '</a>&nbsp;&nbsp;&nbsp;
+        <a href="' . $preurl . '">' . trans('Back') . '</a>&nbsp;&nbsp;&nbsp;
         <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
     if ($needUpdate) {
         $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
         <form action="" method="post">
-            <input type="submit" name="updateProgram" value="' . $constStr['updateProgram'][$constStr['language']] . '">
+            <input type="submit" name="updateProgram" value="' . trans('updateProgram') . '">
         </form>';
     } else {
-        $html .= $constStr['NotNeedUpdate'][$constStr['language']];
+        $html .= trans('NotNeedUpdate');
     }
     $html .= '
     <form action="" method="post">
@@ -618,7 +653,7 @@ namespace:' . $namespace . '<br>
             <td><label>' . $key . '</label></td>
             <td width=100%>
                 <select name="' . $key . '">';
-            foreach ($constStr['languages'] as $key1 => $value1) {
+            foreach (\Library\Lang::all()['languages'] as $key1 => $value1) {
                 $html .= '
                     <option value="' . $key1 . '" ' . ($key1 == getenv($key) ? 'selected="selected"' : '') . '>' . $value1 . '</option>';
             }
@@ -629,67 +664,53 @@ namespace:' . $namespace . '<br>
         } else $html .= '
         <tr>
             <td><label>' . $key . '</label></td>
-            <td width=100%><input type="text" name="' . $key . '" value="' . getenv($key) . '" placeholder="' . $constStr['EnvironmentsDescription'][$key][$constStr['language']] . '" style="width:100%"></td>
+            <td width=100%><input type="text" name="' . $key . '" value="' . getenv($key) . '" placeholder="' . trans('EnvironmentsDescription.' . $key) . '" style="width:100%"></td>
         </tr>';
     }
     $html .= '</table>
-    <input type="submit" name="submit1" value="' . $constStr['Setup'][$constStr['language']] . '">
+    <input type="submit" name="submit1" value="' . trans('Setup') . '">
     </form>';
-    return message($html, $constStr['Setup'][$constStr['language']]);
+    return message($html, trans('Setup'));
 }
 
-function render_list($path, $files)
+/**
+ * render view
+ * @param array $account
+ * @param array $path
+ * @param array $files
+ * @return array|\Symfony\Component\HttpFoundation\Response
+ * @throws Exception
+ */
+function render_list($account, $path, $files)
 {
-    global $exts;
-    global $constStr;
+    global $config;
+
+    $request = request();
+    $title = $path['relative'];
+    $is_image_view = in_array($path['relative'], $account['path_image']);
+    $is_admin = $request->cookies->get('admin_password') === $config['admin_password'];
+    $base_url = $request->getBaseUrl();
+    $status_code = 200;
     @ob_start();
-    $path = str_replace('%20', '%2520', $path);
-    $path = str_replace('+', '%2B', $path);
-    $path = str_replace('&', '&amp;', path_format(urldecode($path)));
-    $path = str_replace('%20', ' ', $path);
-    $path = str_replace('#', '%23', $path);
-    $p_path = '';
-    if ($path !== '/') {
-        if (isset($files['file'])) {
-            $pretitle = str_replace('&', '&amp;', $files['name']);
-            $n_path = $pretitle;
-        } else {
-            $pretitle = substr($path, -1) == '/' ? substr($path, 0, -1) : $path;
-            $n_path = substr($pretitle, strrpos($pretitle, '/') + 1);
-            $pretitle = substr($pretitle, 1);
-        }
-        if (strrpos($path, '/') != 0) {
-            $p_path = substr($path, 0, strrpos($path, '/'));
-            $p_path = substr($p_path, strrpos($p_path, '/') + 1);
-        }
-    } else {
-        $pretitle = $constStr['Home'][$constStr['language']];
-        $n_path = $pretitle;
-    }
-    $n_path = str_replace('&amp;', '&', $n_path);
-    $p_path = str_replace('&amp;', '&', $p_path);
-    $pretitle = str_replace('%23', '#', $pretitle);
-    $statusCode = 200;
-    date_default_timezone_set(get_timezone($_COOKIE['timezone']));
     ?>
     <!DOCTYPE html>
-    <html lang="<?php echo $constStr['language']; ?>">
+    <html lang="<?php echo \Library\Lang::language(); ?>">
     <head>
-        <title><?php echo $pretitle; ?> - <?php echo $_SERVER['sitename']; ?></title>
+        <title><?php echo $title; ?> - <?php echo $config['name']; ?></title>
         <!--
-        帖子 ： https://www.hostloc.com/thread-561971-1-1.html
-        github ： https://github.com/qkqpttgf/OneDrive_SCF
-    -->
+        https://github.com/Tai7sy/OneDriveFly
+        -->
         <meta charset=utf-8>
         <meta http-equiv=X-UA-Compatible content="IE=edge">
         <meta name=viewport content="width=device-width,initial-scale=1">
-        <meta name="keywords" content="<?php echo $n_path; ?>,<?php if ($p_path != '') echo $p_path . ',';
-        echo $_SERVER['sitename']; ?>,OneDrive_SCF,auth_by_逸笙">
-        <link rel="icon" href="<?php echo $_SERVER['base_path']; ?>favicon.ico" type="image/x-icon"/>
-        <link rel="shortcut icon" href="<?php echo $_SERVER['base_path']; ?>favicon.ico" type="image/x-icon"/>
+        <meta name="keywords" content="<?php
+        echo htmlspecialchars(str_replace('/', ',', $path['relative']) . ',' . $config['name']);
+        ?>,OneDrive_SCF,OneDriveFly">
+        <link rel="icon" href="<?php echo $base_url ?>/favicon.ico" type="image/x-icon"/>
+        <link rel="shortcut icon" href="<?php echo $base_url ?>/favicon.ico" type="image/x-icon"/>
         <style type="text/css">
             body {
-                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                font-family: 'Microsoft Yahei UI', 'PingFang TC', 'Helvetica Neue', Helvetica, Arial, sans-serif;
                 font-size: 14px;
                 line-height: 1em;
                 background-color: #f7f7f9;
@@ -706,7 +727,7 @@ function render_list($path, $files)
                 color: #24292e
             }
 
-            .changelanguage {
+            .select-language {
                 position: absolute;
                 right: 5px;
             }
@@ -810,8 +831,8 @@ function render_list($path, $files)
 
             .mask {
                 position: absolute;
-                left: 0px;
-                top: 0px;
+                left: 0;
+                top: 0;
                 width: 100%;
                 background-color: #000;
                 filter: alpha(opacity=50);
@@ -819,7 +840,7 @@ function render_list($path, $files)
                 z-index: 2;
             }
 
-            <?php if ($_SERVER['admin']) { ?>
+            <?php if ($is_admin) { ?>
             .operate {
                 display: inline-table;
                 margin: 0;
@@ -900,50 +921,90 @@ function render_list($path, $files)
                 }
             }
         </style>
+        <script type="text/javascript">
+            function setCookie(name, value, expire) {
+                if (!name || !value) return;
+                if (expire !== undefined) {
+                    var expTime = new Date();
+                    expTime.setTime(expTime.getTime() + expire);
+                    document.cookie = name + '=' + encodeURI(value) + '; expires=' + expTime.toUTCString() + '; path=/'
+                } else {
+                    document.cookie = name + '=' + encodeURI(value) + '; path=/'
+                }
+            }
+
+            function getCookie(name) {
+                var parts = ('; ' + document.cookie).split('; ' + name + '=');
+                if (parts.length >= 2) return parts.pop().split(';').shift();
+            }
+
+            (function timezone() {
+                if (!getCookie('timezone')) {
+                    var now = new Date();
+                    var timezone = parseInt(0 - now.getTimezoneOffset() / 60);
+                    setCookie('timezone', timezone, 7 * 24 * 3600 * 1000); // 7 days
+                    if (timezone !== 8) {
+                        alert('Your timezone is ' + timezone + ', reload local timezone.');
+                        location.reload();
+                    }
+                }
+            })();
+        </script>
     </head>
 
     <body>
     <?php
-    if (getenv('admin') != '') if (!$_SERVER['admin']) {
-        if (getenv('adminloginpage') == '') { ?>
-            <a onclick="login();"><?php echo $constStr['Login'][$constStr['language']]; ?></a>
-        <?php }
-    } else { ?>
-        <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
-            <ul>
-                <?php if (isset($files['folder'])) { ?>
+    if (getenv('admin') != '') {
+        if (!$is_admin) {
+            if (getenv('adminloginpage') == '') { ?>
+                <a onclick="login();"><?php echo trans('Login'); ?></a>
+            <?php }
+        } else { ?>
+            <li class="operate"><?php echo trans('Operate'); ?>
+                <ul>
+                    <?php if (isset($files['folder'])) { ?>
+                        <li>
+                            <a onclick="showdiv(event,'create','');"><?php echo trans('Create'); ?></a>
+                        </li>
+                        <li>
+                            <a onclick="showdiv(event,'encrypt','');"><?php echo trans('encrypt'); ?></a>
+                        </li>
+                    <?php } ?>
                     <li>
-                        <a onclick="showdiv(event,'create','');"><?php echo $constStr['Create'][$constStr['language']]; ?></a>
+                        <a <?php
+                           if (getenv('SecretId') != '' && getenv('SecretKey') != '')
+                           {
+                           ?>href="<?php echo request()->query->has('preview') ? '?preview&' : '?'; ?>setup"
+                           <?php
+                           } else {
+                           ?>onclick="alert('<?php echo trans('SetSecretsFirst'); ?>');"
+                            <?php
+                            }
+                            ?>
+                        >
+                            <?php echo trans('Setup'); ?>
+                        </a>
                     </li>
-                    <li>
-                        <a onclick="showdiv(event,'encrypt','');"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a>
-                    </li>
-                <?php } ?>
-                <li>
-                    <a <?php if (getenv('SecretId') != '' && getenv('SecretKey') != '') { ?>href="<?php echo $_GET['preview'] ? '?preview&' : '?'; ?>setup"
-                       <?php } else { ?>onclick="alert('<?php echo $constStr['SetSecretsFirst'][$constStr['language']]; ?>');"<?php } ?>><?php echo $constStr['Setup'][$constStr['language']]; ?></a>
-                </li>
-                <li><a onclick="logout()"><?php echo $constStr['Logout'][$constStr['language']]; ?></a></li>
-            </ul>
-        </li>
-        <?php
-    } ?>
-    <select class="changelanguage" name="language"
-            onchange="changelanguage(this.options[this.options.selectedIndex].value)">
-        <option>Language</option>
-        <?php
-        foreach ($constStr['languages'] as $key1 => $value1) { ?>
-            <option value="<?php echo $key1; ?>"><?php echo $value1; ?></option>
+                    <li><a onclick="logout()"><?php echo trans('Logout'); ?></a></li>
+                </ul>
+            </li>
             <?php
-        } ?>
+        }
+    }
+    ?>
+    <select class="select-language" name="language" onchange="changeLanguage(this.value)">
+        <option value="-1">Language</option>
+        <?php
+        foreach (\Library\Lang::all()['languages'] as $key1 => $value1) {
+            echo '<option value="' . $key1 . '" ' . (\Library\Lang::language() === $key1 ? 'selected="true"' : '') . '">' . $value1 . '</option>';
+        }
+        ?>
     </select>
-    <?php
-    if ($_SERVER['needUpdate']) { ?>
-        <div style='position:absolute;'><font
-                    color='red'><?php echo $constStr['NeedUpdate'][$constStr['language']]; ?></font></div>
-    <?php } ?>
+    <!-- update -->
+    <div style='position:absolute; display: none'><span style="color: red"><?php echo trans('NeedUpdate'); ?></span>
+    </div>
     <h1 class="title">
-        <a href="<?php echo $_SERVER['base_path']; ?>"><?php echo $_SERVER['sitename']; ?></a>
+        <a href="<?php echo $base_url; ?>"><?php echo $config['name']; ?></a>
     </h1>
     <div class="list-wrapper">
         <div class="list-container">
@@ -964,47 +1025,51 @@ function render_list($path, $files)
                         <ion-icon name="arrow-back"></ion-icon>
                     </a>
                 <?php } ?>
-                <h3 class="table-header"><?php echo str_replace('%23', '#', str_replace('&', '&amp;', $path)); ?></h3>
+                <h3 class="table-header"><?php echo htmlspecialchars($path['relative']); ?></h3>
             </div>
             <div class="list-body-container">
                 <?php
-                if ($_SERVER['is_imgup_path'] && !$_SERVER['admin']) { ?>
+                if ($is_image_view && !$is_admin) { ?>
                     <div id="upload_div" style="margin:10px">
                         <center>
                             <input id="upload_file" type="file" name="upload_filename">
                             <input id="upload_submit" onclick="preup();"
-                                   value="<?php echo $constStr['Upload'][$constStr['language']]; ?>" type="button">
+                                   value="<?php echo trans('Upload'); ?>" type="button">
                             <center>
                     </div>
                 <?php } else {
-                    if ($_SERVER['ishidden'] < 4) {
+                    $folder_password = false;
+                    if (!empty($config['password_file']) && !empty($account['driver'])) {
+                        $folder_password = $account['driver']->getContent($path['absolute'] . '/' . $config['password_file']);
+                    }
+                    if (empty($folder_password) || $folder_password === request()->query->get('password')) {
                         if (isset($files['error'])) {
-                            echo '<div style="margin:8px;">' . $files['error']['message'] . '</div>';
-                            $statusCode = 404;
+                            echo '<div style="margin: 8px;">' . $files['error']['message'] . '</div>';
+                            $status_code = 404;
                         } else {
                             if (isset($files['file'])) {
                                 ?>
                                 <div style="margin: 12px 4px 4px; text-align: center">
                                     <div style="margin: 24px">
                                         <textarea id="url" title="url" rows="1" style="width: 100%; margin-top: 2px;"
-                                                  readonly><?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($_SERVER['base_path'] . '/' . $path), '/'))); ?></textarea>
-                                        <a href="<?php echo path_format($_SERVER['base_path'] . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>">
+                                                  readonly><?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($base_url . '/' . $path), '/'))); ?></textarea>
+                                        <a href="<?php echo path_format($base_url . '/' . $path);//$files['@microsoft.graph.downloadUrl'] ?>">
                                             <ion-icon name="download"
-                                                      style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo $constStr['Download'][$constStr['language']]; ?>
+                                                      style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo trans('Download'); ?>
                                         </a>
                                     </div>
                                     <div style="margin: 24px">
                                         <?php $ext = strtolower(substr($path, strrpos($path, '.') + 1));
                                         $DPvideo = '';
-                                        if (in_array($ext, $exts['img'])) {
+                                        if (in_array($ext, \Library\Ext::IMG)) {
                                             echo '
                         <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path, strrpos($path, '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
 ';
-                                        } elseif (in_array($ext, $exts['video'])) {
+                                        } elseif (in_array($ext, \Library\Ext::VIDEO)) {
                                             //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
                                             $DPvideo = $files['@microsoft.graph.downloadUrl'];
                                             echo '<div id="video-a0"></div>';
-                                        } elseif (in_array($ext, $exts['music'])) {
+                                        } elseif (in_array($ext, \Library\Ext::MUSIC)) {
                                             echo '
                         <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
 ';
@@ -1012,24 +1077,24 @@ function render_list($path, $files)
                                             echo '
                         <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
 ';
-                                        } elseif (in_array($ext, $exts['office'])) {
+                                        } elseif (in_array($ext, \Library\Ext::OFFICE)) {
                                             echo '
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px" frameborder="0"></iframe>
 ';
-                                        } elseif (in_array($ext, $exts['txt'])) {
-                                            $txtstr = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
+                                        } elseif (in_array($ext, \Library\Ext::TXT)) {
+                                            $txt_content = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
                                             ?>
                                             <div id="txt">
-                                                <?php if ($_SERVER['admin']) { ?>
+                                                <?php if ($is_admin) { ?>
                                                 <form id="txt-form" action="" method="POST">
                                                     <a onclick="enableedit(this);"
-                                                       id="txt-editbutton"><?php echo $constStr['ClicktoEdit'][$constStr['language']]; ?></a>
+                                                       id="txt-editbutton"><?php echo trans('ClicktoEdit'); ?></a>
                                                     <a id="txt-save"
-                                                       style="display:none"><?php echo $constStr['Save'][$constStr['language']]; ?></a>
+                                                       style="display:none"><?php echo trans('Save'); ?></a>
                                                     <?php } ?>
                                                     <textarea id="txt-a" name="editfile" readonly
-                                                              style="width: 100%; margin-top: 2px;" <?php if ($_SERVER['admin']) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"'; ?> ><?php echo $txtstr; ?></textarea>
-                                                    <?php if ($_SERVER['admin']) echo '</form>'; ?>
+                                                              style="width: 100%; margin-top: 2px;" <?php if ($is_admin) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"'; ?> ><?php echo $txt_content; ?></textarea>
+                                                    <?php if ($is_admin) echo '</form>'; ?>
                                             </div>
                                         <?php } elseif (in_array($ext, ['md'])) {
                                             echo '
@@ -1038,25 +1103,25 @@ function render_list($path, $files)
                         </div>
 ';
                                         } else {
-                                            echo '<span>' . $constStr['FileNotSupport'][$constStr['language']] . '</span>';
+                                            echo '<span>' . trans('FileNotSupport') . '</span>';
                                         } ?>
                                     </div>
                                 </div>
                             <?php } elseif (isset($files['folder'])) {
-                                $filenum = $_POST['filenum'];
+                                $filenum = $files['folder']['childCount'];
                                 if (!$filenum and $files['folder']['page']) $filenum = ($files['folder']['page'] - 1) * 200;
                                 $readme = false; ?>
                                 <table class="list-table" id="list-table">
                                     <tr id="tr0">
                                         <th class="file"
-                                            onclick="sortby('a');"><?php echo $constStr['File'][$constStr['language']]; ?>
+                                            onclick="sortby('a');"><?php echo trans('File'); ?>
                                             &nbsp;&nbsp;&nbsp;<button
-                                                    onclick="showthumbnails(this);"><?php echo $constStr['ShowThumbnails'][$constStr['language']]; ?></button>
+                                                    onclick="showthumbnails(this);"><?php echo trans('ShowThumbnails'); ?></button>
                                         </th>
                                         <th class="updated_at" width="25%"
-                                            onclick="sortby('time');"><?php echo $constStr['EditTime'][$constStr['language']]; ?></th>
+                                            onclick="sortby('time');"><?php echo trans('EditTime'); ?></th>
                                         <th class="size" width="15%"
-                                            onclick="sortby('size');"><?php echo $constStr['Size'][$constStr['language']]; ?></th>
+                                            onclick="sortby('size');"><?php echo trans('Size'); ?></th>
                                     </tr>
                                     <!-- Dirs -->
                                     <?php //echo json_encode($files['children'], JSON_PRETTY_PRINT);
@@ -1066,27 +1131,27 @@ function render_list($path, $files)
                                             $filenum++; ?>
                                             <tr data-to id="tr<?php echo $filenum; ?>">
                                                 <td class="file">
-                                                    <?php if ($_SERVER['admin']) { ?>
-                                                        <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
+                                                    <?php if ($is_admin) { ?>
+                                                        <li class="operate"><?php echo trans('Operate'); ?>
                                                             <ul>
                                                                 <li>
-                                                                    <a onclick="showdiv(event,'encrypt',<?php echo $filenum; ?>);"><?php echo $constStr['encrypt'][$constStr['language']]; ?></a>
+                                                                    <a onclick="showdiv(event,'encrypt',<?php echo $filenum; ?>);"><?php echo trans('encrypt'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a>
+                                                                    <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo trans('Rename'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a>
+                                                                    <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo trans('Move'); ?></a>
                                                                 </li>
                                                                 <li>
-                                                                    <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a>
+                                                                    <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo trans('Delete'); ?></a>
                                                                 </li>
                                                             </ul>
                                                         </li>&nbsp;&nbsp;&nbsp;
                                                     <?php } ?>
                                                     <ion-icon name="folder"></ion-icon>
                                                     <a id="file_a<?php echo $filenum; ?>"
-                                                       href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&', '&amp;', $file['name']); ?></a>
+                                                       href="<?php echo path_format($base_url . '/' . $path . '/' . encode_str_replace($file['name']) . '/'); ?>"><?php echo str_replace('&', '&amp;', $file['name']); ?></a>
                                                 </td>
                                                 <td class="updated_at"
                                                     id="folder_time<?php echo $filenum; ?>"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
@@ -1099,42 +1164,44 @@ function render_list($path, $files)
                                     foreach ($files['children'] as $file) {
                                         // Files
                                         if (isset($file['file'])) {
-                                            if ($_SERVER['admin'] or (substr($file['name'], 0, 1) !== '.' and $file['name'] !== getenv('passfile'))) {
-                                                if (strtolower($file['name']) === 'readme.md') $readme = $file;
-                                                if (strtolower($file['name']) === 'index.html') {
+                                            if ($is_admin or (substr($file['name'], 0, 1) !== '.' and $file['name'] !== getenv('passfile'))) {
+                                                if (strtolower($file['name']) === 'readme.md' || strtolower($file['name']) === 'readme') {
+                                                    $readme = $file;
+                                                }
+                                                if (strtolower($file['name']) === 'index.html' || strtolower($file['name']) === 'index.htm') {
                                                     $html = curl_request(fetch_files(spurlencode(path_format($path . '/' . $file['name']), '/'))['@microsoft.graph.downloadUrl']);
                                                     return output($html, 200);
                                                 }
                                                 $filenum++; ?>
                                                 <tr data-to id="tr<?php echo $filenum; ?>">
                                                     <td class="file">
-                                                        <?php if ($_SERVER['admin']) { ?>
-                                                            <li class="operate"><?php echo $constStr['Operate'][$constStr['language']]; ?>
+                                                        <?php if ($is_admin) { ?>
+                                                            <li class="operate"><?php echo trans('Operate'); ?>
                                                                 <ul>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo $constStr['Rename'][$constStr['language']]; ?></a>
+                                                                        <a onclick="showdiv(event, 'rename',<?php echo $filenum; ?>);"><?php echo trans('Rename'); ?></a>
                                                                     </li>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo $constStr['Move'][$constStr['language']]; ?></a>
+                                                                        <a onclick="showdiv(event, 'move',<?php echo $filenum; ?>);"><?php echo trans('Move'); ?></a>
                                                                     </li>
                                                                     <li>
-                                                                        <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo $constStr['Delete'][$constStr['language']]; ?></a>
+                                                                        <a onclick="showdiv(event, 'delete',<?php echo $filenum; ?>);"><?php echo trans('Delete'); ?></a>
                                                                     </li>
                                                                 </ul>
                                                             </li>&nbsp;&nbsp;&nbsp;
                                                         <?php }
                                                         $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
-                                                        if (in_array($ext, $exts['music'])) { ?>
+                                                        if (in_array($ext, \Library\Ext::MUSIC)) { ?>
                                                             <ion-icon name="musical-notes"></ion-icon>
-                                                        <?php } elseif (in_array($ext, $exts['video'])) { ?>
+                                                        <?php } elseif (in_array($ext, \Library\Ext::VIDEO)) { ?>
                                                             <ion-icon name="logo-youtube"></ion-icon>
-                                                        <?php } elseif (in_array($ext, $exts['img'])) { ?>
+                                                        <?php } elseif (in_array($ext, \Library\Ext::IMG)) { ?>
                                                             <ion-icon name="image"></ion-icon>
-                                                        <?php } elseif (in_array($ext, $exts['office'])) { ?>
+                                                        <?php } elseif (in_array($ext, \Library\Ext::OFFICE)) { ?>
                                                             <ion-icon name="paper"></ion-icon>
-                                                        <?php } elseif (in_array($ext, $exts['txt'])) { ?>
+                                                        <?php } elseif (in_array($ext, \Library\Ext::TXT)) { ?>
                                                             <ion-icon name="clipboard"></ion-icon>
-                                                        <?php } elseif (in_array($ext, $exts['zip'])) { ?>
+                                                        <?php } elseif (in_array($ext, \Library\Ext::ZIP)) { ?>
                                                             <ion-icon name="filing"></ion-icon>
                                                         <?php } elseif ($ext == 'iso') { ?>
                                                             <ion-icon name="disc"></ion-icon>
@@ -1146,9 +1213,9 @@ function render_list($path, $files)
                                                             <ion-icon name="document"></ion-icon>
                                                         <?php } ?>
                                                         <a id="file_a<?php echo $filenum; ?>" name="filelist"
-                                                           href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . encode_str_replace($file['name'])); ?>?preview"
-                                                           target=_blank><?php echo str_replace('&', '&amp;', $file['name']); ?></a>
-                                                        <a href="<?php echo path_format($_SERVER['base_path'] . '/' . $path . '/' . str_replace('&', '&amp;', $file['name'])); ?>">
+                                                           href="<?php echo htmlspecialchars($path['relative'] . '/' . $file['name']); ?>?preview"
+                                                           target=_blank><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
+                                                        <a href="<?php echo htmlspecialchars($path['relative'] . '/' . $file['name']); ?>">
                                                             <ion-icon name="download"></ion-icon>
                                                         </a>
                                                     </td>
@@ -1161,61 +1228,56 @@ function render_list($path, $files)
                                         }
                                     } ?>
                                 </table>
-                                <?php if ($files['folder']['childCount'] > 200) {
-                                    $pagenum = $files['folder']['page'];
-                                    $maxpage = ceil($files['folder']['childCount'] / 200);
-                                    $prepagenext = '
-                <form action="" method="POST" id="nextpageform">
-                    <input type="hidden" id="pagenum" name="pagenum" value="' . $pagenum . '">
-                    <table width=100% border=0>
+                                <?php if ($files['folder']['childCount'] > $files['folder']['perPage']) {
+                                    $pageForm = '
+                <form action="" method="GET" id="pageForm">
+                    <input type="hidden" id="page" name="page" value="' . $files['folder']['currentPage'] . '">
+                    <table style="width: 100%; border: none">
                         <tr>
-                            <td width=60px align=center>';
-                                    if ($pagenum != 1) {
-                                        $prepagenum = $pagenum - 1;
-                                        $prepagenext .= '
-                                <a onclick="nextpage(' . $prepagenum . ');">' . $constStr['PrePage'][$constStr['language']] . '</a>';
+                            <td style="width: 60px; text-align: center">';
+                                    if ($files['folder']['currentPage'] !== 1) {
+                                        $pageForm .= '
+                                <a onclick="goPage(' . ($files['folder']['currentPage'] - 1) . ');">' . trans('PrePage') . '</a>';
                                     }
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
-                            <td class="updated_at">';
-                                    for ($page = 1; $page <= $maxpage; $page++) {
-                                        if ($page == $pagenum) {
-                                            $prepagenext .= '
-                                <font color=red>' . $page . '</font> ';
+                            <td style="color: #888">';
+                                    for ($page = 1; $page <= $files['folder']['lastPage']; $page++) {
+                                        if ($page == $files['folder']['currentPage']) {
+                                            $pageForm .= '
+                                <span style="color: red">' . $page . '</span>';
                                         } else {
-                                            $prepagenext .= '
-                                <a onclick="nextpage(' . $page . ');">' . $page . '</a> ';
+                                            $pageForm .= '
+                                <a onclick="goPage(' . $page . ');">' . $page . '</a>';
                                         }
                                     }
-                                    $prepagenext = substr($prepagenext, 0, -1);
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
-                            <td width=60px align=center>';
-                                    if ($pagenum != $maxpage) {
-                                        $nextpagenum = $pagenum + 1;
-                                        $prepagenext .= '
-                                <a onclick="nextpage(' . $nextpagenum . ');">' . $constStr['NextPage'][$constStr['language']] . '</a>';
+                            <td style="width: 60px; text-align: center">';
+                                    if ($files['folder']['currentPage'] != $files['folder']['lastPage']) {
+                                        $pageForm .= '
+                                <a onclick="goPage(' . ($files['folder']['lastPage'] + 1) . ');">' . trans('NextPage') . '</a>';
                                     }
-                                    $prepagenext .= '
+                                    $pageForm .= '
                             </td>
                         </tr>
                     </table>
                 </form>';
-                                    echo $prepagenext;
+                                    echo $pageForm;
                                 }
-                                if ($_SERVER['admin']) { ?>
+                                if ($is_admin) { ?>
                                     <div id="upload_div" style="margin:0 0 16px 0">
                                         <center>
                                             <input id="upload_file" type="file" name="upload_filename"
                                                    multiple="multiple">
                                             <input id="upload_submit" onclick="preup();"
-                                                   value="<?php echo $constStr['Upload'][$constStr['language']]; ?>"
+                                                   value="<?php echo trans('Upload'); ?>"
                                                    type="button">
                                         </center>
                                     </div>
                                 <?php }
                             } else {
-                                $statusCode = 500;
+                                $status_code = 500;
                                 echo 'Unknown path or file.';
                                 echo json_encode($files, JSON_PRETTY_PRINT);
                             }
@@ -1231,7 +1293,8 @@ function render_list($path, $files)
                     <svg class="octicon octicon-book" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"></path></svg>
                     <span style="line-height: 16px;vertical-align: top;">' . $readme['name'] . '</span>
                     <div class="markdown-body" id="readme">
-                        <textarea id="readme-md" style="display:none;">' . curl_request(fetch_files(spurlencode(path_format($path . '/' . $readme['name']), '/'))['@microsoft.graph.downloadUrl']) . '
+                        <textarea id="readme-md" style="display:none;">' .
+                                    $account['driver']->getContent($path['absolute'] . '/' . $readme['name']) . '
                         </textarea>
                     </div>
                 </div>
@@ -1243,12 +1306,12 @@ function render_list($path, $files)
                 <div style="padding:20px">
 	            <center>
 	                <form action="" method="post">
-		            <input name="password1" type="password" placeholder="' . $constStr['InputPassword'][$constStr['language']] . '">
-		            <input type="submit" value="' . $constStr['Submit'][$constStr['language']] . '">
+		            <input name="password1" type="password" placeholder="' . trans('InputPassword') . '">
+		            <input type="submit" value="' . trans('Submit') . '">
 	                </form>
                 </center>
                 </div>';
-                        $statusCode = 401;
+                        $status_code = 401;
                     }
                 } ?>
             </div>
@@ -1256,62 +1319,62 @@ function render_list($path, $files)
     </div>
     <div id="mask" class="mask" style="display:none;"></div>
     <?php
-    if ($_SERVER['admin']) {
+    if ($is_admin) {
         if (!$_GET['preview']) { ?>
             <div>
                 <div id="rename_div" class="operatediv" style="display:none">
                     <div>
                         <label id="rename_label"></label><br><br><a onclick="operatediv_close('rename')"
-                                                                    class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                                                                    class="operatediv_close"><?php echo trans('Close'); ?></a>
                         <form id="rename_form" onsubmit="return submit_operate('rename');">
                             <input id="rename_sid" name="rename_sid" type="hidden" value="">
                             <input id="rename_hidden" name="rename_oldname" type="hidden" value="">
                             <input id="rename_input" name="rename_newname" type="text" value="">
                             <input name="operate_action" type="submit"
-                                   value="<?php echo $constStr['Rename'][$constStr['language']]; ?>">
+                                   value="<?php echo trans('Rename'); ?>">
                         </form>
                     </div>
                 </div>
                 <div id="delete_div" class="operatediv" style="display:none">
                     <div>
                         <br><a onclick="operatediv_close('delete')"
-                               class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                               class="operatediv_close"><?php echo trans('Close'); ?></a>
                         <label id="delete_label"></label>
                         <form id="delete_form" onsubmit="return submit_operate('delete');">
-                            <label id="delete_input"><?php echo $constStr['Delete'][$constStr['language']]; ?>?</label>
+                            <label id="delete_input"><?php echo trans('Delete'); ?>?</label>
                             <input id="delete_sid" name="delete_sid" type="hidden" value="">
                             <input id="delete_hidden" name="delete_name" type="hidden" value="">
                             <input name="operate_action" type="submit"
-                                   value="<?php echo $constStr['Submit'][$constStr['language']]; ?>">
+                                   value="<?php echo trans('Submit'); ?>">
                         </form>
                     </div>
                 </div>
                 <div id="encrypt_div" class="operatediv" style="display:none">
                     <div>
                         <label id="encrypt_label"></label><br><br><a onclick="operatediv_close('encrypt')"
-                                                                     class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                                                                     class="operatediv_close"><?php echo trans('Close'); ?></a>
                         <form id="encrypt_form" onsubmit="return submit_operate('encrypt');">
                             <input id="encrypt_sid" name="encrypt_sid" type="hidden" value="">
                             <input id="encrypt_hidden" name="encrypt_folder" type="hidden" value="">
                             <input id="encrypt_input" name="encrypt_newpass" type="text" value=""
-                                   placeholder="<?php echo $constStr['InputPasswordUWant'][$constStr['language']]; ?>">
+                                   placeholder="<?php echo trans('InputPasswordUWant'); ?>">
                             <?php if (getenv('passfile') != '') { ?><input name="operate_action" type="submit"
-                                                                           value="<?php echo $constStr['encrypt'][$constStr['language']]; ?>"><?php } else { ?>
+                                                                           value="<?php echo trans('encrypt'); ?>"><?php } else { ?>
                                 <br>
-                                <label><?php echo $constStr['SetpassfileBfEncrypt'][$constStr['language']]; ?></label><?php } ?>
+                                <label><?php echo trans('SetpassfileBfEncrypt'); ?></label><?php } ?>
                         </form>
                     </div>
                 </div>
                 <div id="move_div" class="operatediv" style="display:none">
                     <div>
                         <label id="move_label"></label><br><br><a onclick="operatediv_close('move')"
-                                                                  class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                                                                  class="operatediv_close"><?php echo trans('Close'); ?></a>
                         <form id="move_form" onsubmit="return submit_operate('move');">
                             <input id="move_sid" name="move_sid" type="hidden" value="">
                             <input id="move_hidden" name="move_name" type="hidden" value="">
                             <select id="move_input" name="move_folder">
                                 <?php if ($path != '/') { ?>
-                                    <option value="/../"><?php echo $constStr['ParentDir'][$constStr['language']]; ?></option>
+                                    <option value="/../"><?php echo trans('ParentDir'); ?></option>
                                 <?php }
                                 if (isset($files['children'])) foreach ($files['children'] as $file) {
                                     if (isset($file['folder'])) { ?>
@@ -1320,14 +1383,14 @@ function render_list($path, $files)
                                 } ?>
                             </select>
                             <input name="operate_action" type="submit"
-                                   value="<?php echo $constStr['Move'][$constStr['language']]; ?>">
+                                   value="<?php echo trans('Move'); ?>">
                         </form>
                     </div>
                 </div>
                 <div id="create_div" class="operatediv" style="display:none">
                     <div>
                         <a onclick="operatediv_close('create')"
-                           class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                           class="operatediv_close"><?php echo trans('Close'); ?></a>
                         <form id="create_form" onsubmit="return submit_operate('create');">
                             <input id="create_sid" name="create_sid" type="hidden" value="">
                             <input id="create_hidden" type="hidden" value="">
@@ -1341,27 +1404,27 @@ function render_list($path, $files)
                                     <td>
                                         <label><input id="create_type_folder" name="create_type" type="radio"
                                                       value="folder"
-                                                      onclick="document.getElementById('create_text_div').style.display='none';"><?php echo $constStr['Folder'][$constStr['language']]; ?>
+                                                      onclick="document.getElementById('create_text_div').style.display='none';"><?php echo trans('Folder'); ?>
                                         </label>
                                         <label><input id="create_type_file" name="create_type" type="radio" value="file"
                                                       onclick="document.getElementById('create_text_div').style.display='';"
-                                                      checked><?php echo $constStr['File'][$constStr['language']]; ?>
+                                                      checked><?php echo trans('File'); ?>
                                         </label>
                                     <td>
                                 </tr>
                                 <tr>
-                                    <td><?php echo $constStr['Name'][$constStr['language']]; ?>：</td>
+                                    <td><?php echo trans('Name'); ?>：</td>
                                     <td><input id="create_input" name="create_name" type="text" value=""></td>
                                 </tr>
                                 <tr id="create_text_div">
-                                    <td><?php echo $constStr['Content'][$constStr['language']]; ?>：</td>
+                                    <td><?php echo trans('Content'); ?>：</td>
                                     <td><textarea id="create_text" name="create_text" rows="6" cols="40"></textarea>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td>　　　</td>
                                     <td><input name="operate_action" type="submit"
-                                               value="<?php echo $constStr['Create'][$constStr['language']]; ?>"></td>
+                                               value="<?php echo trans('Create'); ?>"></td>
                                 </tr>
                             </table>
                         </form>
@@ -1374,27 +1437,28 @@ function render_list($path, $files)
             <div id="login_div" class="operatediv" style="display:none">
                 <div style="margin:50px">
                     <a onclick="operatediv_close('login')"
-                       class="operatediv_close"><?php echo $constStr['Close'][$constStr['language']]; ?></a>
+                       class="operatediv_close"><?php echo trans('Close'); ?></a>
                     <center>
                         <form action="<?php echo $_GET['preview'] ? '?preview&' : '?'; ?>admin" method="post">
                             <input id="login_input" name="password1" type="password"
-                                   placeholder="<?php echo $constStr['InputPassword'][$constStr['language']]; ?>">
-                            <input type="submit" value="<?php echo $constStr['Login'][$constStr['language']]; ?>">
+                                   placeholder="<?php echo trans('InputPassword'); ?>">
+                            <input type="submit" value="<?php echo trans('Login'); ?>">
                         </form>
                     </center>
                 </div>
             </div>
         <?php }
     } ?>
-    <font color="#f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . $constStr['Week'][date("w")][$constStr['language']] . " " . $_SERVER['REMOTE_ADDR']; ?></font>
+    <font color="#f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $_SERVER['REMOTE_ADDR']; ?></font>
     </body>
 
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
     <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
-    <?php if (isset($files['folder']) && $_SERVER['is_imgup_path'] && !$_SERVER['admin']) { ?>
-        <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script><?php } ?>
+    <?php if (isset($files['folder']) && $is_image_view && !$is_admin) { ?>
+        <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script>
+    <?php } ?>
     <script type="text/javascript">
-        var root = '<?php echo $_SERVER["base_path"]; ?>';
+        var root = '/';
 
         function path_format(path) {
             path = '/' + path + '/';
@@ -1417,17 +1481,26 @@ function render_list($path, $files)
             e.innerHTML = e.innerHTML.replace(/\s\/\s$/, '')
         });
 
-        function changelanguage(str) {
-            document.cookie = 'language=' + str + '; path=/';
-            location.href = location.href;
+        function goPage(num) {
+            document.getElementById('page').value = num;
+            document.getElementById('pageForm').submit();
+        }
+
+        function changeLanguage(lang) {
+            setCookie('language', lang, 7 * 24 * 3600 * 1000);
+            location.reload();
         }
 
         var $readme = document.getElementById('readme');
         if ($readme) {
             $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
         }
+
+
+
         <?php
-        if ($_GET['preview']) { //is preview mode. 在预览时处理 ?>
+        if ($request->query->has('preview')) { //is preview mode. 在预览时处理
+        ?>
         var $url = document.getElementById('url');
         if ($url) {
             $url.innerHTML = location.protocol + '//' + location.host + $url.innerHTML;
@@ -1496,7 +1569,7 @@ function render_list($path, $files)
         }
 
         function createDplayers(videos) {
-            var url = '<?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($_SERVER['base_path'] . '/' . $path), '/'))); ?>',
+            var url = '<?php echo str_replace('%2523', '%23', str_replace('%26amp%3B', '&amp;', spurlencode(path_format($base_url . '/' . $path), '/'))); ?>',
                 subtitle = url.replace(/\.[^\.]+?(\?|$)/, '.vtt$1');
             var dp = new DPlayer({
                 container: document.getElementById('video-a0'),
@@ -1538,8 +1611,13 @@ function render_list($path, $files)
         }
 
         addVideos(['<?php echo $DPvideo;?>']);
-        <?php   }
-        } else { // view folder. 不预览，即浏览目录时?>
+
+
+        <?php
+        }
+        }
+        else
+        { // view folder. 不预览，即浏览目录时?>
         var sort = 0;
 
         function showthumbnails(obj) {
@@ -1550,7 +1628,7 @@ function render_list($path, $files)
                 if (!str) return;
                 strarry = str.split('.');
                 ext = strarry[strarry.length - 1].toLowerCase();
-                images = [<?php foreach ($exts['img'] as $imgext) echo '\'' . $imgext . '\', '; ?>];
+                images = [<?php foreach (\Library\Ext::IMG as $imgext) echo '\'' . $imgext . '\', '; ?>];
                 if (images.indexOf(ext) > -1) get_thumbnails_url(str, files[$i]);
             }
             obj.disabled = 'disabled';
@@ -1658,31 +1736,20 @@ function render_list($path, $files)
         }
         <?php
         }
-        if ($_COOKIE['timezone'] == '') { // cookie timezone. 无时区写时区 ?>
-        var nowtime = new Date();
-        var timezone = 0 - nowtime.getTimezoneOffset() / 60;
-        var expd = new Date();
-        expd.setTime(expd.getTime() + (2 * 60 * 60 * 1000));
-        var expires = "expires=" + expd.toGMTString();
-        document.cookie = "timezone=" + timezone + "; path=/; " + expires;
-        if (timezone != '8') {
-            alert('Your timezone is ' + timezone + ', reload local timezone.');
-            location.href = location.protocol + "//" + location.host + "<?php echo path_format($_SERVER['base_path'] . '/' . $path);?>";
-        }
-        <?php }
-        if ($files['folder']['childCount'] > 200) { // more than 200. 有下一页 ?>
-        function nextpage(num) {
-            document.getElementById('pagenum').value = num;
-            document.getElementById('nextpageform').submit();
-        }
-        <?php }
+        ?>
+
+
+
+
+
+        <?php
         if (getenv('admin') != '') { // close div. 有登录或操作，需要关闭DIV时 ?>
         function operatediv_close(operate) {
             document.getElementById(operate + '_div').style.display = 'none';
             document.getElementById('mask').style.display = 'none';
         }
         <?php }
-        if (isset($files['folder']) && ($_SERVER['is_imgup_path'] || $_SERVER['admin'])) { // is folder and is admin or guest upload path. 当前是admin登录或图床目录时 ?>
+        if (isset($files['folder']) && ($is_image_view || $is_admin)) { // is folder and is admin or guest upload path. 当前是admin登录或图床目录时 ?>
         function uploadbuttonhide() {
             document.getElementById('upload_submit').disabled = 'disabled';
             document.getElementById('upload_file').disabled = 'disabled';
@@ -1725,9 +1792,9 @@ function render_list($path, $files)
                 var td2 = document.createElement('td');
                 tr1.appendChild(td2);
                 td2.setAttribute('id', 'upfile_td2_' + timea + '_' + i);
-                td2.innerHTML = '<?php echo $constStr['GetUploadLink'][$constStr['language']]; ?> ...';
+                td2.innerHTML = '<?php echo trans('GetUploadLink'); ?> ...';
                 if (file.size > 100 * 1024 * 1024 * 1024) {
-                    td2.innerHTML = '<font color="red"><?php echo $constStr['UpFileTooLarge'][$constStr['language']]; ?></font>';
+                    td2.innerHTML = '<font color="red"><?php echo trans('UpFileTooLarge'); ?></font>';
                     uploadbuttonshow();
                     return;
                 }
@@ -1743,7 +1810,7 @@ function render_list($path, $files)
                             td2.innerHTML = '<font color="red">' + xhr1.responseText + '</font><br>';
                             uploadbuttonshow();
                         } else {
-                            td2.innerHTML = '<?php echo $constStr['UploadStart'][$constStr['language']]; ?> ...';
+                            td2.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
                             binupfile(file, html['uploadUrl'], timea + '_' + i);
                         }
                     }
@@ -1795,13 +1862,13 @@ function render_list($path, $files)
                         var a = html['nextExpectedRanges'][0];
                         newstartsize = Number(a.slice(0, a.indexOf("-")));
                         StartTime = new Date();
-                        <?php if ($_SERVER['admin']) { ?>
+                        <?php if ($is_admin) { ?>
                         asize = newstartsize;
                         <?php } ?>
                         if (newstartsize == 0) {
-                            StartStr = '<?php echo $constStr['UploadStartAt'][$constStr['language']]; ?>:' + StartTime.toLocaleString() + '<br>';
+                            StartStr = '<?php echo trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
                         } else {
-                            StartStr = '<?php echo $constStr['LastUpload'][$constStr['language']]; ?>' + size_format(newstartsize) + '<br><?php echo $constStr['ThisTime'][$constStr['language']] . $constStr['UploadStartAt'][$constStr['language']]; ?>:' + StartTime.toLocaleString() + '<br>';
+                            StartStr = '<?php echo trans('LastUpload'); ?>' + size_format(newstartsize) + '<br><?php echo trans('ThisTime') . trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
                         }
                         var chunksize = 5 * 1024 * 1024; // chunk size, max 60M. 每小块上传大小，最大60M，微软建议10M
                         if (totalsize > 200 * 1024 * 1024) chunksize = 10 * 1024 * 1024;
@@ -1813,12 +1880,12 @@ function render_list($path, $files)
                         }
 
                         readblob(asize);
-                        <?php if (!$_SERVER['admin']) { ?>
+                        <?php if (!$is_admin) { ?>
                         var spark = new SparkMD5.ArrayBuffer();
                         <?php } ?>
                         reader.onload = function (e) {
                             var binary = this.result;
-                            <?php if (!$_SERVER['admin']) { ?>
+                            <?php if (!$is_admin) { ?>
                             spark.append(binary);
                             if (asize < newstartsize) {
                                 asize += chunksize;
@@ -1836,7 +1903,7 @@ function render_list($path, $files)
                                     var tmptime = new Date();
                                     var tmpspeed = e.loaded * 1000 / (tmptime.getTime() - C_starttime.getTime());
                                     var remaintime = (totalsize - asize - e.loaded) / tmpspeed;
-                                    label.innerHTML = StartStr + '<?php echo $constStr['Upload'][$constStr['language']]; ?> ' + size_format(asize + e.loaded) + ' / ' + size_format(totalsize) + ' = ' + ((asize + e.loaded) * 100 / totalsize).toFixed(2) + '% <?php echo $constStr['AverageSpeed'][$constStr['language']]; ?>:' + size_format((asize + e.loaded - newstartsize) * 1000 / (tmptime.getTime() - StartTime.getTime())) + '/s<br><?php echo $constStr['CurrentSpeed'][$constStr['language']]; ?> ' + size_format(tmpspeed) + '/s <?php echo $constStr['Expect'][$constStr['language']]; ?> ' + remaintime.toFixed(1) + 's';
+                                    label.innerHTML = StartStr + '<?php echo trans('Upload'); ?> ' + size_format(asize + e.loaded) + ' / ' + size_format(totalsize) + ' = ' + ((asize + e.loaded) * 100 / totalsize).toFixed(2) + '% <?php echo trans('AverageSpeed'); ?>:' + size_format((asize + e.loaded - newstartsize) * 1000 / (tmptime.getTime() - StartTime.getTime())) + '/s<br><?php echo trans('CurrentSpeed'); ?> ' + size_format(tmpspeed) + '/s <?php echo trans('Expect'); ?> ' + remaintime.toFixed(1) + 's';
                                 }
                             }
                             var C_starttime = new Date();
@@ -1852,7 +1919,7 @@ function render_list($path, $files)
                                         xhr3.onload = function (e) {
                                             console.log(xhr3.responseText + ',' + xhr3.status);
                                         }
-                                        <?php if (!$_SERVER['admin']) { ?>
+                                        <?php if (!$is_admin) { ?>
                                         var xhr4 = new XMLHttpRequest();
                                         xhr4.open("POST", '');
                                         xhr4.setRequestHeader('x-requested-with', 'XMLHttpRequest');
@@ -1864,7 +1931,7 @@ function render_list($path, $files)
                                             if (xhr4.status == 200) filename = JSON.parse(xhr4.responseText)['name'];
                                             if (xhr4.status == 409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
                                             if (filename == '') {
-                                                alert('<?php echo $constStr['UploadErrorUpAgain'][$constStr['language']]; ?>');
+                                                alert('<?php echo trans('UploadErrorUpAgain'); ?>');
                                                 uploadbuttonshow();
                                                 return;
                                             }
@@ -1876,16 +1943,16 @@ function render_list($path, $files)
                                         }
                                         <?php } ?>
                                         EndTime = new Date();
-                                        MiddleStr = '<?php echo $constStr['EndAt'][$constStr['language']]; ?>:' + EndTime.toLocaleString() + '<br>';
+                                        MiddleStr = '<?php echo trans('EndAt'); ?>:' + EndTime.toLocaleString() + '<br>';
                                         if (newstartsize == 0) {
-                                            MiddleStr += '<?php echo $constStr['AverageSpeed'][$constStr['language']]; ?>:' + size_format(totalsize * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
+                                            MiddleStr += '<?php echo trans('AverageSpeed'); ?>:' + size_format(totalsize * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
                                         } else {
-                                            MiddleStr += '<?php echo $constStr['ThisTime'][$constStr['language']] . $constStr['AverageSpeed'][$constStr['language']]; ?>:' + size_format((totalsize - newstartsize) * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
+                                            MiddleStr += '<?php echo trans('ThisTime') . trans('AverageSpeed'); ?>:' + size_format((totalsize - newstartsize) * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
                                         }
-                                        document.getElementById('upfile_td1_' + tdnum).innerHTML = '<font color="green"><?php if (!$_SERVER['admin']) { ?>' + filemd5 + '<br><?php } ?>' + document.getElementById('upfile_td1_' + tdnum).innerHTML + '<br><?php echo $constStr['UploadComplete'][$constStr['language']]; ?></font>';
+                                        document.getElementById('upfile_td1_' + tdnum).innerHTML = '<font color="green"><?php if (!$is_admin) { ?>' + filemd5 + '<br><?php } ?>' + document.getElementById('upfile_td1_' + tdnum).innerHTML + '<br><?php echo trans('UploadComplete'); ?></font>';
                                         label.innerHTML = StartStr + MiddleStr;
                                         uploadbuttonshow();
-                                        <?php if ($_SERVER['admin']) { ?>
+                                        <?php if ($is_admin) { ?>
                                         addelement(response);
                                         <?php } ?>
                                     } else {
@@ -1903,7 +1970,7 @@ function render_list($path, $files)
                         }
                     } else {
                         if (window.location.pathname.indexOf('%23') > 0 || file.name.indexOf('%23') > 0) {
-                            label.innerHTML = '<font color="red"><?php echo $constStr['UploadFail23'][$constStr['language']]; ?></font>';
+                            label.innerHTML = '<font color="red"><?php echo trans('UploadFail23'); ?></font>';
                         } else {
                             label.innerHTML = '<font color="red">' + xhr2.responseText + '</font>';
                         }
@@ -1913,7 +1980,7 @@ function render_list($path, $files)
             }
         }
         <?php }
-        if ($_SERVER['admin']) { // admin login. 管理登录后 ?>
+        if ($is_admin) { // admin login. 管理登录后 ?>
         function logout() {
             document.cookie = "<?php echo $_SERVER['function_name'] . 'admin';?>=; path=/";
             location.href = location.href;
@@ -1922,7 +1989,7 @@ function render_list($path, $files)
         function enableedit(obj) {
             document.getElementById('txt-a').readOnly = !document.getElementById('txt-a').readOnly;
             //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-            obj.innerHTML = (obj.innerHTML == '<?php echo $constStr['CancelEdit'][$constStr['language']]; ?>') ? '<?php echo $constStr['ClicktoEdit'][$constStr['language']]; ?>' : '<?php echo $constStr['CancelEdit'][$constStr['language']]; ?>';
+            obj.innerHTML = (obj.innerHTML == '<?php echo trans('CancelEdit'); ?>') ? '<?php echo trans('ClicktoEdit'); ?>' : '<?php echo trans('CancelEdit'); ?>';
             document.getElementById('txt-save').style.display = document.getElementById('txt-save').style.display == '' ? 'none' : '';
         }
         <?php   if (!$_GET['preview']) {?>
@@ -1941,7 +2008,7 @@ function render_list($path, $files)
                 if (str == '') {
                     str = document.getElementById('file_a' + num).getElementsByTagName("img")[0].alt;
                     if (str == '') {
-                        alert('<?php echo $constStr['GetFileNameFail'][$constStr['language']]; ?>');
+                        alert('<?php echo trans('GetFileNameFail'); ?>');
                         operatediv_close(action);
                         return;
                     }
@@ -2111,8 +2178,7 @@ function render_list($path, $files)
     </html>
     <?php
     $html = ob_get_clean();
-    if ($_SERVER['Set-Cookie'] != '') return output($html, $statusCode, ['Set-Cookie' => $_SERVER['Set-Cookie'], 'Content-Type' => 'text/html']);
-    return output($html, $statusCode);
+    return response($html, $status_code);
 }
 
 ?>

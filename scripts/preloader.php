@@ -13,7 +13,7 @@ $config = ClassLoader::getIncludes(function (ClassLoader $loader) {
     \Platforms\Normal\Normal::request();
     \Platforms\QCloudSCF\QCloudSCF::request();
 
-    \Library\OneDrive::files();
+    \Library\OneDrive::infos();
 
 
 });

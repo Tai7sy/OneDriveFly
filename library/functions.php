@@ -10,6 +10,7 @@ function request()
 
 function response($content = '', $status = 200, array $headers = ['content-type' => 'text/html'])
 {
+    if (is_array($content)) $content = json_encode($content);
     return new \Symfony\Component\HttpFoundation\Response(
         $content,
         $status,
@@ -29,6 +30,16 @@ function trans($key = null, $replace = array())
     return \Library\Lang::get($key, $replace);
 }
 
+/**
+ * @param \Exception $e
+ * @return string
+ */
+function trace_error($e)
+{
+    $str = $e->getMessage() . '<br><pre>' . $e->getTraceAsString() . '</pre>';
+    $str = str_replace(realpath(__DIR__ . '/../') . DIRECTORY_SEPARATOR, '', $str);
+    return $str;
+}
 
 function clearbehindvalue($path, $page1, $maxpage, $pageinfocache)
 {
@@ -50,7 +61,16 @@ function comppass($pass)
     return 4;
 }
 
-function curl_request($url, $data = false, $headers = [])
+/**
+ * curl
+ * @param string $url
+ * @param string|int $method
+ * @param bool $data
+ * @param array $headers
+ * @param null $status
+ * @return bool|string
+ */
+function curl_request($url, $method = 0, $data = null, $headers = [], &$status = null)
 {
     if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
     if (!isset($headers['Referer'])) $headers['Referer'] = $url;
@@ -63,15 +83,18 @@ function curl_request($url, $data = false, $headers = [])
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
 
-    if ($data !== false) {
+    if ($data !== null || $method === 1) {
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    }
+
+    if (is_string($method)) {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
     }
 
     global $config;
     if (!empty($config['proxy'])) {
         $proxy = $config['proxy'];
-        $proxy_type = CURLPROXY_HTTP;
         if (strpos($proxy, 'socks4://')) {
             $proxy = str_replace('socks4://', $proxy, $proxy);
             $proxy_type = CURLPROXY_SOCKS4;
@@ -90,7 +113,6 @@ function curl_request($url, $data = false, $headers = [])
         curl_setopt($ch, CURLOPT_PROXYTYPE, $proxy_type); // 默认值: CURLPROXY_HTTP
     }
 
-
     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -99,6 +121,7 @@ function curl_request($url, $data = false, $headers = [])
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
     $response = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     return $response;
@@ -120,26 +143,6 @@ function equal_replace($str, $add = false)
         while (substr($str, -1) == '=') $str = substr($str, 0, -1);
     }
     return $str;
-}
-
-function gethiddenpass($path, $passfile)
-{
-    $ispassfile = fetch_files(spurlencode(path_format($path . '/' . $passfile), '/'));
-    //echo $path . '<pre>' . json_encode($ispassfile, JSON_PRETTY_PRINT) . '</pre>';
-    if (isset($ispassfile['file'])) {
-        $passwordf = explode("\n", curl_request($ispassfile['@microsoft.graph.downloadUrl']));
-        $password = $passwordf[0];
-        $password = md5($password);
-        return $password;
-    } else {
-        if ($path !== '') {
-            $path = substr($path, 0, strrpos($path, '/'));
-            return gethiddenpass($path, $passfile);
-        } else {
-            return '';
-        }
-    }
-    return '';
 }
 
 function get_refresh_token($function_name, $Region, $Namespace)
@@ -398,24 +401,6 @@ function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/ht
     ];
 }
 
-function passhidden($path)
-{
-    $path = str_replace('+', '%2B', $path);
-    $path = str_replace('&amp;', '&', path_format(urldecode($path)));
-    if (getenv('passfile') != '') {
-        if (substr($path, -1) == '/') $path = substr($path, 0, -1);
-        $hiddenpass = gethiddenpass($path, getenv('passfile'));
-        if ($hiddenpass != '') {
-            return comppass($hiddenpass);
-        } else {
-            return 1;
-        }
-    } else {
-        return 0;
-    }
-    return 4;
-}
-
 function path_format($path)
 {
     $path = '/' . $path;
@@ -425,9 +410,16 @@ function path_format($path)
     return $path;
 }
 
-function printInput($event, $context)
+function urlencode2($str)
 {
-    if (strlen(json_encode($event['body'])) > 500) $event['body'] = substr($event['body'], 0, strpos($event['body'], 'base64') + 30) . '...Too Long!...' . substr($event['body'], -50);
+    $str = urlencode($str);
+    return str_replace('+', '%20', $str);
+}
+
+function print_scf_input($event, $context)
+{
+    if (strlen(json_encode($event['body'])) > 500)
+        $event['body'] = substr($event['body'], 0, strpos($event['body'], 'base64') + 30) . '...Too Long!...' . substr($event['body'], -50);
     echo urldecode(json_encode($event, JSON_PRETTY_PRINT)) . '
  
 ' . urldecode(json_encode($context, JSON_PRETTY_PRINT)) . '
@@ -448,21 +440,6 @@ function size_format($byte)
     return ($ret . ' ' . $units[$i]);
 }
 
-function spurlencode($str, $splite = '')
-{
-    $str = str_replace(' ', '%20', $str);
-    $tmp = '';
-    if ($splite != '') {
-        $tmparr = explode($splite, $str);
-        for ($x = 0; $x < count($tmparr); $x++) {
-            if ($tmparr[$x] != '') $tmp .= $splite . urlencode($tmparr[$x]);
-        }
-    } else {
-        $tmp = urlencode($str);
-    }
-    $tmp = str_replace('%2520', '%20', $tmp);
-    return $tmp;
-}
 
 function time_format($ISO)
 {

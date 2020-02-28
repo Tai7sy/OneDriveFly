@@ -4,9 +4,13 @@
 namespace Library;
 
 
+use Doctrine\Common\Cache\ArrayCache;
+use Doctrine\Common\Cache\FilesystemCache;
+use Exception;
+
 class OneDrive
 {
-    /** @var \Doctrine\Common\Cache\FilesystemCache */
+    /** @var FilesystemCache */
     private $cache;
 
     private $cache_prefix;
@@ -18,6 +22,13 @@ class OneDrive
 
     private static $instance;
 
+    /**
+     * OneDrive constructor.
+     * @param $refresh_token
+     * @param string $version
+     * @param array $oauth
+     * @throws Exception
+     */
     public function __construct($refresh_token, $version = 'MS', $oauth = [])
     {
         self::$instance = $this;
@@ -55,31 +66,33 @@ class OneDrive
 
         // 只能用个文件缓存代替
         if (is_writable(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'test.qdrive')) {
-            $this->cache = new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(), '.qdrive');
+            $this->cache = new FilesystemCache(sys_get_temp_dir(), '.qdrive');
         } else {
-            $this->cache = new \Doctrine\Common\Cache\ArrayCache();
+            $this->cache = new ArrayCache();
         }
 
         $this->cache_prefix = crc32($refresh_token) . '_';
 
         if (!($this->access_token = $this->cache->fetch($this->cache_prefix . 'access_token'))) {
-            $response = json_decode(curl_request(
+            $response = curl_request(
                 $this->oauth['oauth_url'] . 'token',
+                'POST',
                 'client_id=' . $this->oauth['client_id'] .
                 '&client_secret=' . urlencode($this->oauth['client_secret']) .
                 '&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $refresh_token
-            ), true);
+            );
+            $json = json_decode($response, true);
 
-            if (empty($response['access_token'])) {
-                error_log('failed to get access_token. response' . json_encode($response));
+            if (empty($json['access_token'])) {
+                error_log('failed to get access_token. response:' . $response);
 
-                if (!empty($response['error_description'])) {
-                    throw new \Exception('failed to get access_token: <br>' . $response['error_description']);
+                if (!empty($json['error_description'])) {
+                    throw new Exception('failed to get access_token: <br>' . $json['error_description']);
                 }
-                throw new \Exception('failed to get access_token.');
+                throw new Exception(APP_DEBUG ? $response : 'failed to get access_token.');
             }
-            $this->access_token = $response['access_token'];
-            $this->cache->save($this->cache_prefix . 'access_token', $response['access_token'], $response['expires_in'] - 60);
+            $this->access_token = $json['access_token'];
+            $this->cache->save($this->cache_prefix . 'access_token', $json['access_token'], $json['expires_in'] - 60);
         }
     }
 
@@ -88,39 +101,232 @@ class OneDrive
         return self::$instance;
     }
 
-    public function files($path = '/', $page = 1)
+    private function urlPrefix($path)
     {
-        $files = $this->getInfo($path);
-        // die($path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>');
+        $url = $this->oauth['api_url'];
+        if ($path !== '/') {
+            $url .= ':' . $path;
+            while (substr($url, -1) == '/') $url = substr($url, 0, -1);
+        }
+        return $url;
+    }
 
-        if (empty($files['folder'])) {
+    /**
+     * @param string $path
+     * @param int $page
+     * @return mixed
+     * @throws Exception
+     */
+    public function infos($path = '/', $page = 1)
+    {
+        $files = $this->getFullInfo($path);
+        // die($path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>');
+        if (isset($files['folder'])) {
+            // is folder
+            $files['folder']['currentPage'] = $page;
+            $files['folder']['perPage'] = count($files['children']);
+            $files['folder']['lastPage'] = ceil($files['folder']['childCount'] / $files['folder']['perPage']);
+
+            if ($files['folder']['childCount'] > $files['folder']['perPage'] && $page > 1) {
+                $files['children'] = $this->getFullChildren($path, $page);
+            }
+        } elseif (isset($files['file'])) {
+            // is file
+        } else {
             error_log('failed to get files. response: ' . json_encode($files));
             if (!empty($files['error']) && !empty($files['error']['message'])) {
-                throw new \Exception('failed to get files: <br>' . $files['error']['message']);
+                throw new Exception($files['error']['message']);
             }
-            throw new \Exception('failed to get files.');
+            throw new Exception(APP_DEBUG ? json_encode($files) : 'failed to get files.');
         }
 
-        if ($files['folder']['childCount'] > count($files['children']) && $page > 1) {
-            $files['children'] = $this->getChildren($path, $page);
+        return $files;
+    }
+
+    /**
+     * get info of target file
+     * @param string $path
+     * @param bool $thumbnails
+     * @return mixed
+     */
+    public function info($path, $thumbnails = false)
+    {
+        $cache_key = $this->cache_prefix . 'path_' . $path;
+        if (!($files = $this->cache->fetch($cache_key))) {
+            $url = $this->urlPrefix($path);
+            if ($thumbnails)
+                $url .= ':/thumbnails/0/medium';
+
+            $files = json_decode(curl_request($url, 0, null, ['Authorization' => 'Bearer ' . $this->access_token]), true);
+            if (is_array($files)) {
+                $this->cache->save($cache_key, $files, 60);
+            } else {
+                if ($files == null) {
+                    $files = [
+                        'error' => [
+                            'message' => 'timeout'
+                        ]
+                    ];
+                }
+            }
         }
         return $files;
     }
 
-    public function getContent($path)
+    /**
+     * Get the contents of a file.
+     *
+     * @param string $path
+     * @return bool|false|string
+     * @throws Exception
+     */
+    public function get($path)
     {
-        $info = $this->getInfo($path);
+        $info = $this->info($path);
         if (isset($info['error'])) {
             if ($info['error']['code'] === 'itemNotFound') {
                 return false;
             }
-            throw new \Exception($info['error']['message']);
+            throw new Exception($info['error']['message']);
         }
         if (empty($info['@microsoft.graph.downloadUrl'])) {
-            throw new \Exception('get_content failed');
+
+            throw new Exception('get_content failed');
         }
         return file_get_contents($info['@microsoft.graph.downloadUrl']);
     }
+
+    /**
+     * Write the contents of a file.
+     *
+     * @param string $path
+     * @param string $contents
+     * @return array
+     */
+    public function put($path, $contents)
+    {
+        $url = $this->urlPrefix($path) . ':/content';
+
+        $response = curl_request($url, 'PUT', $contents, [
+            'Content-Type' => 'text/plain',
+            'Content-Length' => strlen($contents),
+            'Authorization' => 'Bearer ' . $this->access_token
+        ]);
+        return json_decode($response, true) ?? $response;
+    }
+
+    /**
+     * Create a directory.
+     *
+     * @param string $path
+     * @return bool
+     * @static
+     */
+    public function makeDirectory($path)
+    {
+        $url = $this->urlPrefix(substr($path, 0, strrpos($path, '/'))) . ':/children';
+        $response = curl_request($url, 'POST', json_encode([
+            'name' => urldecode(substr($path, strrpos($path, '/') + 1)),
+            'folder' => new \stdClass,
+            '@microsoft.graph.conflictBehavior' => 'rename'
+        ]), [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->access_token
+        ]);
+        return json_decode($response, true) ?? $response;
+    }
+
+    /**
+     * Move a file to a new location.
+     *
+     * @param string $path
+     * @param string $target
+     * @return array
+     * @static
+     */
+    public function move($path, $target)
+    {
+        $url = $this->urlPrefix($path);
+        $data = [];
+
+        if (substr($path, 0, strrpos($path, '/')) !== substr($target, 0, strrpos($target, '/'))) {
+            // parent changed
+            $data['parentReference'] = [
+                'path' => '/drive/root:' . urldecode(substr($target, 0, strrpos($target, '/')))
+            ];
+        } else {
+            // name changed
+            $data['name'] = urldecode(substr($target, strrpos($target, '/') + 1));
+        }
+        $response = curl_request($url, 'PATCH', json_encode($data), [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->access_token
+        ]);
+        return json_decode($response, true) ?? $response;
+    }
+
+    /**
+     * Delete the file at a given path.
+     *
+     * @param string $path
+     * @return array
+     * @static
+     */
+    public function delete($path)
+    {
+        $url = $this->urlPrefix($path);
+
+        $response = curl_request($url, 'DELETE', null, [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->access_token
+        ], $status);
+        return json_decode($response, true) ?? ['status' => $status];
+    }
+
+    /**
+     * Delete a directory.
+     *
+     * @param string $directory
+     * @return array
+     * @static
+     */
+    public function deleteDirectory($directory)
+    {
+        $url = $this->urlPrefix($directory);
+
+        $response = curl_request($url, 'DELETE', null, [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->access_token
+        ]);
+        return json_decode($response, true) ?? $response;
+    }
+
+    /**
+     * get a direct link for upload
+     *
+     * @param string $path
+     * @return bool|mixed|string
+     */
+    public function uploadLink($path)
+    {
+        // $file = [
+        //     'name' => urldecode(substr($path, strrpos($path, '/') + 1)),
+        //     'size' => $size,
+        //     'lastModified' => $lastModified
+        // ];
+        // '{"item": { "@microsoft.graph.conflictBehavior": "fail"  }}',$_SERVER['access_token']);
+        $url = $this->urlPrefix($path) . ':/createUploadSession';
+        $response = curl_request($url, 'POST', json_encode([
+            'item' => [
+                '@microsoft.graph.conflictBehavior' => 'fail'
+            ]
+        ]), [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->access_token
+        ]);
+        return json_decode($response, true) ?? $response;
+    }
+
 
     // https://docs.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0
     // https://docs.microsoft.com/zh-cn/graph/api/driveitem-put-content?view=graph-rest-1.0&tabs=http
@@ -131,19 +337,25 @@ class OneDrive
      * @param $path
      * @return mixed
      */
-    private function getInfo($path)
+    private function getFullInfo($path)
     {
         $cache_key = $this->cache_prefix . 'path_' . $path;
         if (!($files = $this->cache->fetch($cache_key))) {
-            $url = $this->oauth['api_url'];
-            if ($path !== '/') {
-                $url .= ':' . $path;
-                if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-            }
+            $url = $this->urlPrefix($path);
             $url .= '?expand=children(select=name,size,file,folder,parentReference,lastModifiedDateTime)';
 
-            $files = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $this->access_token]), true);
-            $this->cache->save($cache_key, $files, 60);
+            $files = json_decode(curl_request($url, 0, null, ['Authorization' => 'Bearer ' . $this->access_token]), true);
+            if (is_array($files)) {
+                $this->cache->save($cache_key, $files, 60);
+            } else {
+                if ($files == null) {
+                    $files = [
+                        'error' => [
+                            'message' => 'timeout'
+                        ]
+                    ];
+                }
+            }
         }
         return $files;
     }
@@ -153,28 +365,32 @@ class OneDrive
      * @param $path
      * @param int $page
      * @return mixed
+     * @throws Exception
      */
-    private function getChildren($path, $page = 1)
+    private function getFullChildren($path, $page = 1)
     {
-        $url = $this->oauth['api_url'];
-        if ($path !== '/') {
-            $url .= ':' . $path;
-            if (substr($url, -1) == '/') $url = substr($url, 0, -1);
-            $url .= ':/children';
-        } else {
-            $url .= '/children';
-        }
-        $url .= '?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
+        $url = $this->urlPrefix($path);
+        $url .= ':/children?$select=name,size,file,folder,parentReference,lastModifiedDateTime';
 
         $children = [];
         for ($current_page = 1; $current_page <= $page; $current_page++) {
             $cache_key = $this->cache_prefix . 'path_' . $path . '_page_' . $current_page;
             if (!($children = $this->cache->fetch($cache_key))) {
-                $children = json_decode(curl_request($url, false, ['Authorization' => 'Bearer ' . $this->access_token]), true);
-                $url = $children['@odata.nextLink'];
+                $response = curl_request($url, 0, null, ['Authorization' => 'Bearer ' . $this->access_token]);
+                $children = json_decode($response, true);
+                if (isset($children['error'])) {
+                    throw new Exception($children['error']['message']);
+                }
                 $this->cache->save($cache_key, $children, 60);
+                if ($current_page === $page) {
+                    break;
+                }
+                if (empty($children['@odata.nextLink'])) {
+                    throw new Exception(APP_DEBUG ? $response : 'get children failed');
+                }
+                $url = $children['@odata.nextLink'];
             }
         }
-        return $children;
+        return $children['value'];
     }
 }

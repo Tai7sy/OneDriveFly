@@ -167,13 +167,13 @@ $LANG = [
         'en-US' => 'Login',
         'zh-CN' => '登录',
     ],
-    'encrypt' => [
+    'Encrypt' => [
         'en-US' => 'Encrypt',
         'zh-CN' => '加密',
     ],
     'SetpassfileBfEncrypt' => [
-        'en-US' => 'Set \'passfile\' in Environments before encrypt',
-        'zh-CN' => '先在环境变量设置passfile才能加密',
+        'en-US' => 'Your should set \'password_file\' before encrypt',
+        'zh-CN' => '先在设置password_file才能加密',
     ],
     'updateProgram' => [
         'en-US' => 'Update Program',
