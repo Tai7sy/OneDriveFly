@@ -247,7 +247,6 @@ function message($message, $title, $status = 200, $headers = [])
 
 function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
 {
-    global $constStr;
     $constEnv = [
         //'admin',
         'adminloginpage', 'domain_path', 'imgup_path', 'passfile', 'private_path', 'public_path', 'sitename', 'language'
@@ -255,7 +254,7 @@ function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0
     asort($constEnv);
     $html = '<title>SCF ' . trans('Setup') . '</title>';
     if ($_POST['updateProgram'] == trans('updateProgram')) {
-        $response = json_decode(updataProgram($function_name, $Region, $namespace), true)['Response'];
+        $response = json_decode(scf_update_code($function_name, $Region, $namespace), true)['Response'];
         if (isset($response['Error'])) {
             $html = $response['Error']['Code'] . '<br>
 ' . $response['Error']['Message'] . '<br><br>
@@ -277,7 +276,7 @@ namespace:' . $namespace . '<br>
                 $tmp[$k] = $v;
             }
         }
-        echo updataEnvironment($tmp, $function_name, $Region, $namespace);
+        echo scf_update_env($tmp, $function_name, $Region, $namespace);
         $html .= '<script>location.href=location.href</script>';
     }
     if ($_GET['preview']) {
@@ -1224,7 +1223,7 @@ function render($account, $path, $files)
             function createDPlayers() {
                 var container = document.getElementById('video-a0');
                 var url = container.getAttribute('data-url');
-                var subtitle = url.replace(/\.[^\.]+?(\?|$)/, '.vtt$1');
+                var subtitle = url.replace(/\.[^.]+?(\?|$)/, '.vtt$1');
                 var dp = new DPlayer({
                     container: container,
                     autoplay: false,
@@ -1269,11 +1268,11 @@ function render($account, $path, $files)
             var callback = (function () {
                 return function () {
                     if (!--unloadedResourceCount) {
-                        createDPlayers(videos);
+                        createDPlayers();
                     }
                 };
-            })
-            (unloadedResourceCount, videos);
+            })(unloadedResourceCount);
+
             loadResources(
                 'link',
                 host + '/dplayer/1.25.0/DPlayer.min.css',
@@ -1444,7 +1443,7 @@ function render($account, $path, $files)
                 var file = files[i];
                 var tr1 = document.createElement('tr');
                 table1.appendChild(tr1);
-                tr1.setAttribute('data-to', 1);
+                tr1.setAttribute('data-to', '1');
                 var td1 = document.createElement('td');
                 tr1.appendChild(td1);
                 td1.setAttribute('style', 'width:30%');
@@ -1464,7 +1463,7 @@ function render($account, $path, $files)
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                 xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                 xhr.send('action=upload&filename=' + encodeURIComponent(file.name) + '&filesize=' + file.size + '&lastModified=' + file.lastModified);
-                xhr.onload = function (e) {
+                xhr.onload = function () {
                     td2.innerHTML = '<span style="color: red">' + xhr.responseText + '</span>';
                     if (xhr.status === 200) {
                         var html = JSON.parse(xhr.responseText);
@@ -1500,7 +1499,7 @@ function render($account, $path, $files)
                 xhr2.open("GET", url);
                 //xhr2.setRequestHeader('X-Requested-With','XMLHttpRequest');
                 xhr2.send(null);
-                xhr2.onload = function (e) {
+                xhr2.onload = function () {
                     if (xhr2.status === 200) {
                         var html = JSON.parse(xhr2.responseText);
                         var a = html['nextExpectedRanges'][0];
@@ -1540,7 +1539,7 @@ function render($account, $path, $files)
                             var xhr = new XMLHttpRequest();
                             xhr.open("PUT", url, true);
                             //xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
-                            bsize = asize + e.loaded - 1;
+                            var bsize = asize + e.loaded - 1;
                             xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize + '/' + totalsize);
                             xhr.upload.onprogress = function (e) {
                                 if (e.lengthComputable) {
@@ -1551,7 +1550,7 @@ function render($account, $path, $files)
                                 }
                             };
                             var C_starttime = new Date();
-                            xhr.onload = function (e) {
+                            xhr.onload = function () {
                                 if (xhr.status < 500) {
                                     var response = JSON.parse(xhr.responseText);
                                     if (response['size'] > 0) {
@@ -1560,7 +1559,7 @@ function render($account, $path, $files)
                                         xhr3.open("POST", '');
                                         xhr3.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                                         xhr3.send('action=del_upload_cache&filename=.' + file.lastModified + '_' + file.size + '_' + encodeURIComponent(file.name) + '.tmp');
-                                        xhr3.onload = function (e) {
+                                        xhr3.onload = function () {
                                             console.log(xhr3.responseText + ',' + xhr3.status);
                                         };
                                         <?php if (!$is_admin) { ?>
@@ -1569,12 +1568,12 @@ function render($account, $path, $files)
                                         xhr4.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                                         var filemd5 = spark.end();
                                         xhr4.send('action=uploaded_rename&filename=' + encodeURIComponent(file.name) + '&filemd5=' + filemd5);
-                                        xhr4.onload = function (e) {
+                                        xhr4.onload = function () {
                                             console.log(xhr4.responseText + ',' + xhr4.status);
                                             var filename;
                                             if (xhr4.status === 200) filename = JSON.parse(xhr4.responseText)['name'];
                                             if (xhr4.status === 409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
-                                            if (filename == '') {
+                                            if (!filename || !filename.length) {
                                                 alert('<?php echo trans('UploadErrorUpAgain'); ?>');
                                                 showUploadBtn();
                                                 return;
@@ -1705,10 +1704,10 @@ function render($account, $path, $files)
                         obj = JSON.parse(xhr.responseText);
                         var filename = document.getElementById('filename_' + index);
                         filename.innerText = obj.name;
-                        if (obj.file) {
+                        if (obj.hasOwnProperty('file')) {
                             filename.href = location.href + '/' + obj.name + '?preview';
                             filename.nextElementSibling.href = location.href + '/' + obj.name;
-                        } else if (obj.folder) {
+                        } else if (obj.hasOwnProperty('folder')) {
                             filename.href = location.href + '/' + obj.name;
                         }
                     } else if (action === 'move' || action === 'delete')
@@ -1762,15 +1761,16 @@ function render($account, $path, $files)
                 var form = document.getElementById(formId);
                 var elements = [];
                 var tagElements = form.getElementsByTagName('input');
-                for (var j = 0; j < tagElements.length; j++) {
+                var j;
+                for (j = 0; j < tagElements.length; j++) {
                     elements.push(tagElements[j]);
                 }
                 tagElements = form.getElementsByTagName('select');
-                for (var j = 0; j < tagElements.length; j++) {
+                for (j = 0; j < tagElements.length; j++) {
                     elements.push(tagElements[j]);
                 }
                 tagElements = form.getElementsByTagName('textarea');
-                for (var j = 0; j < tagElements.length; j++) {
+                for (j = 0; j < tagElements.length; j++) {
                     elements.push(tagElements[j]);
                 }
                 return elements;

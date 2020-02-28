@@ -19,18 +19,18 @@ function post2url($url, $data)
     return $response;
 }
 
-function ReorganizeDate($arr)
+function params($arr)
 {
     $str = '';
     ksort($arr);
     foreach ($arr as $k1 => $v1) {
         $str .= '&' . $k1 . '=' . $v1;
     }
-    $str = substr($str, 1); // remove first '&'. 去掉第一个&
+    $str = substr($str, 1);
     return $str;
 }
 
-function getfunctioninfo($function_name, $Region, $Namespace)
+function scf_get_function($function_name, $Region, $Namespace)
 {
     //$meth = 'GET';
     $meth = 'POST';
@@ -44,37 +44,35 @@ function getfunctioninfo($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    $data = ReorganizeDate($tmpdata);
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
+    $data = params($tmpdata);
+    $signStr = base64_encode(hash_hmac('sha1', $meth . $host . '/?' . $data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
     //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
-    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
+    return post2url('https://' . $host, $data . '&Signature=' . urlencode($signStr));
 }
 
-function array_value_isnot_null($arr)
-{
-    return $arr!=='';
-}
-
-function updataEnvironment($Envs, $function_name, $Region, $Namespace)
+function scf_update_env($Envs, $function_name, $Region, $Namespace)
 {
     //print_r($Envs);
     //json_decode($a,true)['Response']['Environment']['Variables'][0]['Key']
-    $tmp = json_decode(getfunctioninfo($function_name, $Region, $Namespace),true)['Response']['Environment']['Variables'];
+    $tmp = json_decode(scf_get_function($function_name, $Region, $Namespace), true)['Response']['Environment']['Variables'];
+    $tmp_env = [];
     foreach ($tmp as $tmp1) {
         $tmp_env[$tmp1['Key']] = $tmp1['Value'];
     }
     foreach ($Envs as $key1 => $value1) {
         $tmp_env[$key1] = $value1;
     }
-    $tmp_env = array_filter($tmp_env, 'array_value_isnot_null'); // remove null. 清除空值
+    $tmp_env = array_filter($tmp_env, function ($arr) {
+        return !empty($arr);
+    });
     $tmp_env['Region'] = getenv('Region');
     ksort($tmp_env);
 
     $i = 0;
     foreach ($tmp_env as $key1 => $value1) {
-        $tmpdata['Environment.Variables.'.$i.'.Key'] = $key1;
-        $tmpdata['Environment.Variables.'.$i.'.Value'] = $value1;
+        $tmpdata['Environment.Variables.' . $i . '.Key'] = $key1;
+        $tmpdata['Environment.Variables.' . $i . '.Value'] = $value1;
         $i++;
     }
     $meth = 'POST';
@@ -88,13 +86,13 @@ function updataEnvironment($Envs, $function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    $data = ReorganizeDate($tmpdata);
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
+    $data = params($tmpdata);
+    $signStr = base64_encode(hash_hmac('sha1', $meth . $host . '/?' . $data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
+    return post2url('https://' . $host, $data . '&Signature=' . urlencode($signStr));
 }
 
-function SetConfig($function_name, $Region, $Namespace)
+function scf_update_configuration($function_name, $Region, $Namespace)
 {
     $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
@@ -110,13 +108,13 @@ function SetConfig($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    $data = ReorganizeDate($tmpdata);
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
+    $data = params($tmpdata);
+    $signStr = base64_encode(hash_hmac('sha1', $meth . $host . '/?' . $data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
+    return post2url('https://' . $host, $data . '&Signature=' . urlencode($signStr));
 }
 
-function updataProgram($function_name, $Region, $Namespace)
+function scf_update_code($function_name, $Region, $Namespace)
 {
     $meth = 'POST';
     $host = 'scf.tencentcloudapi.com';
@@ -132,10 +130,8 @@ function updataProgram($function_name, $Region, $Namespace)
     $tmpdata['Timestamp'] = time();
     $tmpdata['Token'] = '';
     $tmpdata['Version'] = '2018-04-16';
-    $data = ReorganizeDate($tmpdata);
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, getenv('SecretKey'), true));
+    $data = params($tmpdata);
+    $signStr = base64_encode(hash_hmac('sha1', $meth . $host . '/?' . $data, getenv('SecretKey'), true));
     //echo urlencode($signStr);
-    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
+    return post2url('https://' . $host, $data . '&Signature=' . urlencode($signStr));
 }
-
-?>

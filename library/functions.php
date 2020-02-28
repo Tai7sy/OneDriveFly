@@ -172,7 +172,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
             document.cookie=\'language=; path=/\';
         </script>';
             if (getenv('SecretId') != '' && getenv('SecretKey') != '') {
-                echo updataEnvironment($t, $function_name, $Region, $Namespace);
+                echo scf_update_env($t, $function_name, $Region, $Namespace);
                 $str .= '
             <meta http-equiv="refresh" content="5;URL=' . $url . '">';
             }
@@ -203,7 +203,7 @@ function get_refresh_token($function_name, $Region, $Namespace)
             $tmp['language'] = $_COOKIE['language'];
             $tmp['client_id'] = $_POST['client_id'];
             $tmp['client_secret'] = equal_replace(base64_encode($_POST['client_secret']));
-            $response = json_decode(updataEnvironment($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
+            $response = json_decode(scf_update_env($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
             sleep(2);
             $title = $constStr['MayinEnv'][$constStr['language']];
             $html = $constStr['Wait'][$constStr['language']] . ' 3s<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
@@ -222,7 +222,7 @@ namespace:' . $Namespace . '<br>
 
     if ($_GET['install0']) {
         if (getenv('SecretId') == '' || getenv('SecretKey') == '') return message($constStr['SetSecretsFirst'][$constStr['language']] . '<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button><br>' . '(<a href="https://console.cloud.tencent.com/cam/capi" target="_blank">' . $constStr['Create'][$constStr['language']] . ' SecretId & SecretKey</a>)', 'Error', 500);
-        $response = json_decode(SetConfig($_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
+        $response = json_decode(scf_update_configuration($_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
         if (isset($response['Error'])) {
             $html = $response['Error']['Code'] . '<br>
 ' . $response['Error']['Message'] . '<br><br>
