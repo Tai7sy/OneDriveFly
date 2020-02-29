@@ -1,28 +1,42 @@
 {
-  "name": "OneDrive_SCF",
-  "description": "OneDrive in QCloud SCF",
+  "name": "OneDriveFly",
+  "description": "OneDrive index anywhere",
   "license": "MIT",
   "type": "project",
   "require": {
     "php": "^7.0.0",
     "ext-json": "*",
     "ext-curl": "*",
-    "ext-http": "*",
-    "doctrine/cache": "1.*"
+    "classpreloader/classpreloader": "^4.0",
+    "classpreloader/console": "^3.0",
+    "doctrine/cache": "~1.6.2",
+    "symfony/http-foundation": "~3.3"
   },
   "require-dev": {
   },
   "autoload": {
     "classmap": [
+      "config.php"
+    ],
+    "files": [
+      "library/functions.php"
     ],
     "psr-4": {
-      "App\\": "app/"
+      "Platforms\\": "platforms/",
+      "Library\\": "library/"
     }
+  },
+  "scripts": {
+    "post-root-package-install": [
+      "@php -r \"file_exists('config.php') || copy('config.example.php', 'config.php');\""
+    ],
+    "post-autoload-dump": "php vendor/bin/classpreloader compile --config=scripts/preloader.php --output=dist/vendor.php && php scripts/dist.php",
+    "build": "composer dump-autoload --optimize"
   },
   "repositories": {
     "packagist": {
       "type": "composer",
-      "url": "https://packagist.laravel-china.org"
+      "url": "https://mirrors.aliyun.com/composer/"
     }
   }
 }
