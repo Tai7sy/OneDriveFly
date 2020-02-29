@@ -41,7 +41,7 @@ composer create-project
 
 ```shell
 cd OneDriveFly/nodejs
-npm build
+npm i && npm build
 ```
 
 The generated files will be output to the `dist` folder

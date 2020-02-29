@@ -11,7 +11,7 @@ before_script:
 
 script:
   - cd php; composer create-project
-  - cd nodejs; npm build
+  - cd nodejs; npm i && npm build
 
 notifications:
   email: false

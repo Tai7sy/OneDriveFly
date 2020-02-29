@@ -16,12 +16,7 @@ class Config
             [
                 'name' => 'disk_1',
                 'path' => '',
-                'path_image' => [],
-                'oauth' => [
-                    'redirect_uri' => 'http://localhost',
-                    'client_id' => '298004f7-c751-4d56-aba3-b058c0154fd2',
-                    'client_secret' => '-^(!BpF-l9/z#[+*5t)alg;[V@;;)_];)@j#^E;T(&^4uD;*&?#2)>H?'
-                ],
+                'path_image' => ['/some_public/image'],
                 'refresh_token' => '',
             ],
         ],
