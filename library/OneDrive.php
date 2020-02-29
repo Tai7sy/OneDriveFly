@@ -24,44 +24,46 @@ class OneDrive
 
     const PAGE_SIZE = 200;
 
+    const APP_MS = [
+        'redirect_uri' => 'https://onedrivefly.github.io',
+        'client_id' => '298004f7-c751-4d56-aba3-b058c0154fd2',
+        'client_secret' => '-^(!BpF-l9/z#[+*5t)alg;[V@;;)_];)@j#^E;T(&^4uD;*&?#2)>H?',
+        'oauth_url' => 'https://login.microsoftonline.com/common/oauth2/v2.0/',
+        'api_url' => 'https://graph.microsoft.com/v1.0/me/drive/root',
+        'scope' => 'https://graph.microsoft.com/Files.ReadWrite.All offline_access',
+    ];
+
+    const APP_MS_CN = [
+        'redirect_uri' => 'https://onedrivefly.github.io',
+        'client_id' => '5010206d-75ac-4af1-8fc7-70d1576326f0',
+        'client_secret' => 'Gz5JsJkR6L-rA]w23RMPeQdL:.iZ1Pja',
+        'oauth_url' => 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/',
+        'api_url' => 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root',
+        'scope' => 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access',
+    ];
+
     /**
      * OneDrive constructor.
      * @param $refresh_token
-     * @param string $version
+     * @param string $provider
      * @param array $oauth
      * @throws Exception
      */
-    public function __construct($refresh_token, $version = 'MS', $oauth = [])
+    public function __construct($refresh_token, $provider = 'MS', $oauth = [])
     {
         self::$instance = $this;
 
-        $this->oauth = [
-            'redirect_uri' => 'https://scfonedrive.github.io'
-        ];
-
-        switch ($version) {
+        switch ($provider) {
             default:
             case 'MS':
                 // MS
                 // https://portal.azure.com
-                $this->oauth = array_merge($this->oauth, [
-                    'client_id' => '4da3e7f2-bf6d-467c-aaf0-578078f0bf7c',
-                    'client_secret' => '7/+ykq2xkfx:.DWjacuIRojIaaWL0QI6',
-                    'oauth_url' => 'https://login.microsoftonline.com/common/oauth2/v2.0/',
-                    'api_url' => 'https://graph.microsoft.com/v1.0/me/drive/root',
-                    'scope' => 'https://graph.microsoft.com/Files.ReadWrite.All offline_access',
-                ]);
+                $this->oauth = self::APP_MS;
                 break;
             case 'CN':
                 // CN
                 // https://portal.azure.cn
-                $this->oauth = array_merge($this->oauth, [
-                    'client_id' => '04c3ca0b-8d07-4773-85ad-98b037d25631',
-                    'client_secret' => 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB',
-                    'oauth_url' => 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/',
-                    'api_url' => 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root',
-                    'scope' => 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access',
-                ]);
+                $this->oauth = self::APP_MS_CN;
                 break;
         }
         $this->oauth = array_merge($this->oauth, $oauth);
@@ -73,28 +75,29 @@ class OneDrive
             $this->cache = new VoidCache();
         }
 
-        $this->cache_prefix = dechex(crc32($refresh_token)) . '_';
+        if ($refresh_token && isset($refresh_token{1})) {
+            $this->cache_prefix = dechex(crc32($refresh_token)) . '_';
+            if (!($this->access_token = $this->cache->fetch($this->cache_prefix . 'access_token'))) {
+                $response = curl(
+                    $this->oauth['oauth_url'] . 'token',
+                    'POST',
+                    'client_id=' . $this->oauth['client_id'] .
+                    '&client_secret=' . urlencode($this->oauth['client_secret']) .
+                    '&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $refresh_token
+                );
+                $json = json_decode($response, true);
 
-        if (!($this->access_token = $this->cache->fetch($this->cache_prefix . 'access_token'))) {
-            $response = curl(
-                $this->oauth['oauth_url'] . 'token',
-                'POST',
-                'client_id=' . $this->oauth['client_id'] .
-                '&client_secret=' . urlencode($this->oauth['client_secret']) .
-                '&grant_type=refresh_token&requested_token_use=on_behalf_of&refresh_token=' . $refresh_token
-            );
-            $json = json_decode($response, true);
+                if (empty($json['access_token'])) {
+                    error_log('failed to get access_token. response:' . $response);
 
-            if (empty($json['access_token'])) {
-                error_log('failed to get access_token. response:' . $response);
-
-                if (!empty($json['error_description'])) {
-                    throw new Exception('failed to get access_token: <br>' . $json['error_description']);
+                    if (!empty($json['error_description'])) {
+                        throw new Exception('failed to get access_token: <br>' . $json['error_description']);
+                    }
+                    throw new Exception(APP_DEBUG ? $response : 'failed to get access_token.');
                 }
-                throw new Exception(APP_DEBUG ? $response : 'failed to get access_token.');
+                $this->access_token = $json['access_token'];
+                $this->cache->save($this->cache_prefix . 'access_token', $json['access_token'], $json['expires_in'] - 60);
             }
-            $this->access_token = $json['access_token'];
-            $this->cache->save($this->cache_prefix . 'access_token', $json['access_token'], $json['expires_in'] - 60);
         }
     }
 
@@ -103,140 +106,32 @@ class OneDrive
         return self::$instance;
     }
 
-
-    function get_refresh_token($function_name, $Region, $Namespace)
+    public function authUrl($return_url)
     {
-        global $constStr;
-        $url = path_format($_SERVER['PHP_SELF'] . '/');
-
-        if ($_GET['authorization_code'] && isset($_GET['code'])) {
-            $ret = json_decode(curl($_SERVER['oauth_url'] . 'token', 'client_id=' . $_SERVER['client_id'] . '&client_secret=' . $_SERVER['client_secret'] . '&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri=' . $_SERVER['redirect_uri'] . '&code=' . $_GET['code']), true);
-            if (isset($ret['refresh_token'])) {
-                $tmptoken = $ret['refresh_token'];
-                $str = '
-        refresh_token :<br>';
-                for ($i = 1; strlen($tmptoken) > 0; $i++) {
-                    $t['t' . $i] = substr($tmptoken, 0, 128);
-                    $str .= '
-            t' . $i . ':<textarea readonly style="width: 95%">' . $t['t' . $i] . '</textarea><br><br>';
-                    $tmptoken = substr($tmptoken, 128);
-                }
-                $str .= '
-        Add t1-t' . --$i . ' to environments.
-        <script>
-            var texta=document.getElementsByTagName(\'textarea\');
-            for(i=0;i<texta.length;i++) {
-                texta[i].style.height = texta[i].scrollHeight + \'px\';
-            }
-            document.cookie=\'language=; path=/\';
-        </script>';
-                if (getenv('SecretId') != '' && getenv('SecretKey') != '') {
-                    echo scf_update_env($t, $function_name, $Region, $Namespace);
-                    $str .= '
-            <meta http-equiv="refresh" content="5;URL=' . $url . '">';
-                }
-                return message($str, $constStr['WaitJumpIndex'][$constStr['language']]);
-            }
-            return message('<pre>' . json_encode($ret, JSON_PRETTY_PRINT) . '</pre>', 500);
-        }
-
-        if ($_GET['install2']) {
-            if (getenv('Onedrive_ver') == 'MS' || getenv('Onedrive_ver') == 'CN' || getenv('Onedrive_ver') == 'MSC') {
-                return message('
-    <a href="" id="a1">' . $constStr['JumptoOffice'][$constStr['language']] . '</a>
-    <script>
-        url=location.protocol + "//" + location.host + "' . $url . '";
-        url="' . $_SERVER['oauth_url'] . 'authorize?scope=' . $_SERVER['scope'] . '&response_type=code&client_id=' . $_SERVER['client_id'] . '&redirect_uri=' . $_SERVER['redirect_uri'] . '&state=' . '"+encodeURIComponent(url);
-        document.getElementById(\'a1\').href=url;
-        //window.open(url,"_blank");
-        location.href = url;
-    </script>
-    ', $constStr['Wait'][$constStr['language']] . ' 1s', 201);
-            }
-        }
-
-        if ($_GET['install1']) {
-            // echo $_POST['Onedrive_ver'];
-            if ($_POST['Onedrive_ver'] == 'MS' || $_POST['Onedrive_ver'] == 'CN' || $_POST['Onedrive_ver'] == 'MSC') {
-                $tmp['Onedrive_ver'] = $_POST['Onedrive_ver'];
-                $tmp['language'] = $_COOKIE['language'];
-                $tmp['client_id'] = $_POST['client_id'];
-                $tmp['client_secret'] = equal_replace(base64_encode($_POST['client_secret']));
-                $response = json_decode(scf_update_env($tmp, $_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
-                sleep(2);
-                $title = $constStr['MayinEnv'][$constStr['language']];
-                $html = $constStr['Wait'][$constStr['language']] . ' 3s<meta http-equiv="refresh" content="3;URL=' . $url . '?install2">';
-                if (isset($response['Error'])) {
-                    $html = $response['Error']['Code'] . '<br>
-' . $response['Error']['Message'] . '<br><br>
-function_name:' . $_SERVER['function_name'] . '<br>
-Region:' . $_SERVER['Region'] . '<br>
-namespace:' . $Namespace . '<br>
-<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button>';
-                    $title = 'Error';
-                }
-                return message($html, $title, 201);
-            }
-        }
-
-        if ($_GET['install0']) {
-            if (getenv('SecretId') == '' || getenv('SecretKey') == '') return message($constStr['SetSecretsFirst'][$constStr['language']] . '<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button><br>' . '(<a href="https://console.cloud.tencent.com/cam/capi" target="_blank">' . $constStr['Create'][$constStr['language']] . ' SecretId & SecretKey</a>)', 'Error', 500);
-            $response = json_decode(scf_update_configuration($_SERVER['function_name'], $_SERVER['Region'], $Namespace), true)['Response'];
-            if (isset($response['Error'])) {
-                $html = $response['Error']['Code'] . '<br>
-' . $response['Error']['Message'] . '<br><br>
-function_name:' . $_SERVER['function_name'] . '<br>
-Region:' . $_SERVER['Region'] . '<br>
-namespace:' . $Namespace . '<br>
-<button onclick="location.href = location.href;">' . $constStr['Reflesh'][$constStr['language']] . '</button>';
-                $title = 'Error';
-            } else {
-                if ($constStr['language'] != 'zh-cn') {
-                    $linklang = 'en-us';
-                } else $linklang = 'zh-cn';
-                $ru = "https://developer.microsoft.com/" . $linklang . "/graph/quick-start?appID=_appId_&appName=_appName_&redirectUrl=" . $_SERVER['redirect_uri'] . "&platform=option-php";
-                $deepLink = "/quickstart/graphIO?publicClientSupport=false&appName=one_scf&redirectUrl=" . $_SERVER['redirect_uri'] . "&allowImplicitFlow=false&ru=" . urlencode($ru);
-                $app_url = "https://apps.dev.microsoft.com/?deepLink=" . urlencode($deepLink);
-                $html = '
-    <form action="?install1" method="post">
-        Onedrive_Ver：<br>
-        <label><input type="radio" name="Onedrive_ver" value="MS" checked>MS: ' . $constStr['OndriveVerMS'][$constStr['language']] . '</label><br>
-        <label><input type="radio" name="Onedrive_ver" value="CN">CN: ' . $constStr['OndriveVerCN'][$constStr['language']] . '</label><br>
-        <label><input type="radio" name="Onedrive_ver" value="MSC" onclick="document.getElementById(\'secret\').style.display=\'\';">MSC: ' . $constStr['OndriveVerMSC'][$constStr['language']] . '
-            <div id="secret" style="display:none">
-                <a href="' . $app_url . '" target="_blank">' . $constStr['GetSecretIDandKEY'][$constStr['language']] . '</a><br>
-                client_secret:<input type="text" name="client_secret"><br>
-                client_id(12345678-90ab-cdef-ghij-klmnopqrstuv):<input type="text" name="client_id"><br>
-            </div>
-        </label><br>
-        <input type="submit" value="' . $constStr['Submit'][$constStr['language']] . '">
-    </form>';
-                $title = 'Install';
-            }
-            return message($html, $title, 201);
-        }
-
-        $html .= '
-    <form action="?install0" method="post">
-    language:<br>';
-        foreach ($constStr['languages'] as $key1 => $value1) {
-            $html .= '
-    <label><input type="radio" name="language" value="' . $key1 . '" ' . ($key1 == $constStr['language'] ? 'checked' : '') . ' onclick="changelanguage(\'' . $key1 . '\')">' . $value1 . '</label><br>';
-        }
-        $html .= '<br>
-    <input type="submit" value="' . $constStr['Submit'][$constStr['language']] . '">
-    </form>
-    <script>
-        function changelanguage(str)
-        {
-            document.cookie=\'language=\'+str+\'; path=/\';
-            location.href = location.href;
-        }
-    </script>';
-        $title = $constStr['SelectLanguage'][$constStr['language']];
-        return message($html, $title, 201);
+        return $this->oauth['oauth_url'] . 'authorize?scope=' . $this->oauth['scope'] .
+            '&response_type=code&client_id=' . $this->oauth['client_id'] .
+            '&redirect_uri=' . $this->oauth['redirect_uri'] . '&state=' . urlencode($return_url);
     }
 
+    /**
+     * @param $authorization_code
+     * @return array|string
+     * @throws Exception
+     */
+    function get_refresh_token($authorization_code)
+    {
+        $response = curl($this->oauth['oauth_url'] . 'token',
+            'POST',
+            'client_id=' . $this->oauth['client_id'] .
+            '&client_secret=' . urlencode($this->oauth['client_secret']) .
+            '&grant_type=authorization_code&requested_token_use=on_behalf_of&redirect_uri=' . $this->oauth['redirect_uri'] .
+            '&code=' . $authorization_code);
+        $ret = json_decode($response, true);
+        if (!$ret || !isset($ret['refresh_token'])) {
+            return is_array($ret) ? $ret : ['error' => $response];
+        }
+        return $ret['refresh_token'];
+    }
 
     private function urlPrefix($path)
     {

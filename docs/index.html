@@ -78,5 +78,29 @@
         </div>
     </div>
 </div>
+
+<script type="text/javascript">
+    function getParam(name, url) {
+        if (!url) url = window.location.href;
+        name = name.replace(/[\[\]]/g, '\\$&');
+        var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+            results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    }
+
+    // state is a return_url for the origin website
+    if (getParam('code') && getParam('state')) {
+        var state = JSON.parse(getParam('state'));
+        document.getElementsByClassName('title')[0].innerHTML = 'Redirecting...';
+        var oauth_callback = {
+            name: state.name,
+            code: getParam('code'),
+            oauth: state.oauth
+        };
+        location.href = state.return_url + '?oauth_callback=' + encodeURIComponent(JSON.stringify(oauth_callback));
+    }
+</script>
 </body>
 </html>

@@ -45,7 +45,7 @@ function get_timezone($timezone = '8')
  */
 function trace_error($e)
 {
-    $str = $e->getMessage() . '<br><pre>' . $e->getTraceAsString() . '</pre>';
+    $str = '<pre>' . $e->getTraceAsString() . '</pre>';
     $str = str_replace(realpath(__DIR__ . '/../') . DIRECTORY_SEPARATOR, '', $str);
     return $str;
 }

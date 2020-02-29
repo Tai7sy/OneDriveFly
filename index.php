@@ -6,7 +6,6 @@ use Library\Ext;
 use Library\Lang;
 use Library\OneDrive;
 use Platforms\Normal\Normal;
-use Platforms\Platform;
 use Platforms\QCloudSCF\QCloudSCF;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -64,13 +63,14 @@ function handler($request)
     Lang::init($request->cookies->get('language'));
     date_default_timezone_set(get_timezone($request->cookies->get('timezone')));
 
-    $path = array_filter(
+    $path = array_values(array_filter(
         explode('/', $request->getPathInfo()),
         function ($path) {
             return !empty($path);
         }
-    );
+    ));
 
+    $relative_path = join('/', $path);
     $account = null;
     // multi-account enabled
     if ($config['multi']) {
@@ -85,10 +85,10 @@ function handler($request)
                 }
             }
             if ($account == null) {
-                return message('此账号未找到', 'Error', 500);
+                return message('此账号未找到', 'Error', null, 500);
             }
         }
-        $path = array_shift($path);
+        array_shift($path);
     } else {
         $account = $config['accounts'][0];
     }
@@ -98,18 +98,34 @@ function handler($request)
     }
 
     $path = [
-        'relative' => join('/', $path),
+        'relative' => $relative_path,
         'absolute' => path_format($account['path'] . '/' . join('/', $path))
     ];
+
     try {
         $account['driver'] = new OneDrive($account['refresh_token'],
-            !empty($account['version']) ? $account['version'] : 'MS',
+            !empty($account['provider']) ? $account['provider'] : 'MS',
             !empty($account['oauth']) ? $account['oauth'] : []);
 
+        // get thumbnails for image file
         if ($request->query->has('thumbnails')) {
             return redirect($account['driver']->info($path['absolute'], true)['url']);
         }
 
+        // install -> go to oauth
+        if ($request->query->has('install') ||
+            ($request->query->has('oauth_callback'))
+            || empty($account['refresh_token'])) {
+
+            if ($request->query->has('oauth_callback')) {
+                if (($oauth = @json_decode($request->query->get('oauth_callback'), true)['oauth'])) {
+                    $account['driver'] = new OneDrive(null, 'MS', $oauth);
+                }
+            }
+            return install($request, $account);
+        }
+
+        // ajax request
         if ($request->isXmlHttpRequest()) {
             $response = ['error' => 'invalid action'];
             switch ($request->get('action')) {
@@ -158,12 +174,16 @@ function handler($request)
                     break;
             }
             return response($response, !$response || isset($response['error']) ? 500 : 200);
-        } elseif ($request->isMethod('POST')) {
+        }
+
+        // preview -> edit file
+        if ($request->isMethod('POST')) {
             if ($request->query->has('preview')) {
                 $account['driver']->put($path['absolute'], $request->get('content'));
             }
         }
 
+        // default -> fetch files
         $files = $account['driver']->infos($path['absolute'], (int)$request->get('page', 1));
 
         if (!$request->query->has('preview')) {
@@ -182,16 +202,390 @@ function handler($request)
             return render($account, $path, $error);
         } catch (Throwable $e) {
             @ob_clean();
-            if ($config['debug']) {
-                return message(trace_error($e), 'Error', 500);
-            }
-            return message($e->getMessage(), 'Error', 500);
+            return message($e->getMessage(), 'Error', $config['debug'] ? trace_error($e) : null, 500);
         }
     }
 }
 
+/**
+ * @param Request $request
+ * @param [OneD] $account
+ * @return Response
+ */
+function install($request, $account)
+{
+    $state = [];
+    if ($request->query->has('oauth_callback')) {
+        $callback = json_decode($request->query->get('oauth_callback'), true);
+        if ($callback && !empty($callback['code'])) {
+            $state = [
+                'name' => $callback['name'],
+                'refresh_token' => $account['driver']->get_refresh_token($callback['code'])
+            ];
+        }
+    }
+    @ob_start();
+    ?>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script type="text/javascript" src="//unpkg.zhimg.com/vue/dist/vue.min.js"></script>
+        <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui/dist/muse-ui.js"></script>
+        <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.js"></script>
+        <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui/dist/muse-ui.css">
+        <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.css">
+        <!--suppress CssInvalidPropertyValue -->
+        <style type="text/css">
+            #app {
 
-function message($message, $title, $status = 200, $headers = [])
+            }
+
+            .container {
+                max-width: 800px;
+                margin: 24px auto;
+            }
+
+            .title {
+                text-align: center;
+                margin: 0;
+                padding: 20px 0 12px;
+            }
+
+            .close-btn {
+                float: right;
+                width: 32px;
+                min-width: unset;
+            }
+
+            .account-container {
+                margin: 4px 0;
+                padding: 4px 8px;
+            }
+
+            .account-container input[type=text] {
+                outline: none !important;
+                width: 280px;
+                border: 1px solid #e5e5e5;
+                border-radius: 2px;
+                padding: 2px 4px;
+            }
+
+            .account-container .item {
+                min-height: 32px;
+            }
+
+            .account-container .item > label {
+                display: inline-block;
+                width: 64px;
+            }
+
+            .config-dialog textarea {
+                color: white;
+                background: rgb(34, 34, 34);
+                font-size: 12px;
+                width: 100%;
+                outline: none !important;
+                white-space: nowrap;
+                overflow: scroll;
+            }
+
+        </style>
+        <title>OneDriveFly</title>
+    </head>
+    <body>
+    <div id="app" style="display: none">
+        <mu-paper class="container" :z-depth="3">
+            <h2 class="title">安装</h2>
+            <mu-alert color="error" v-if="error" style="margin-bottom: 24px">
+                {{error}}
+            </mu-alert>
+            <mu-form :model="form" class="mu-demo-form" label-position="top">
+                <mu-form-item prop="input" label="站点名称">
+                    <mu-text-field v-model="form.name" placeholder="网站名称"></mu-text-field>
+                </mu-form-item>
+                <mu-form-item prop="switch" label="启用多账户">
+                    <mu-switch v-model="form.multi"></mu-switch>
+                </mu-form-item>
+
+                <mu-form-item prop="switch" label="OneDrive账户">
+                    <div style="width: 100%">
+                        <mu-button small @click="addAccount" v-if="form.multi"
+                                   style="position: absolute; right: 0; top: 0;">增加
+                        </mu-button>
+
+                        <br>
+                        <mu-paper v-for="(account, index) in form.accounts" class="account-container" :z-depth="1">
+                            <mu-button v-if="form.multi && form.accounts.length !== 1"
+                                       @click="form.accounts.splice(index, 1)" flat small color="red"
+                                       class="close-btn">X
+                            </mu-button>
+
+                            <div>
+
+                                <mu-form-item prop="select" label="版本">
+                                    <mu-select v-model="account.provider">
+                                        <mu-option label="官方" value="MS"></mu-option>
+                                        <mu-option label="官方-自定义" value="MSC"></mu-option>
+                                        <mu-option label="世纪互联" value="CN"></mu-option>
+                                    </mu-select>
+                                </mu-form-item>
+                            </div>
+                            <div class="item">
+                                <label id="account_name">名称: </label>
+                                <input id="account_name" type="text" v-model="account.name"
+                                       placeholder="账户名称, 开启多账户时显示">
+
+                            </div>
+                            <div class="item">
+                                <label for="account_path">路径: </label>
+                                <input id="account_path" type="text" v-model="account.path" placeholder="需要列目录的路径">
+
+                            </div>
+                            <div class="item">
+                                <label id="account_path_image">图床路径: </label>
+                                <input id="account_path_image" type="text" v-model="account.path_image"
+                                       placeholder="默认不启用">
+
+                            </div>
+                            <div v-if="account.provider === 'MSC'">
+                                <a href="javascript:void(0);" @click="handleRegisterApp(account)"
+                                   style="display: inline-block;float: right">Register a app</a>
+                                <div class="item">
+                                    <label for="redirect_uri">Uri:</label>
+                                    <input id="redirect_uri" type="text" v-model="account.oauth.redirect_uri"
+                                           placeholder="redirect_uri">
+
+                                </div>
+                                <div class="item">
+                                    <label for="client_id">Id:</label>
+                                    <input id="client_id" type="text" v-model="account.oauth.client_id"
+                                           placeholder="client_id">
+
+                                </div>
+                                <div class="item">
+                                    <label for="client_secret">Secret:</label>
+                                    <input id="client_secret" type="text" v-model="account.oauth.client_secret"
+                                           placeholder="client_secret">
+
+                                </div>
+                            </div>
+                            <div class="item">
+                                <label>登录:</label>
+                                <mu-badge v-if="account.refresh_token" content="已登录" color="green"></mu-badge>
+                                <a v-else href="javascript:;" @click="handleAuth(account)">点击登录</a>
+                            </div>
+                        </mu-paper>
+                    </div>
+                </mu-form-item>
+
+                <mu-form-item prop="input" label="代理">
+                    <mu-text-field v-model="form.proxy" placeholder="可为空, 程序内请求OneDrive使用的代理"></mu-text-field>
+                </mu-form-item>
+                <mu-form-item prop="input" label="目录密码文件">
+                    <mu-text-field v-model="form.password_file" placeholder="可为空，填写后此文件内容将作为当前目录密码"></mu-text-field>
+                </mu-form-item>
+                <mu-form-item prop="input" label="管理员密码">
+                    <mu-text-field v-model="form.admin_password" placeholder="可为空，填写后将可以在线管理文件"></mu-text-field>
+                </mu-form-item>
+
+            </mu-form>
+
+
+            <div class="item" style="text-align: center; margin-top: 24px">
+                <mu-button color="primary" @click="handleViewConfig">生成配置</mu-button>
+            </div>
+
+            <br>
+            <br>
+        </mu-paper>
+    </div>
+    <script type='text/javascript'>
+
+        <?php
+        echo 'var state=' . json_encode($state) . ';';
+        ?>
+
+        window.onload = function () {
+            var insideOAuth = <?php echo json_encode([
+                'MS' => OneDrive::APP_MS,
+                'CN' => OneDrive::APP_MS_CN
+            ]) ?>;
+
+            Vue.use(MuseUI);
+            Vue.use(MuseUIMessage);
+            new Vue({
+                el: '#app',
+                data: function () {
+                    return {
+                        error: null,
+                        form: {
+                            name: 'My Index',
+                            multi: false,
+                            accounts: [],
+                            proxy: '',
+                            password_file: '.password.txt',
+                            admin_password: ''
+                        },
+                        config: null
+                    }
+                },
+                watch: {
+                    form: {
+                        handler: function () {
+                            this.config = JSON.stringify(this.form);
+                            localStorage.setItem('config', this.config);
+                        },
+                        deep: true
+                    }
+                },
+                mounted: function () {
+                    var config = localStorage.getItem('config');
+                    if (config) {
+                        config = JSON.parse(config);
+                        if (state.refresh_token) {
+                            if (state.refresh_token.constructor === String) {
+                                for (var i = 0; i < config.accounts.length; i++) {
+                                    if (config.accounts[i].name === state.name) {
+                                        config.accounts[i].refresh_token = state.refresh_token;
+                                        break;
+                                    }
+                                }
+                            } else if (state.refresh_token.constructor === Object) {
+                                this.error = state.refresh_token.error_description ? state.refresh_token.error_description : state.refresh_token;
+                            }
+                        }
+                        this.form = config;
+                    } else {
+                        this.addAccount();
+                    }
+                    document.getElementById('app').style.display = '';
+                },
+                methods: {
+                    handleRegisterApp: function (account) {
+                        var lang = 'zh-cn';
+                        var ru = 'https://developer.microsoft.com/' + lang + '/graph/quick-start?appID=_appId_&appName=_appName_&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&platform=option-php';
+                        var deepLink = '/quickstart/graphIO?publicClientSupport=false&appName=one_scf&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&allowImplicitFlow=false&ru=' + encodeURIComponent(ru);
+                        var url = 'https://apps.dev.microsoft.com/?deepLink=' + encodeURIComponent(deepLink);
+                        window.open(url, '_blank');
+                    },
+                    addAccount: function () {
+                        this.form.accounts.push({
+                            name: 'disk_' + (this.form.accounts.length + 1),
+                            provider: 'MS',
+                            path: '/',
+                            path_image: '',
+                            refresh_token: '',
+                            oauth: {
+                                redirect_uri: 'https://onedrivefly.github.io',
+                                client_id: '',
+                                client_secret: ''
+                            }
+                        });
+                    },
+                    handleAuth: function (account) {
+                        if (!account.name) {
+                            return alert('请填写账户名称');
+                        }
+                        var oauth;
+                        switch (account.provider) {
+                            default:
+                            case 'MS':
+                                oauth = insideOAuth['MS'];
+                                break;
+                            case 'CN':
+                                oauth = insideOAuth['CN'];
+                                break;
+                        }
+
+                        if (account.provider === 'MSC') {
+                            for (var key in account.oauth) {
+                                if (account.oauth.hasOwnProperty(key)) {
+                                    if (oauth.hasOwnProperty(key)) {
+                                        oauth[key] = account.oauth[key]
+                                    }
+                                }
+                            }
+                        }
+
+                        var return_url = location.protocol + "//" + location.host + location.pathname;
+                        var state = {
+                            name: account.name,
+                            return_url: return_url,
+                            oauth: oauth
+                        };
+                        location.href = oauth['oauth_url'] + 'authorize?scope=' + oauth['scope'] +
+                            '&response_type=code&client_id=' + oauth['client_id'] +
+                            '&redirect_uri=' + oauth['redirect_uri'] + '&state=' + encodeURIComponent(JSON.stringify(state));
+                    },
+                    handleViewConfig: function () {
+                        if (!this.form.accounts.length) {
+                            this.$alert('请至少添加一个账号');
+                            return;
+                        }
+                        for (var i = 0; i < this.form.accounts.length; i++) {
+                            if (!this.form.accounts[i].refresh_token) {
+                                this.$alert('第' + i + '个账户未登录，请登录后重试');
+                                return;
+                            }
+                        }
+
+
+                        var config = "    public static $config = [\n" +
+                            "        'name' => '" + this.form.name + "',\n" +
+                            "        'multi' => " + (this.form.multi ? 1 : 0) + ",\n" +
+                            "        'accounts' => [\n";
+
+
+                        this.form.accounts.forEach(function (account) {
+                            config += "            [\n" +
+                                "                'name' => '" + account.name + "',\n" +
+                                "                'provider' => '" + account.provider + "',\n" +
+                                "                'path' => '" + account.path + "',\n" +
+                                "                'path_image' => ['" + account.path_image + "'],\n";
+                            if (account.provider === 'MSC') {
+                                config += "                'oauth' => [\n" +
+                                    "                    'redirect_uri' => '" + account.oauth.redirect_uri + "',\n" +
+                                    "                    'client_id' => '" + account.oauth.client_id + "',\n" +
+                                    "                    'client_secret' => '" + account.oauth.client_secret + "'\n" +
+                                    "                ],\n";
+                            }
+                            config += "                'refresh_token' => '" + account.refresh_token + "'\n" +
+                                "            ]\n" +
+                                "        ],\n";
+                        });
+                        config +=
+                            "        'debug' => false,\n" +
+                            "        'proxy' => '" + this.form.proxy + "',\n" +
+                            "        'password_file' => '" + this.form.password_file + "',\n" +
+                            "        'admin_password' => '" + this.form.admin_password + "',\n" +
+                            "    ];";
+                        this.$alert(null, '配置已生成', {
+                            content: function (h) {
+                                return h('textarea', {
+                                    attrs: {
+                                        rows: 24
+                                    }
+                                }, [config]);
+                            },
+                            width: '90%',
+                            className: 'config-dialog'
+                        })
+                    }
+                }
+            })
+        }
+    </script>
+    </body>
+    </html>
+    <?php
+
+    $html = ob_get_clean();
+    return response($html);
+}
+
+function message($message, $title, $description = null, $status = 200, $headers = [])
 {
     @ob_start();
     ?>
@@ -246,6 +640,7 @@ function message($message, $title, $status = 200, $headers = [])
     <div class="flex-center position-ref full-height">
         <div class="content">
             <div class="title"><?php echo $message; ?></div>
+            <?php echo $description ? $description : ''; ?>
         </div>
     </div>
     </body>
@@ -306,7 +701,7 @@ function render($account, $path, $files)
     if ($base_url == '') $base_url = '/';
     $status_code = 200;
 
-    $is_image_path = in_array($path['relative'], $account['path_image']);
+    $is_image_path = in_array($path['absolute'], $account['path_image']);
     $is_video = false;
     $readme = false;
     @ob_start();
@@ -364,8 +759,7 @@ function render($account, $path, $files)
                 width: 80%;
                 margin: 0 auto 40px;
                 position: relative;
-                box-shadow: 0 0 32px 0 rgb(128, 128, 128);
-                border-radius: 15px;
+                box-shadow: 0 3px 3px -2px rgba(0, 0, 0, .2), 0 3px 4px 0 rgba(0, 0, 0, .14), 0 1px 8px 0 rgba(0, 0, 0, .12);
             }
 
             .list-container {

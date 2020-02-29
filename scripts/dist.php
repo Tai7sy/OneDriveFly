@@ -11,9 +11,9 @@ $index_path = $src . 'index.php';
 
 $final = "<?php\r\nnamespace {\r\n" . substr(file_get_contents($config_path), 7) . "\r\n}"
     . "?>\r\n"
-    . "<?php\r\nnamespace {\r\n" . substr(file_get_contents($functions_path), 7) . "\r\n}"
+    . "<?php\r\nnamespace {\r\n" . substr(php_strip_whitespace($functions_path), 7) . "\r\n}"
     . "?>\r\n"
-    . file_get_contents($vendor_path)
+    . php_strip_whitespace($vendor_path)
     . "?>\r\n"
     . "<?php\r\nnamespace {\r\n" . substr(file_get_contents($index_path), 50) . "\r\n}";
 
