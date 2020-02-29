@@ -1,13 +1,12 @@
 <?php
 
 $src = realpath(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..') . DIRECTORY_SEPARATOR;
-
+$dist = realpath($src . '..' . DIRECTORY_SEPARATOR . 'dist') . DIRECTORY_SEPARATOR;
 
 $config_path = $src . 'config.example.php';
-$vendor_path = $src . 'dist' . DIRECTORY_SEPARATOR . 'vendor.php';
+$vendor_path = $dist . 'vendor.php';
 $functions_path = $src . 'library' . DIRECTORY_SEPARATOR . 'functions.php';
 $index_path = $src . 'index.php';
-
 
 $final = "<?php\r\nnamespace {\r\n" . substr(file_get_contents($config_path), 7) . "\r\n}"
     . "?>\r\n"
@@ -19,4 +18,4 @@ $final = "<?php\r\nnamespace {\r\n" . substr(file_get_contents($config_path), 7)
 
 unlink($vendor_path);
 
-file_put_contents($src . 'dist' . DIRECTORY_SEPARATOR . 'index.php', $final);
+file_put_contents($dist . 'index.php', $final);

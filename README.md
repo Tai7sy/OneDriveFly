@@ -19,15 +19,29 @@ OneDriver Index Anywhere.
 
 [Aliyun FC](https://www.aliyun.com/product/fc)
 
+[Heroku](https://www.heroku.com/)
+
+will support in future
+
 [Cloudflare Workers](https://workers.cloudflare.com/)
 
 [Google Cloud Functions](https://cloud.google.com/functions)
 
+[Azure Functions](https://azure.microsoft.com/en-us/services/functions/) 
+
 # Dev
 ```shell
 git clone https://github.com/Tai7sy/OneDriveFly.git
-cd OneDriveFly
+```
+
+```shell
+cd OneDriveFly/php
 composer create-project
+```
+
+```shell
+cd OneDriveFly/nodejs
+npm build
 ```
 
 The generated files will be output to the `dist` folder

@@ -30,7 +30,7 @@
     "post-root-package-install": [
       "@php -r \"file_exists('config.php') || copy('config.example.php', 'config.php');\""
     ],
-    "post-autoload-dump": "php vendor/bin/classpreloader compile --config=scripts/preloader.php --output=dist/vendor.php && php scripts/dist.php",
+    "post-autoload-dump": "php vendor/bin/classpreloader compile --config=scripts/preloader.php --output=../dist/vendor.php && php scripts/dist.php",
     "build": "composer dump-autoload --optimize"
   },
   "repositories": {

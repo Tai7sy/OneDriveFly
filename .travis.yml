@@ -1,13 +1,17 @@
-language: php
+language: generic
 
 php:
   - '7.0'
 
+node_js:
+  - '10'
+
 before_script:
-  - curl -s http://getcomposer.org/installer | php
+  - curl -sL http://getcomposer.org/installer | php
 
 script:
-  - composer create-project
+  - cd php; composer create-project
+  - cd nodejs; npm build
 
 notifications:
   email: false
