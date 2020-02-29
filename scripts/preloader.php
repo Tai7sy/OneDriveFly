@@ -10,8 +10,15 @@ $config = ClassLoader::getIncludes(function (ClassLoader $loader) {
     $loader->register();
 
     require __DIR__ . '/../index.php';
+    try {
+        @ob_start();
+        @cgi_entry();
+        @main_handler([], []);
+    } finally {
+        @ob_clean();
+    }
+    @ob_clean();
 
-    handler(request());
 });
 
 // Add a regex filter that requires all classes to match the regex.

@@ -5,23 +5,53 @@ include __DIR__ . '/vendor/autoload.php';
 use Library\Ext;
 use Library\Lang;
 use Library\OneDrive;
+use Platforms\Normal\Normal;
 use Platforms\Platform;
+use Platforms\QCloudSCF\QCloudSCF;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 global $config;
 $config = Config::$config;
+
+
 if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
-    global $config;
-    $config['platform'] = Platform::PLATFORM_NORMAL;
-    return Platform::response(
-        handler(
-            Platform::request()
-        )
-    );
+    cgi_entry();
 }
 
 /**
+ * Normal cgi request entry
+ * @return mixed
+ */
+function cgi_entry(){
+    global $config;
+    $config['request'] = Normal::request();
+    return Normal::response(
+        handler($config['request'])
+    );
+}
+
+
+/**
+ * QCloud scf entry
+ * @param array $event
+ * @param array $context
+ * @return array
+ * @throws Exception
+ */
+function main_handler($event, $context)
+{
+    global $config;
+    $config['request'] = QCloudSCF::request($event, $context);
+
+    return QCloudSCF::response(
+        handler($config['request'])
+    );
+}
+
+
+/**
+ * core request handler
  * @param Request $request
  * @return array|Response
  */
@@ -159,25 +189,6 @@ function handler($request)
     }
 }
 
-/**
- * QCloud SCF Handler
- * @param array $event
- * @param array $context
- * @return array
- * @throws Exception
- */
-function main_handler($event, $context)
-{
-    global $config;
-    $config['platform'] = Platform::PLATFORM_QCLOUD_SCF;
-
-    return Platform::response(
-        handler(
-            Platform::request()
-        )
-    );
-}
-
 
 function message($message, $title, $status = 200, $headers = [])
 {
@@ -249,7 +260,8 @@ function message($message, $title, $status = 200, $headers = [])
  */
 function request()
 {
-    return Platform::request();
+    global $config;
+    return $config['request'];
 }
 
 function response($content = '', $status = 200, array $headers = ['content-type' => 'text/html'])
