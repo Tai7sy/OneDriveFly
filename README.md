@@ -1,8 +1,9 @@
 <h1 align="center">OneDriveFly</h1>
 <p align="center">
 <a href="https://github.com/Tai7sy/OneDriveFly/releases"><img src="https://img.shields.io/github/v/release/Tai7sy/OneDriveFly.svg?style=flat-square" alt="License"></a>
+<a href="https://github.com/Tai7sy/OneDriveFly/releases"><img src="https://img.shields.io/github/size/Tai7sy/OneDriveFly/dist/index.php.svg?style=flat-square" alt="Travis"></a>
 <a href="https://travis-ci.org/Tai7sy/OneDriveFly"><img src="https://img.shields.io/travis/Tai7sy/OneDriveFly.svg?style=flat-square" alt="Travis"></a>
-<a href="https://github.com/Tai7sy/OneDriveFly/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg?style=flat-square" alt="License"></a>
+<a href="https://github.com/Tai7sy/OneDriveFly/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square" alt="License"></a>
 <br><br>
 <a href="https://onedrivefly.github.io/install.html">Install</a>&nbsp;&nbsp;
 </p>
