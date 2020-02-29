@@ -8,3 +8,6 @@ before_script:
 
 script:
   - composer create-project
+
+notifications:
+  email: false
