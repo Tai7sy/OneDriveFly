@@ -14,7 +14,7 @@ class Config
         'multi' => 0,
         'accounts' => [
             [
-                'name' => '测试',
+                'name' => 'disk_1',
                 'path' => '',
                 'path_image' => [],
                 'oauth' => [
@@ -26,7 +26,7 @@ class Config
             ],
         ],
         'debug' => true,
-        'proxy' => '127.0.0.1:10809',
+        'proxy' => '',
         'password_file' => 'password',
         'admin_password' => '123456',
     ];

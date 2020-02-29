@@ -5,6 +5,7 @@ include __DIR__ . '/vendor/autoload.php';
 use Library\Ext;
 use Library\Lang;
 use Library\OneDrive;
+use Platforms\AliyunSC\AliyunSC;
 use Platforms\Normal\Normal;
 use Platforms\QCloudSCF\QCloudSCF;
 use Symfony\Component\HttpFoundation\Request;
@@ -12,11 +13,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 global $config;
 $config = Config::$config;
-
-
-if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
-    cgi_entry();
-}
 
 /**
  * Normal cgi request entry
@@ -39,7 +35,7 @@ function cgi_entry()
  * @return array
  * @throws Exception
  */
-function main_handler($event, $context)
+function scf_entry($event, $context)
 {
     global $config;
     $config['request'] = QCloudSCF::request($event, $context);
@@ -48,6 +44,30 @@ function main_handler($event, $context)
         handler($config['request'])
     );
 }
+
+/**
+ * Aliyun fc entry
+ * @param array $request
+ * @param array $context
+ * @return array
+ * @throws Exception
+ */
+function fc_entry($request, $context)
+{
+    global $config;
+    $config['request'] = AliyunSC::request($request, $context);
+
+    return AliyunSC::response(
+        handler($config['request'])
+    );
+}
+
+
+if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
+    cgi_entry();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 
 
 /**
@@ -59,7 +79,7 @@ function handler($request)
 {
     global $config;
 
-    define('APP_DEBUG', $config['debug']);
+    if (!defined('APP_DEBUG')) define('APP_DEBUG', $config['debug']);
     Lang::init($request->cookies->get('language'));
     date_default_timezone_set(get_timezone($request->cookies->get('timezone')));
 
@@ -193,7 +213,7 @@ function handler($request)
         }
         return render($account, $path, $files);
     } catch (Throwable $e) {
-        @ob_clean();
+        @ob_get_clean();
         try {
             $error = ['error' => ['message' => $e->getMessage()]];
             if ($config['debug']) {
@@ -201,7 +221,7 @@ function handler($request)
             }
             return render($account, $path, $error);
         } catch (Throwable $e) {
-            @ob_clean();
+            @ob_get_clean();
             return message($e->getMessage(), 'Error', $config['debug'] ? trace_error($e) : null, 500);
         }
     }
@@ -374,7 +394,7 @@ function install($request, $account)
                             <div class="item">
                                 <label>登录:</label>
                                 <mu-badge v-if="account.refresh_token" content="已登录" color="green"></mu-badge>
-                                <a v-else href="javascript:;" @click="handleAuth(account)">点击登录</a>
+                                <a v-else href="javascript:" @click="handleAuth(account)">点击登录</a>
                             </div>
                         </mu-paper>
                     </div>
@@ -1214,7 +1234,7 @@ function render($account, $path, $files)
                                                 }
                                                 if (strtolower($file['name']) === 'index.html' || strtolower($file['name']) === 'index.htm') {
                                                     $html = $account['driver']->get(path_format($path['absolute'] . '/' . $file['name']));
-                                                    @ob_clean();
+                                                    @ob_get_clean();
                                                     return response($html);
                                                 }
                                                 $index++;

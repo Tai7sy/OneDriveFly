@@ -3,7 +3,7 @@
 $src = realpath(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..') . DIRECTORY_SEPARATOR;
 
 
-$config_path = $src . 'config.php';
+$config_path = $src . 'config.example.php';
 $vendor_path = $src . 'dist' . DIRECTORY_SEPARATOR . 'vendor.php';
 $functions_path = $src . 'library' . DIRECTORY_SEPARATOR . 'functions.php';
 $index_path = $src . 'index.php';
