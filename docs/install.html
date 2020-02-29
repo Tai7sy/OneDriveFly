@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="//unpkg.zhimg.com/vue/dist/vue.min.js"></script>
+    <style type="text/css">
+        #app {
+
+        }
+
+        .container {
+            max-width: 640px;
+            margin: 24px auto;
+        }
+
+        .item {
+            width: 100%;
+            min-height: 24px;
+            line-height: 24px;
+            margin-bottom: 8px;
+        }
+
+        input {
+            display: inline-block;
+            outline: none !important;
+            height: 22px;
+            padding: 1px 2px;
+        }
+
+        .item > label > input[type=text] {
+            width: calc(100% - 12px);
+            width: -webkit-fill-available;
+        }
+
+        .account-container {
+            margin: 4px 0;
+            padding: 4px 8px;
+            border: 1px solid #eee;
+            border-radius: 2px;
+        }
+
+        .generate-btn {
+            display: inline-block;
+            height: 32px;
+            width: 64px;
+        }
+    </style>
+    <title>OneDriveFly</title>
+</head>
+
+<body>
+<div id="app" style="display: none">
+    <div class="container">
+        <div class="item">
+            <label>站点名称: <input type="text" v-model="name" placeholder="your site name"></label>
+        </div>
+        <div class="item">
+            <label>启用多账户:
+                <input type="checkbox" v-model="multi">
+            </label>
+        </div>
+        <div class="item">
+            <label>OneDrive账户:
+                <button @click="addAccount" v-if="multi">增加</button>
+            </label>
+            <div v-for="(account, index) in accounts" class="account-container">
+                <button v-if="multi" @click="accounts.splice(index, 1)" style="float: right">删除</button>
+                <div class="item">
+                    <label>名称:
+                        <input type="text" v-model="account.name" placeholder="账户名称, 开启多账户时显示">
+                    </label>
+                </div>
+                <div class="item">
+                    <label>路径:
+                        <input type="text" v-model="account.path" placeholder="需要列目录的路径">
+                    </label>
+                </div>
+                <div class="item">
+                    <label>图床路径:
+                        <input type="text" v-model="account.path_image" placeholder="默认不启用">
+                    </label>
+                </div>
+                <div class="item">
+                    <label v-if="account.refresh_token">已登录</label>
+                    <label v-else="account.refresh_token">授权:
+                        <button @click="handleAuth">点击登录</button>
+                    </label>
+                </div>
+            </div>
+
+        </div>
+        <div class="item">
+            <label>代理:
+                <input type="text" v-model="proxy" placeholder="socks5://127.0.0.1:1080">
+            </label>
+        </div>
+        <div class="item">
+            <label>目录密码文件:
+                <input type="text" v-model="password_file" placeholder="可为空，填写后此文件内容将作为当前目录密码">
+            </label>
+        </div>
+        <div class="item">
+            <label>管理员密码:
+                <input type="text" v-model="admin_password" placeholder="管理密码">
+            </label>
+        </div>
+        <div class="item" style="text-align: center; margin-top: 24px">
+            <button class="generate-btn">生成</button>
+        </div>
+    </div>
+</div>
+<script type="text/javascript">
+    window.onload = function () {
+        new Vue({
+            el: '#app',
+            data: function () {
+                return {
+                    name: 'My Index',
+                    multi: false,
+                    accounts: [],
+                    proxy: '',
+                    password_file: '.password.txt',
+                    admin_password: '',
+                }
+            },
+            computed: {
+                config: function () {
+
+                }
+            },
+            mounted: function () {
+                this.addAccount();
+                document.getElementById('app').style.display = '';
+            },
+            methods: {
+                addAccount: function () {
+                    this.accounts.push({
+                        name: 'Name_' + (this.accounts.length + 1),
+                        path: '/',
+                        path_image: '',
+                        refresh_token: ''
+                    });
+                },
+                handleAuth: function () {
+                    console.log('auth...');
+                }
+            }
+        })
+    }
+</script>
+</body>
+</html>

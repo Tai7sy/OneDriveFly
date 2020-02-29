@@ -22,6 +22,14 @@ OneDriver Index Anywhere.
 
 [Google Cloud Functions](https://cloud.google.com/functions)
 
+# Dev
+```shell
+git clone https://github.com/Tai7sy/OneDriveFly
+cd OneDriveFly
+composer create-project
+```
+
+The generated files will be output to the `dist` folder
 
 ## License
 MIT

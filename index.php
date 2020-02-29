@@ -23,7 +23,8 @@ if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
  * Normal cgi request entry
  * @return mixed
  */
-function cgi_entry(){
+function cgi_entry()
+{
     global $config;
     $config['request'] = Normal::request();
     return Normal::response(
@@ -264,8 +265,9 @@ function request()
     return $config['request'];
 }
 
-function response($content = '', $status = 200, array $headers = ['content-type' => 'text/html'])
+function response($content = '', $status = 200, array $headers = [])
 {
+    $headers = array_merge(['content-type' => 'text/html'], $headers);
     if (is_array($content)) $content = json_encode($content);
     return new Response(
         $content,
@@ -273,7 +275,6 @@ function response($content = '', $status = 200, array $headers = ['content-type'
         $headers
     );
 }
-
 
 function redirect($to = null, $status = 302, $headers = [])
 {
@@ -286,7 +287,6 @@ function trans($key = null, $replace = array())
 {
     return Lang::get($key, $replace);
 }
-
 
 /**
  * render view
