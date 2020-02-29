@@ -219,7 +219,7 @@ $LANG = [
         'en-US' => 'download',
         'zh-CN' => '下载',
     ],
-    'ClicktoEdit' => [
+    'ClickToEdit' => [
         'en-US' => 'Click to edit',
         'zh-CN' => '点击后编辑',
     ],

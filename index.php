@@ -1,6 +1,7 @@
 <?php
+include __DIR__ . '/vendor/autoload.php';
 
-use Doctrine\Common\Cache\FilesystemCache;
+
 use Library\Ext;
 use Library\Lang;
 use Library\OneDrive;
@@ -8,9 +9,17 @@ use Platforms\Platform;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-include __DIR__ . '/vendor/autoload.php';
-include __DIR__ . '/config.php';
-include __DIR__ . '/library/Helper.php';
+global $config;
+$config = Config::$config;
+if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
+    global $config;
+    $config['platform'] = Platform::PLATFORM_NORMAL;
+    return Platform::response(
+        handler(
+            Platform::request()
+        )
+    );
+}
 
 /**
  * @param Request $request
@@ -74,7 +83,7 @@ function handler($request)
             $response = ['error' => 'invalid action'];
             switch ($request->get('action')) {
                 case trans('Create'):
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('create_name')));
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('create_name'), true);
                     switch ($request->get('create_type')) {
                         default:
                         case 'file':
@@ -86,35 +95,35 @@ function handler($request)
                     }
                     break;
                 case trans('Encrypt'):
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('encrypt_folder') . '/' . urlencode2($config['password_file'])));
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('encrypt_folder') . '/' . $config['password_file'], true);
                     $response = $account['driver']->put($file_path, $request->get('encrypt_newpass'));
                     break;
                 case trans('Move'):
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('move_name')));
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('move_name'), true);
                     if ($request->get('move_folder') === '/../') {
                         if ($path['absolute'] == '/') {
                             $response = ['error' => 'cannot move'];
                             break;
                         }
-                        $new_path = path_format($path['absolute'] . '/../');
+                        $new_path = $path['absolute'] . '/../';
 
                     } else {
-                        $new_path = path_format($path['absolute'] . '/' . urlencode2($request->get('move_folder')) . '/');
+                        $new_path = $path['absolute'] . '/' . $request->get('move_folder');
                     }
-                    $new_path .= urlencode2($request->get('move_name'));
+                    $new_path = path_format($new_path . '/' . $request->get('move_name'), true);
                     $response = $account['driver']->move($file_path, $new_path);
                     break;
                 case trans('Rename'):
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('rename_oldname')));
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('rename_oldname'), true);
                     $response = $account['driver']->move($file_path, path_format($path['absolute'] . '/' . $request->get('rename_newname')));
                     break;
                 case trans('Delete'):
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('delete_name')));
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('delete_name'), true);
                     $response = $account['driver']->delete($file_path);
                     break;
                 case 'upload':
-                    $file_path = path_format($path['absolute'] . '/' . urlencode2($request->get('filename')));
-                    $response = $account['driver']->uploadLink($file_path);
+                    $file_path = path_format($path['absolute'] . '/' . $request->get('filename'), true);
+                    $response = $account['driver']->uploadUrl($file_path);
                     break;
             }
             return response($response, !$response || isset($response['error']) ? 500 : 200);
@@ -148,16 +157,6 @@ function handler($request)
             return message($e->getMessage(), 'Error', 500);
         }
     }
-}
-
-if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
-    global $config;
-    $config['platform'] = Platform::PLATFORM_NORMAL;
-    return Platform::response(
-        handler(
-            Platform::request()
-        )
-    );
 }
 
 /**
@@ -245,85 +244,37 @@ function message($message, $title, $status = 200, $headers = [])
 }
 
 
-function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
+/**
+ * @return Request
+ */
+function request()
 {
-    $constEnv = [
-        //'admin',
-        'adminloginpage', 'domain_path', 'imgup_path', 'passfile', 'private_path', 'public_path', 'sitename', 'language'
-    ];
-    asort($constEnv);
-    $html = '<title>SCF ' . trans('Setup') . '</title>';
-    if ($_POST['updateProgram'] == trans('updateProgram')) {
-        $response = json_decode(scf_update_code($function_name, $Region, $namespace), true)['Response'];
-        if (isset($response['Error'])) {
-            $html = $response['Error']['Code'] . '<br>
-' . $response['Error']['Message'] . '<br><br>
-function_name:' . $_SERVER['function_name'] . '<br>
-Region:' . $_SERVER['Region'] . '<br>
-namespace:' . $namespace . '<br>
-<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
-            $title = 'Error';
-        } else {
-            $html .= trans('UpdateSuccess') . '<br>
-<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
-            $title = trans('Setup');
-        }
-        return message($html, $title);
-    }
-    if ($_POST['submit1']) {
-        foreach ($_POST as $k => $v) {
-            if (in_array($k, $constEnv)) {
-                $tmp[$k] = $v;
-            }
-        }
-        echo scf_update_env($tmp, $function_name, $Region, $namespace);
-        $html .= '<script>location.href=location.href</script>';
-    }
-    if ($_GET['preview']) {
-        $preurl = $_SERVER['PHP_SELF'] . '?preview';
-    } else {
-        $preurl = path_format($_SERVER['PHP_SELF'] . '/');
-    }
-    $html .= '
-        <a href="' . $preurl . '">' . trans('Back') . '</a>&nbsp;&nbsp;&nbsp;
-        <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
-    if ($needUpdate) {
-        $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
-        <form action="" method="post">
-            <input type="submit" name="updateProgram" value="' . trans('updateProgram') . '">
-        </form>';
-    } else {
-        $html .= trans('NotNeedUpdate');
-    }
-    $html .= '
-    <form action="" method="post">
-    <table border=1 width=100%>';
-    foreach ($constEnv as $key) {
-        if ($key == 'language') {
-            $html .= '
-        <tr>
-            <td><label>' . $key . '</label></td>
-            <td width=100%>
-                <select name="' . $key . '">';
-            foreach (Lang::all()['languages'] as $key1 => $value1) {
-                $html .= '
-                    <option value="' . $key1 . '" ' . ($key1 == getenv($key) ? 'selected="selected"' : '') . '>' . $value1 . '</option>';
-            }
-            $html .= '
-                </select>
-            </td>
-        </tr>';
-        } else $html .= '
-        <tr>
-            <td><label>' . $key . '</label></td>
-            <td width=100%><input type="text" name="' . $key . '" value="' . getenv($key) . '" placeholder="' . trans('EnvironmentsDescription.' . $key) . '" style="width:100%"></td>
-        </tr>';
-    }
-    $html .= '</table>
-    <input type="submit" name="submit1" value="' . trans('Setup') . '">
-    </form>';
-    return message($html, trans('Setup'));
+    return Platform::request();
 }
+
+function response($content = '', $status = 200, array $headers = ['content-type' => 'text/html'])
+{
+    if (is_array($content)) $content = json_encode($content);
+    return new Response(
+        $content,
+        $status,
+        $headers
+    );
+}
+
+
+function redirect($to = null, $status = 302, $headers = [])
+{
+    return response('redirecting', $status, array_merge($headers, [
+        'location' => $to
+    ]));
+}
+
+function trans($key = null, $replace = array())
+{
+    return Lang::get($key, $replace);
+}
+
 
 /**
  * render view
@@ -770,13 +721,13 @@ function render($account, $path, $files)
                         <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px; border: 0"></iframe>
 ';
                                         } elseif (in_array($ext, Ext::TXT)) {
-                                            $txt_content = htmlspecialchars(curl_request($files['@microsoft.graph.downloadUrl']));
+                                            $txt_content = htmlspecialchars(curl($files['@microsoft.graph.downloadUrl']));
                                             ?>
                                             <div id="txt">
                                                 <?php if ($is_admin) { ?>
                                                 <form id="txt-form" action="" method="POST">
-                                                    <a onclick="enableedit(this);"
-                                                       id="txt-editbutton"><?php echo trans('ClicktoEdit'); ?></a>
+                                                    <a onclick="previewEnableEdit(this);"
+                                                       id="txt-editbutton"><?php echo trans('ClickToEdit'); ?></a>
                                                     <a id="txt-save"
                                                        style="display:none"><?php echo trans('Save'); ?></a>
                                                     <?php } ?>
@@ -788,7 +739,7 @@ function render($account, $path, $files)
                                         <?php } elseif (in_array($ext, ['md'])) {
                                             echo '
                         <div class="markdown-body" id="readme">
-                            <textarea id="readme-md" style="display:none;">' . curl_request($files['@microsoft.graph.downloadUrl']) . '</textarea>
+                            <textarea id="readme-md" style="display:none;">' . curl($files['@microsoft.graph.downloadUrl']) . '</textarea>
                         </div>
 ';
                                         } else {
@@ -1147,7 +1098,7 @@ function render($account, $path, $files)
         </div>
         <?php
     } ?>
-    <span style="color: #f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $_SERVER['REMOTE_ADDR']; ?></span>
+    <span style="color: #f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $request->getClientIp(); ?></span>
     </body>
 
     <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
@@ -1435,192 +1386,183 @@ function render($account, $path, $files)
             var table1 = document.createElement('table');
             document.getElementById('upload_div').appendChild(table1);
             table1.setAttribute('class', 'list-table');
-            var timea = new Date().getTime();
-            var i = 0;
-            getUploadUrl(i);
+            var now = new Date().getTime();
+            var index = 0;
+            getUploadUrl(index);
 
-            function getUploadUrl(i) {
-                var file = files[i];
+            function getUploadUrl(index) {
+                var file = files[index];
+                var elementTag = now + '_' + index;
                 var tr1 = document.createElement('tr');
                 table1.appendChild(tr1);
                 tr1.setAttribute('data-to', '1');
                 var td1 = document.createElement('td');
                 tr1.appendChild(td1);
                 td1.setAttribute('style', 'width:30%');
-                td1.setAttribute('id', 'upfile_td1_' + timea + '_' + i);
+                td1.setAttribute('id', 'upload_td1_' + elementTag);
                 td1.innerHTML = file.name + '<br>' + sizeFormat(file.size);
-                var td2 = document.createElement('td');
-                tr1.appendChild(td2);
-                td2.setAttribute('id', 'upfile_td2_' + timea + '_' + i);
-                td2.innerHTML = '<?php echo trans('GetUploadLink'); ?> ...';
+                var tip = document.createElement('td');
+                tr1.appendChild(tip);
+                tip.setAttribute('id', 'upload_td2_' + elementTag);
+                tip.innerHTML = '<?php echo trans('GetUploadLink'); ?> ...';
                 if (file.size > 100 * 1024 * 1024 * 1024) {
-                    td2.innerHTML = '<font color="red"><?php echo trans('UpFileTooLarge'); ?></font>';
+                    tip.innerHTML = '<font color="red"><?php echo trans('UpFileTooLarge'); ?></font>';
                     showUploadBtn();
                     return;
                 }
-                var xhr = new XMLHttpRequest();
-                xhr.open('POST', '');
-                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                xhr.send('action=upload&filename=' + encodeURIComponent(file.name) + '&filesize=' + file.size + '&lastModified=' + file.lastModified);
-                xhr.onload = function () {
-                    td2.innerHTML = '<span style="color: red">' + xhr.responseText + '</span>';
-                    if (xhr.status === 200) {
-                        var html = JSON.parse(xhr.responseText);
-                        if (!html['uploadUrl']) {
-                            td2.innerHTML = '<span style="color: red">' + xhr.responseText + '</span><br>';
-                            showUploadBtn();
+
+                function createNewUploadUrl() {
+                    var ajax = new XMLHttpRequest();
+                    ajax.open('POST', '');
+                    ajax.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    ajax.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                    ajax.send('action=upload&filename=' + encodeURIComponent(file.name) + '&filesize=' + file.size + '&lastModified=' + file.lastModified);
+                    ajax.onload = function () {
+                        tip.innerHTML = '<span style="color: red">' + ajax.responseText + '</span>';
+                        var res = JSON.parse(ajax.responseText);
+                        if (res && res['uploadUrl']) {
+                            localStorage.setItem('_tmp_uploadUrl_' + file.name, res['uploadUrl']);
+                            tip.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
+                            upload(file, res['uploadUrl'], elementTag, 0);
                         } else {
-                            td2.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
-                            upload(file, html['uploadUrl'], timea + '_' + i);
+                            tip.innerHTML = '<span style="color: red">' + ajax.responseText + '</span><br>';
+                            showUploadBtn();
+                        }
+                        if (index < files.length - 1) {
+                            index++;
+                            getUploadUrl(index);
                         }
                     }
-                    if (i < files.length - 1) {
-                        i++;
-                        getUploadUrl(i);
-                    }
+                }
+
+                var uploadUrl = localStorage.getItem('_tmp_uploadUrl_' + file.name);
+                if (uploadUrl) {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', uploadUrl); // 先获取一下上次上次到哪里了
+                    xhr.send();
+                    xhr.onload = function () {
+                        if (xhr.status === 200) {
+                            var res = JSON.parse(xhr.responseText);
+                            var positionLast = Number(res['nextExpectedRanges'][0].slice(0, res['nextExpectedRanges'][0].indexOf('-')));
+                            tip.innerHTML = '<?php echo trans('UploadStart'); ?> ...';
+                            upload(file, uploadUrl, elementTag, positionLast);
+                        } else if (xhr.status === 404) {
+                            // upload session does not esists, create a new one
+                            createNewUploadUrl();
+                        } else {
+                            tip.innerHTML = '<span style="color:red;">' + xhr.responseText + '</span>';
+                            showUploadBtn();
+                        }
+                    };
+                } else {
+                    createNewUploadUrl();
                 }
             }
         }
 
 
-        function upload(file, url, tdnum) {
-            var label = document.getElementById('upfile_td2_' + tdnum);
+        function upload(file, url, elementTag, uploadOffset) {
+            var tip1 = document.getElementById('upload_td1_' + elementTag);
+            var tip2 = document.getElementById('upload_td2_' + elementTag);
             var reader = new FileReader();
-            var StartStr = '';
-            var MiddleStr = '';
-            var StartTime;
-            var EndTime;
-            var newstartsize = 0;
-            if (!!file) {
-                var asize = 0;
-                var totalsize = file.size;
-                var xhr2 = new XMLHttpRequest();
-                xhr2.open("GET", url);
-                //xhr2.setRequestHeader('X-Requested-With','XMLHttpRequest');
-                xhr2.send(null);
-                xhr2.onload = function () {
-                    if (xhr2.status === 200) {
-                        var html = JSON.parse(xhr2.responseText);
-                        var a = html['nextExpectedRanges'][0];
-                        newstartsize = Number(a.slice(0, a.indexOf("-")));
-                        StartTime = new Date();
-                        <?php if ($is_admin) { ?>
-                        asize = newstartsize;
-                        <?php } ?>
-                        if (newstartsize === 0) {
-                            StartStr = '<?php echo trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
-                        } else {
-                            StartStr = '<?php echo trans('LastUpload'); ?>' + sizeFormat(newstartsize) + '<br><?php echo trans('ThisTime') . trans('UploadStartAt'); ?>:' + StartTime.toLocaleString() + '<br>';
-                        }
-                        var chunksize = 5 * 1024 * 1024; // chunk size, max 60M. 每小块上传大小，最大60M，微软建议10M
-                        if (totalsize > 200 * 1024 * 1024) chunksize = 10 * 1024 * 1024;
+            var tipStart = '';
+            var tipMiddle = '';
 
-                        function readblob(start) {
-                            var end = start + chunksize;
-                            var blob = file.slice(start, end);
-                            reader.readAsArrayBuffer(blob);
-                        }
+            var timeStart = new Date();
+            var timeEnd;
+            var positionLast = 0;
 
-                        readblob(asize);
-                        <?php if (!$is_admin) { ?>
-                        var spark = new SparkMD5.ArrayBuffer();
-                        <?php } ?>
-                        reader.onload = function (e) {
-                            var binary = this.result;
-                            <?php if (!$is_admin) { ?>
-                            spark.append(binary);
-                            if (asize < newstartsize) {
-                                asize += chunksize;
-                                readblob(asize);
-                                return;
-                            }
-                            <?php } ?>
-                            var xhr = new XMLHttpRequest();
-                            xhr.open("PUT", url, true);
-                            //xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
-                            var bsize = asize + e.loaded - 1;
-                            xhr.setRequestHeader('Content-Range', 'bytes ' + asize + '-' + bsize + '/' + totalsize);
-                            xhr.upload.onprogress = function (e) {
-                                if (e.lengthComputable) {
-                                    var tmptime = new Date();
-                                    var tmpspeed = e.loaded * 1000 / (tmptime.getTime() - C_starttime.getTime());
-                                    var remaintime = (totalsize - asize - e.loaded) / tmpspeed;
-                                    label.innerHTML = StartStr + '<?php echo trans('Upload'); ?> ' + sizeFormat(asize + e.loaded) + ' / ' + sizeFormat(totalsize) + ' = ' + ((asize + e.loaded) * 100 / totalsize).toFixed(2) + '% <?php echo trans('AverageSpeed'); ?>:' + sizeFormat((asize + e.loaded - newstartsize) * 1000 / (tmptime.getTime() - StartTime.getTime())) + '/s<br><?php echo trans('CurrentSpeed'); ?> ' + sizeFormat(tmpspeed) + '/s <?php echo trans('Expect'); ?> ' + remaintime.toFixed(1) + 's';
-                                }
-                            };
-                            var C_starttime = new Date();
-                            xhr.onload = function () {
-                                if (xhr.status < 500) {
-                                    var response = JSON.parse(xhr.responseText);
-                                    if (response['size'] > 0) {
-                                        // contain size, upload finish. 有size说明是最终返回，上传结束
-                                        var xhr3 = new XMLHttpRequest();
-                                        xhr3.open("POST", '');
-                                        xhr3.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                                        xhr3.send('action=del_upload_cache&filename=.' + file.lastModified + '_' + file.size + '_' + encodeURIComponent(file.name) + '.tmp');
-                                        xhr3.onload = function () {
-                                            console.log(xhr3.responseText + ',' + xhr3.status);
-                                        };
-                                        <?php if (!$is_admin) { ?>
-                                        var xhr4 = new XMLHttpRequest();
-                                        xhr4.open("POST", '');
-                                        xhr4.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                                        var filemd5 = spark.end();
-                                        xhr4.send('action=uploaded_rename&filename=' + encodeURIComponent(file.name) + '&filemd5=' + filemd5);
-                                        xhr4.onload = function () {
-                                            console.log(xhr4.responseText + ',' + xhr4.status);
-                                            var filename;
-                                            if (xhr4.status === 200) filename = JSON.parse(xhr4.responseText)['name'];
-                                            if (xhr4.status === 409) filename = filemd5 + file.name.substr(file.name.indexOf('.'));
-                                            if (!filename || !filename.length) {
-                                                alert('<?php echo trans('UploadErrorUpAgain'); ?>');
-                                                showUploadBtn();
-                                                return;
-                                            }
-                                            var lasturl = location.href;
-                                            if (lasturl.substr(lasturl.length - 1) !== '/') lasturl += '/';
-                                            lasturl += filename + '?preview';
-                                            //alert(lasturl);
-                                            window.open(lasturl);
-                                        };
-                                        <?php } ?>
-                                        EndTime = new Date();
-                                        MiddleStr = '<?php echo trans('EndAt'); ?>:' + EndTime.toLocaleString() + '<br>';
-                                        if (newstartsize === 0) {
-                                            MiddleStr += '<?php echo trans('AverageSpeed'); ?>:' + sizeFormat(totalsize * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
-                                        } else {
-                                            MiddleStr += '<?php echo trans('ThisTime') . trans('AverageSpeed'); ?>:' + sizeFormat((totalsize - newstartsize) * 1000 / (EndTime.getTime() - StartTime.getTime())) + '/s<br>';
-                                        }
-                                        document.getElementById('upfile_td1_' + tdnum).innerHTML = '<font color="green"><?php if (!$is_admin) { ?>' + filemd5 + '<br><?php } ?>' + document.getElementById('upfile_td1_' + tdnum).innerHTML + '<br><?php echo trans('UploadComplete'); ?></font>';
-                                        label.innerHTML = StartStr + MiddleStr;
-                                        showUploadBtn();
-                                        <?php if ($is_admin) { ?>
-                                        addFileToList(response);
-                                        <?php } ?>
-                                    } else {
-                                        if (!response['nextExpectedRanges']) {
-                                            label.innerHTML = '<span style="color: red">' + xhr.responseText + '</span><br>';
-                                        } else {
-                                            var a = response['nextExpectedRanges'][0];
-                                            asize = Number(a.slice(0, a.indexOf("-")));
-                                            readblob(asize);
-                                        }
-                                    }
-                                } else readblob(asize);
-                            };
-                            xhr.send(binary);
-                        }
-                    } else {
-                        if (window.location.pathname.indexOf('%23') > 0 || file.name.indexOf('%23') > 0) {
-                            label.innerHTML = '<span style="color:red;"><?php echo trans('UploadFail23'); ?></span>';
-                        } else {
-                            label.innerHTML = '<span style="color:red;">' + xhr2.responseText + '</span>';
-                        }
-                        showUploadBtn();
-                    }
-                }
+            if (!file) {
+                return;
             }
+
+            var sizeUploaded = 0;
+            var sizeTotal = file.size;
+
+            positionLast = uploadOffset;
+            <?php if ($is_admin) { ?>
+            sizeUploaded = positionLast;
+            <?php } ?>
+            if (positionLast === 0) {
+                tipStart = '<?php echo trans('UploadStartAt'); ?>:' + timeStart.toLocaleString() + '<br>';
+            } else {
+                tipStart = '<?php echo trans('LastUpload'); ?>' + sizeFormat(positionLast) + '<br><?php
+                    echo trans('ThisTime') . trans('UploadStartAt');
+                    ?>:' + timeStart.toLocaleString() + '<br>';
+            }
+            var sizePerChunk = 5 * 1024 * 1024; // chunk size, max 60M. 每小块上传大小，最大60M，微软建议10M
+            if (sizeTotal > 200 * 1024 * 1024) sizePerChunk = 10 * 1024 * 1024;
+
+            function readBlob(start) {
+                var end = start + sizePerChunk;
+                var blob = file.slice(start, end);
+                reader.readAsArrayBuffer(blob);
+            }
+
+            readBlob(sizeUploaded);
+            <?php if (!$is_admin) { ?>
+            var spark = new SparkMD5.ArrayBuffer();
+            <?php } ?>
+            reader.onload = function (reader) {
+                var binary = this.result;
+                <?php if (!$is_admin) { ?>
+                spark.append(binary);
+                if (sizeUploaded < positionLast) {
+                    sizeUploaded += sizePerChunk;
+                    readBlob(sizeUploaded);
+                    return;
+                }
+                <?php } ?>
+                var xhr2 = new XMLHttpRequest();
+                xhr2.open('PUT', url, true);
+                var positionEnd = sizeUploaded + reader.loaded - 1;
+                var thisNow = new Date();
+                xhr2.setRequestHeader('Content-Range', 'bytes ' + sizeUploaded + '-' + positionEnd + '/' + sizeTotal);
+                xhr2.upload.onprogress = function (xhr2) {
+                    if (xhr2.lengthComputable) {
+                        var now = new Date();
+                        var speed = xhr2.loaded * 1000 / (now.getTime() - thisNow.getTime());
+                        var remainSecond = (sizeTotal - sizeUploaded - xhr2.loaded) / speed;
+                        tip2.innerHTML = tipStart + '<?php echo trans('Upload'); ?> ' + sizeFormat(sizeUploaded + xhr2.loaded) +
+                            ' / ' + sizeFormat(sizeTotal) + ' = ' + ((sizeUploaded + xhr2.loaded) * 100 / sizeTotal).toFixed(2) +
+                            '% <?php echo trans('AverageSpeed'); ?>:' + sizeFormat((sizeUploaded + xhr2.loaded - positionLast) * 1000 / (now.getTime() - timeStart.getTime())) +
+                            '/s<br><?php echo trans('CurrentSpeed'); ?> ' + sizeFormat(speed) + '/s <?php echo trans('Expect'); ?> ' +
+                            remainSecond.toFixed(1) + 's';
+                    }
+                };
+                xhr2.onload = function () {
+                    if (xhr2.status < 500) {
+                        var response = JSON.parse(xhr2.responseText);
+                        if (response['size'] > 0) {
+                            // contain size, upload finish. 有size说明是最终返回，上传结束
+                            localStorage.removeItem('_tmp_uploadUrl_' + file.name);
+                            timeEnd = new Date();
+                            tipMiddle = '<?php echo trans('EndAt'); ?>:' + timeEnd.toLocaleString() + '<br>';
+                            if (positionLast === 0) {
+                                tipMiddle += '<?php echo trans('AverageSpeed'); ?>:' + sizeFormat(sizeTotal * 1000 / (timeEnd.getTime() - timeStart.getTime())) + '/s<br>';
+                            } else {
+                                tipMiddle += '<?php echo trans('ThisTime') . trans('AverageSpeed'); ?>:' + sizeFormat((sizeTotal - positionLast) * 1000 / (timeEnd.getTime() - timeStart.getTime())) + '/s<br>';
+                            }
+                            tip1.innerHTML = '<font color="green">' + tip1.innerHTML + '<br><?php echo trans('UploadComplete'); ?></font>';
+                            tip2.innerHTML = tipStart + tipMiddle;
+                            showUploadBtn();
+                            <?php if ($is_admin) { ?>
+                            addFileToList(response);
+                            <?php } ?>
+                        } else {
+                            if (!response['nextExpectedRanges']) {
+                                tip2.innerHTML = '<span style="color: red">' + xhr2.responseText + '</span><br>';
+                            } else {
+                                var a = response['nextExpectedRanges'][0];
+                                sizeUploaded = Number(a.slice(0, a.indexOf("-")));
+                                readBlob(sizeUploaded);
+                            }
+                        }
+                    } else readBlob(sizeUploaded);
+                };
+                xhr2.send(binary);
+            }
+
         }
 
         <?php
@@ -1634,10 +1576,9 @@ function render($account, $path, $files)
             location.reload();
         }
 
-        function enableedit(obj) {
+        function previewEnableEdit(obj) {
             document.getElementById('txt-a').readOnly = !document.getElementById('txt-a').readOnly;
-            //document.getElementById('txt-editbutton').innerHTML=(document.getElementById('txt-editbutton').innerHTML=='取消编辑')?'点击后编辑':'取消编辑';
-            obj.innerHTML = (obj.innerHTML === '<?php echo trans('CancelEdit'); ?>') ? '<?php echo trans('ClicktoEdit'); ?>' : '<?php echo trans('CancelEdit'); ?>';
+            obj.innerHTML = (obj.innerHTML === '<?php echo trans('CancelEdit'); ?>') ? '<?php echo trans('ClickToEdit'); ?>' : '<?php echo trans('CancelEdit'); ?>';
             document.getElementById('txt-save').style.display = document.getElementById('txt-save').style.display === '' ? 'none' : '';
         }
 
@@ -1732,7 +1673,7 @@ function render($account, $path, $files)
             td1.setAttribute('class', 'file');
             var a1 = document.createElement('a');
             a1.href = location.href + '/' + obj.name;
-            a1.innerText = obj.name;
+            a1.innerText = decodeURIComponent(obj.name);
             a1.target = '_blank';
             var td2 = document.createElement('td');
             td2.setAttribute('class', 'updated_at');

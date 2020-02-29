@@ -16,6 +16,10 @@
   },
   "autoload": {
     "classmap": [
+      "config.php"
+    ],
+    "files": [
+      "library/functions.php"
     ],
     "psr-4": {
       "Platforms\\": "platforms/",

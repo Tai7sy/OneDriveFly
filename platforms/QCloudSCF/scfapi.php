@@ -135,3 +135,85 @@ function scf_update_code($function_name, $Region, $Namespace)
     //echo urlencode($signStr);
     return post2url('https://' . $host, $data . '&Signature=' . urlencode($signStr));
 }
+
+
+
+function EnvOpt($function_name, $Region, $namespace = 'default', $needUpdate = 0)
+{
+    $constEnv = [
+        //'admin',
+        'adminloginpage', 'domain_path', 'imgup_path', 'passfile', 'private_path', 'public_path', 'sitename', 'language'
+    ];
+    asort($constEnv);
+    $html = '<title>SCF ' . trans('Setup') . '</title>';
+    if ($_POST['updateProgram'] == trans('updateProgram')) {
+        $response = json_decode(scf_update_code($function_name, $Region, $namespace), true)['Response'];
+        if (isset($response['Error'])) {
+            $html = $response['Error']['Code'] . '<br>
+' . $response['Error']['Message'] . '<br><br>
+function_name:' . $_SERVER['function_name'] . '<br>
+Region:' . $_SERVER['Region'] . '<br>
+namespace:' . $namespace . '<br>
+<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
+            $title = 'Error';
+        } else {
+            $html .= trans('UpdateSuccess') . '<br>
+<button onclick="location.href = location.href;">' . trans('Reflesh') . '</button>';
+            $title = trans('Setup');
+        }
+        return message($html, $title);
+    }
+    if ($_POST['submit1']) {
+        foreach ($_POST as $k => $v) {
+            if (in_array($k, $constEnv)) {
+                $tmp[$k] = $v;
+            }
+        }
+        echo scf_update_env($tmp, $function_name, $Region, $namespace);
+        $html .= '<script>location.href=location.href</script>';
+    }
+    if ($_GET['preview']) {
+        $preurl = $_SERVER['PHP_SELF'] . '?preview';
+    } else {
+        $preurl = path_format($_SERVER['PHP_SELF'] . '/');
+    }
+    $html .= '
+        <a href="' . $preurl . '">' . trans('Back') . '</a>&nbsp;&nbsp;&nbsp;
+        <a href="https://github.com/qkqpttgf/OneDrive_SCF">Github</a><br>';
+    if ($needUpdate) {
+        $html .= '<pre>' . $_SERVER['github_version'] . '</pre>
+        <form action="" method="post">
+            <input type="submit" name="updateProgram" value="' . trans('updateProgram') . '">
+        </form>';
+    } else {
+        $html .= trans('NotNeedUpdate');
+    }
+    $html .= '
+    <form action="" method="post">
+    <table border=1 width=100%>';
+    foreach ($constEnv as $key) {
+        if ($key == 'language') {
+            $html .= '
+        <tr>
+            <td><label>' . $key . '</label></td>
+            <td width=100%>
+                <select name="' . $key . '">';
+            foreach (Lang::all()['languages'] as $key1 => $value1) {
+                $html .= '
+                    <option value="' . $key1 . '" ' . ($key1 == getenv($key) ? 'selected="selected"' : '') . '>' . $value1 . '</option>';
+            }
+            $html .= '
+                </select>
+            </td>
+        </tr>';
+        } else $html .= '
+        <tr>
+            <td><label>' . $key . '</label></td>
+            <td width=100%><input type="text" name="' . $key . '" value="' . getenv($key) . '" placeholder="' . trans('EnvironmentsDescription.' . $key) . '" style="width:100%"></td>
+        </tr>';
+    }
+    $html .= '</table>
+    <input type="submit" name="submit1" value="' . trans('Setup') . '">
+    </form>';
+    return message($html, trans('Setup'));
+}
