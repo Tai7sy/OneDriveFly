@@ -1,0 +1,10 @@
+language: php
+
+php:
+  - '7.0'
+
+before_script:
+  - curl -s http://getcomposer.org/installer | php
+
+script:
+  - composer create-project

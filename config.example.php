@@ -22,8 +22,8 @@ class Config
                     'client_id' => '298004f7-c751-4d56-aba3-b058c0154fd2',
                     'client_secret' => '-^(!BpF-l9/z#[+*5t)alg;[V@;;)_];)@j#^E;T(&^4uD;*&?#2)>H?'
                 ],
-                'refresh_token' => ''
-            ]
+                'refresh_token' => '',
+            ],
         ],
         'debug' => true,
         'proxy' => '127.0.0.1:10809',

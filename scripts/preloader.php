@@ -10,6 +10,9 @@ $config = ClassLoader::getIncludes(function (ClassLoader $loader) {
     $loader->register();
 
     require __DIR__ . '/../index.php';
+    global $config;
+    $config['multi'] = 0;
+
     try {
         @ob_start();
         @cgi_entry();
