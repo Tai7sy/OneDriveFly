@@ -8,8 +8,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class QCloudSCF implements PlatformInterface
 {
-    private static $request;
-
     public static function request($event, $context)
     {
         $event = json_decode(json_encode($event), true);
@@ -51,17 +49,14 @@ class QCloudSCF implements PlatformInterface
             $_COOKIE[urldecode(substr($cookie, 0, $pos))] = urldecode(substr($cookie, $pos + 1));
         }
 
-        if (!self::$request) {
-            self::$request = new Request(
-                isset($event['queryString']) ? $event['queryString'] : [],
-                $_POST,
-                [],
-                $_COOKIE,
-                [],
-                $_SERVER
-            );
-        }
-        return self::$request;
+        return new Request(
+            isset($event['queryString']) ? $event['queryString'] : [],
+            $_POST,
+            [],
+            $_COOKIE,
+            [],
+            $_SERVER
+        );
     }
 
     /**

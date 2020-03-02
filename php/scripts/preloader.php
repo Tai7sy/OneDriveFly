@@ -12,11 +12,24 @@ $config = ClassLoader::getIncludes(function (ClassLoader $loader) {
     require __DIR__ . '/../index.php';
     global $config;
     $config['multi'] = 0;
+    $config['accounts'][0]['refresh_token'] = '';
 
     try {
+        new \Library\Ext();
+        new \Library\Lang();
+        new \Library\OneDrive(null);
+
+        new \Platforms\Normal\Normal();
+        new \Platforms\QCloudSCF\QCloudSCF();
+        new \Platforms\AliyunSC\AliyunSC();
+
+        new \Doctrine\Common\Cache\FilesystemCache(sys_get_temp_dir(),'.delete_me');
+        new \Doctrine\Common\Cache\VoidCache();
+        new \Symfony\Component\HttpFoundation\Request();
+        new \Symfony\Component\HttpFoundation\Response();
+
         @ob_start();
         @cgi_entry();
-        @main_handler([], []);
     } finally {
         @ob_clean();
     }

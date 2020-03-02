@@ -1,0 +1,54 @@
+{
+  "name": "onedrive-fly",
+  "author": "",
+  "version": "1.0.0",
+  "description": "onedrive index anywhere",
+  "license": "MIT",
+  "private": true,
+  "main": "index.js",
+  "apiConfig": {
+
+  },
+  "dependencies": {
+    "axios": "^0.19.2",
+    "google-protobuf": "^3.11.2",
+    "grpc": "^1.24.0",
+    "noogger": "^0.1.8",
+    "systeminformation": "^4.21.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.8.3",
+    "@babel/plugin-transform-regenerator": "^7.8.3",
+    "@babel/plugin-transform-runtime": "^7.8.3",
+    "@babel/preset-env": "^7.8.3",
+    "@babel/runtime": "^7.8.3",
+    "babel-eslint": "^10.0.3",
+    "babel-loader": "^8.0.6",
+    "grpc-tools": "^1.8.1",
+    "source-map-support": "^0.5.16",
+    "webpack": "^4.41.5",
+    "webpack-cli": "^3.3.10"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:production": "webpack --config build/webpack.config.js --mode=production --watch",
+    "build:development": "webpack --config build/webpack.config.js --mode=development --watch"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true,
+      "es6": true
+    },
+    "extends": [
+      "eslint:recommended"
+    ],
+    "rules": {
+      "no-console": "off",
+      "no-unused-vars": "off",
+      "no-irregular-whitespace": "off",
+      "no-constant-condition": "off"
+    },
+    "parser": "babel-eslint"
+  }
+}
