@@ -147,7 +147,7 @@ function handler($request)
 
         // ajax request
         if ($request->isXmlHttpRequest()) {
-            $response = ['error' => 'invalid action'];
+            $response = false;
             switch ($request->get('action')) {
                 case trans('Create'):
                     $file_path = path_format($path['absolute'] . '/' . $request->get('create_name'), true);
@@ -193,7 +193,8 @@ function handler($request)
                     $response = $account['driver']->uploadUrl($file_path);
                     break;
             }
-            return response($response, !$response || isset($response['error']) ? 500 : 200);
+            if ($response)
+                return response($response, !$response || isset($response['error']) ? 500 : 200);
         }
 
         // preview -> edit file
@@ -245,427 +246,369 @@ function install($request, $account)
         }
     }
     @ob_start();
+    // @formatter:off
     ?>
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta http-equiv="content-type" content="text/html; charset=UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <script type="text/javascript" src="//unpkg.zhimg.com/vue/dist/vue.min.js"></script>
-        <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui/dist/muse-ui.js"></script>
-        <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.js"></script>
-        <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui/dist/muse-ui.css">
-        <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.css">
-        <!--suppress CssInvalidPropertyValue -->
-        <style type="text/css">
-            #app {
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="//unpkg.zhimg.com/vue/dist/vue.min.js"></script>
+    <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui/dist/muse-ui.js"></script>
+    <script type="text/javascript" src="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.js"></script>
+    <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui/dist/muse-ui.css">
+    <link rel="stylesheet" type="text/css" href="//unpkg.zhimg.com/muse-ui-message/dist/muse-ui-message.css">
+    <!--suppress CssInvalidPropertyValue -->
+    <style type="text/css">
+        .container{max-width:800px;margin:24px auto}
+        .title{text-align:center;margin:0;padding:20px 0 12px}
+        .close-btn{float:right;width:32px;min-width:unset}
+        .account-container{margin:4px 0;padding:4px 8px}
+        .account-container input[type=text]{outline:0!important;width:280px;border:1px solid #e5e5e5;border-radius:2px;padding:2px 4px}
+        .account-container .item{min-height:32px}
+        .account-container .item>label{display:inline-block;width:64px}
+        .config-dialog textarea{color:#fff;background:#222;font-size:12px;width:100%;outline:0!important;white-space:nowrap;overflow:scroll}
 
-            }
+    </style>
+    <title>OneDriveFly</title>
+</head>
+<body>
+<div id="app" style="display: none">
+    <mu-paper class="container" :z-depth="3">
+        <h2 class="title">安装</h2>
+        <mu-alert color="error" v-if="error" style="margin-bottom: 24px">
+            {{error}}
+        </mu-alert>
+        <mu-form :model="form" class="mu-demo-form" label-position="top">
+            <mu-form-item prop="input" label="站点名称">
+                <mu-text-field v-model="form.name" placeholder="网站名称"></mu-text-field>
+            </mu-form-item>
+            <mu-form-item prop="switch" label="启用多账户">
+                <mu-switch v-model="form.multi"></mu-switch>
+            </mu-form-item>
 
-            .container {
-                max-width: 800px;
-                margin: 24px auto;
-            }
+            <mu-form-item prop="switch" label="OneDrive账户">
+                <div style="width: 100%">
+                    <mu-button small @click="addAccount" v-if="form.multi"
+                               style="position: absolute; right: 0; top: 0;">增加
+                    </mu-button>
 
-            .title {
-                text-align: center;
-                margin: 0;
-                padding: 20px 0 12px;
-            }
-
-            .close-btn {
-                float: right;
-                width: 32px;
-                min-width: unset;
-            }
-
-            .account-container {
-                margin: 4px 0;
-                padding: 4px 8px;
-            }
-
-            .account-container input[type=text] {
-                outline: none !important;
-                width: 280px;
-                border: 1px solid #e5e5e5;
-                border-radius: 2px;
-                padding: 2px 4px;
-            }
-
-            .account-container .item {
-                min-height: 32px;
-            }
-
-            .account-container .item > label {
-                display: inline-block;
-                width: 64px;
-            }
-
-            .config-dialog textarea {
-                color: white;
-                background: rgb(34, 34, 34);
-                font-size: 12px;
-                width: 100%;
-                outline: none !important;
-                white-space: nowrap;
-                overflow: scroll;
-            }
-
-        </style>
-        <title>OneDriveFly</title>
-    </head>
-    <body>
-    <div id="app" style="display: none">
-        <mu-paper class="container" :z-depth="3">
-            <h2 class="title">安装</h2>
-            <mu-alert color="error" v-if="error" style="margin-bottom: 24px">
-                {{error}}
-            </mu-alert>
-            <mu-form :model="form" class="mu-demo-form" label-position="top">
-                <mu-form-item prop="input" label="站点名称">
-                    <mu-text-field v-model="form.name" placeholder="网站名称"></mu-text-field>
-                </mu-form-item>
-                <mu-form-item prop="switch" label="启用多账户">
-                    <mu-switch v-model="form.multi"></mu-switch>
-                </mu-form-item>
-
-                <mu-form-item prop="switch" label="OneDrive账户">
-                    <div style="width: 100%">
-                        <mu-button small @click="addAccount" v-if="form.multi"
-                                   style="position: absolute; right: 0; top: 0;">增加
+                    <br>
+                    <mu-paper v-for="(account, index) in form.accounts" class="account-container" :z-depth="1">
+                        <mu-button v-if="form.multi && form.accounts.length !== 1"
+                                   @click="form.accounts.splice(index, 1)" flat small color="red"
+                                   class="close-btn">X
                         </mu-button>
 
-                        <br>
-                        <mu-paper v-for="(account, index) in form.accounts" class="account-container" :z-depth="1">
-                            <mu-button v-if="form.multi && form.accounts.length !== 1"
-                                       @click="form.accounts.splice(index, 1)" flat small color="red"
-                                       class="close-btn">X
-                            </mu-button>
+                        <div>
 
-                            <div>
+                            <mu-form-item prop="select" label="版本">
+                                <mu-select v-model="account.provider">
+                                    <mu-option label="官方" value="MS"></mu-option>
+                                    <mu-option label="官方-自定义" value="MSC"></mu-option>
+                                    <mu-option label="世纪互联" value="CN"></mu-option>
+                                </mu-select>
+                            </mu-form-item>
+                        </div>
+                        <div class="item">
+                            <label id="account_name">名称: </label>
+                            <input id="account_name" type="text" v-model="account.name"
+                                   placeholder="账户名称, 开启多账户时显示">
 
-                                <mu-form-item prop="select" label="版本">
-                                    <mu-select v-model="account.provider">
-                                        <mu-option label="官方" value="MS"></mu-option>
-                                        <mu-option label="官方-自定义" value="MSC"></mu-option>
-                                        <mu-option label="世纪互联" value="CN"></mu-option>
-                                    </mu-select>
-                                </mu-form-item>
+                        </div>
+                        <div class="item">
+                            <label for="account_path">路径: </label>
+                            <input id="account_path" type="text" v-model="account.path" placeholder="需要列目录的路径">
+
+                        </div>
+                        <div class="item">
+                            <label id="account_path_image">图床路径: </label>
+                            <input id="account_path_image" type="text" v-model="account.path_image"
+                                   placeholder="默认不启用">
+
+                        </div>
+                        <div v-if="account.provider === 'MSC'">
+                            <a href="javascript:void(0);" @click="handleRegisterApp(account)"
+                               style="display: inline-block;float: right">Register a app</a>
+                            <div class="item">
+                                <label for="redirect_uri">Uri:</label>
+                                <input id="redirect_uri" type="text" v-model="account.oauth.redirect_uri"
+                                       placeholder="redirect_uri">
+
                             </div>
                             <div class="item">
-                                <label id="account_name">名称: </label>
-                                <input id="account_name" type="text" v-model="account.name"
-                                       placeholder="账户名称, 开启多账户时显示">
+                                <label for="client_id">Id:</label>
+                                <input id="client_id" type="text" v-model="account.oauth.client_id"
+                                       placeholder="client_id">
 
                             </div>
                             <div class="item">
-                                <label for="account_path">路径: </label>
-                                <input id="account_path" type="text" v-model="account.path" placeholder="需要列目录的路径">
+                                <label for="client_secret">Secret:</label>
+                                <input id="client_secret" type="text" v-model="account.oauth.client_secret"
+                                       placeholder="client_secret">
 
                             </div>
-                            <div class="item">
-                                <label id="account_path_image">图床路径: </label>
-                                <input id="account_path_image" type="text" v-model="account.path_image"
-                                       placeholder="默认不启用">
+                        </div>
+                        <div class="item">
+                            <label>登录:</label>
+                            <mu-badge v-if="account.refresh_token" content="已登录" color="green"></mu-badge>
+                            <a v-else href="javascript:" @click="handleAuth(account)">点击登录</a>
+                        </div>
+                    </mu-paper>
+                </div>
+            </mu-form-item>
 
-                            </div>
-                            <div v-if="account.provider === 'MSC'">
-                                <a href="javascript:void(0);" @click="handleRegisterApp(account)"
-                                   style="display: inline-block;float: right">Register a app</a>
-                                <div class="item">
-                                    <label for="redirect_uri">Uri:</label>
-                                    <input id="redirect_uri" type="text" v-model="account.oauth.redirect_uri"
-                                           placeholder="redirect_uri">
+            <mu-form-item prop="input" label="代理">
+                <mu-text-field v-model="form.proxy" placeholder="可为空, 程序内请求OneDrive使用的代理"></mu-text-field>
+            </mu-form-item>
+            <mu-form-item prop="input" label="目录密码文件">
+                <mu-text-field v-model="form.password_file" placeholder="可为空，填写后此文件内容将作为当前目录密码"></mu-text-field>
+            </mu-form-item>
+            <mu-form-item prop="input" label="管理员密码">
+                <mu-text-field v-model="form.admin_password" placeholder="可为空，填写后将可以在线管理文件"></mu-text-field>
+            </mu-form-item>
 
-                                </div>
-                                <div class="item">
-                                    <label for="client_id">Id:</label>
-                                    <input id="client_id" type="text" v-model="account.oauth.client_id"
-                                           placeholder="client_id">
-
-                                </div>
-                                <div class="item">
-                                    <label for="client_secret">Secret:</label>
-                                    <input id="client_secret" type="text" v-model="account.oauth.client_secret"
-                                           placeholder="client_secret">
-
-                                </div>
-                            </div>
-                            <div class="item">
-                                <label>登录:</label>
-                                <mu-badge v-if="account.refresh_token" content="已登录" color="green"></mu-badge>
-                                <a v-else href="javascript:" @click="handleAuth(account)">点击登录</a>
-                            </div>
-                        </mu-paper>
-                    </div>
-                </mu-form-item>
-
-                <mu-form-item prop="input" label="代理">
-                    <mu-text-field v-model="form.proxy" placeholder="可为空, 程序内请求OneDrive使用的代理"></mu-text-field>
-                </mu-form-item>
-                <mu-form-item prop="input" label="目录密码文件">
-                    <mu-text-field v-model="form.password_file" placeholder="可为空，填写后此文件内容将作为当前目录密码"></mu-text-field>
-                </mu-form-item>
-                <mu-form-item prop="input" label="管理员密码">
-                    <mu-text-field v-model="form.admin_password" placeholder="可为空，填写后将可以在线管理文件"></mu-text-field>
-                </mu-form-item>
-
-            </mu-form>
+        </mu-form>
 
 
-            <div class="item" style="text-align: center; margin-top: 24px">
-                <mu-button color="primary" @click="handleViewConfig">生成配置</mu-button>
-            </div>
+        <div class="item" style="text-align: center; margin-top: 24px">
+            <mu-button color="primary" @click="handleViewConfig">生成配置</mu-button>
+        </div>
 
-            <br>
-            <br>
-        </mu-paper>
-    </div>
-    <script type='text/javascript'>
+        <br>
+        <br>
+    </mu-paper>
+</div>
+<script type='text/javascript'>
 
-        <?php
-        echo 'var state=' . json_encode($state) . ';';
-        ?>
+    <?php
+    echo 'var state=' . json_encode($state) . ';';
+    ?>
 
-        window.onload = function () {
-            var insideOAuth = <?php echo json_encode([
-                'MS' => OneDrive::APP_MS,
-                'CN' => OneDrive::APP_MS_CN
-            ]) ?>;
+    window.onload = function () {
+        var insideOAuth = <?php echo json_encode([
+            'MS' => OneDrive::APP_MS,
+            'CN' => OneDrive::APP_MS_CN
+        ]) ?>;
 
-            Vue.use(MuseUI);
-            Vue.use(MuseUIMessage);
-            new Vue({
-                el: '#app',
-                data: function () {
-                    return {
-                        error: null,
-                        form: {
-                            name: 'My Index',
-                            multi: false,
-                            accounts: [],
-                            proxy: '',
-                            password_file: '.password.txt',
-                            admin_password: ''
-                        },
-                        config: null
-                    }
-                },
-                watch: {
+        Vue.use(MuseUI);
+        Vue.use(MuseUIMessage);
+        new Vue({
+            el: '#app',
+            data: function () {
+                return {
+                    error: null,
                     form: {
-                        handler: function () {
-                            this.config = JSON.stringify(this.form);
-                            localStorage.setItem('config', this.config);
-                        },
-                        deep: true
-                    }
-                },
-                mounted: function () {
-                    var config = localStorage.getItem('config');
-                    if (config) {
-                        config = JSON.parse(config);
-                        if (state.refresh_token) {
-                            if (state.refresh_token.constructor === String) {
-                                for (var i = 0; i < config.accounts.length; i++) {
-                                    if (config.accounts[i].name === state.name) {
-                                        config.accounts[i].refresh_token = state.refresh_token;
-                                        break;
-                                    }
-                                }
-                            } else if (state.refresh_token.constructor === Object) {
-                                this.error = state.refresh_token.error_description ? state.refresh_token.error_description : state.refresh_token;
-                            }
-                        }
-                        this.form = config;
-                    } else {
-                        this.addAccount();
-                    }
-                    document.getElementById('app').style.display = '';
-                },
-                methods: {
-                    handleRegisterApp: function (account) {
-                        var lang = 'zh-cn';
-                        var ru = 'https://developer.microsoft.com/' + lang + '/graph/quick-start?appID=_appId_&appName=_appName_&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&platform=option-php';
-                        var deepLink = '/quickstart/graphIO?publicClientSupport=false&appName=one_scf&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&allowImplicitFlow=false&ru=' + encodeURIComponent(ru);
-                        var url = 'https://apps.dev.microsoft.com/?deepLink=' + encodeURIComponent(deepLink);
-                        window.open(url, '_blank');
+                        name: 'My Index',
+                        multi: false,
+                        accounts: [],
+                        proxy: '',
+                        password_file: '.password.txt',
+                        admin_password: ''
                     },
-                    addAccount: function () {
-                        this.form.accounts.push({
-                            name: 'disk_' + (this.form.accounts.length + 1),
-                            provider: 'MS',
-                            path: '/',
-                            path_image: '',
-                            refresh_token: '',
-                            oauth: {
-                                redirect_uri: 'https://onedrivefly.github.io',
-                                client_id: '',
-                                client_secret: ''
-                            }
-                        });
+                    config: null
+                }
+            },
+            watch: {
+                form: {
+                    handler: function () {
+                        this.config = JSON.stringify(this.form);
+                        localStorage.setItem('config', this.config);
                     },
-                    handleAuth: function (account) {
-                        if (!account.name) {
-                            return alert('请填写账户名称');
-                        }
-                        var oauth;
-                        switch (account.provider) {
-                            default:
-                            case 'MS':
-                                oauth = insideOAuth['MS'];
-                                break;
-                            case 'CN':
-                                oauth = insideOAuth['CN'];
-                                break;
-                        }
-
-                        if (account.provider === 'MSC') {
-                            for (var key in account.oauth) {
-                                if (account.oauth.hasOwnProperty(key)) {
-                                    if (oauth.hasOwnProperty(key)) {
-                                        oauth[key] = account.oauth[key]
-                                    }
+                    deep: true
+                }
+            },
+            mounted: function () {
+                var config = localStorage.getItem('config');
+                if (config) {
+                    config = JSON.parse(config);
+                    if (state.refresh_token) {
+                        if (state.refresh_token.constructor === String) {
+                            for (var i = 0; i < config.accounts.length; i++) {
+                                if (config.accounts[i].name === state.name) {
+                                    config.accounts[i].refresh_token = state.refresh_token;
+                                    break;
                                 }
                             }
+                        } else if (state.refresh_token.constructor === Object) {
+                            this.error = state.refresh_token.error_description ? state.refresh_token.error_description : state.refresh_token;
                         }
+                    }
+                    this.form = config;
+                } else {
+                    this.addAccount();
+                }
+                document.getElementById('app').style.display = '';
+            },
+            methods: {
+                handleRegisterApp: function (account) {
+                    var lang = 'zh-cn';
+                    var ru = 'https://developer.microsoft.com/' + lang + '/graph/quick-start?appID=_appId_&appName=_appName_&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&platform=option-php';
+                    var deepLink = '/quickstart/graphIO?publicClientSupport=false&appName=one_scf&redirectUrl=' + encodeURIComponent(account.oauth.redirect_uri) + '&allowImplicitFlow=false&ru=' + encodeURIComponent(ru);
+                    var url = 'https://apps.dev.microsoft.com/?deepLink=' + encodeURIComponent(deepLink);
+                    window.open(url, '_blank');
+                },
+                addAccount: function () {
+                    this.form.accounts.push({
+                        name: 'disk_' + (this.form.accounts.length + 1),
+                        provider: 'MS',
+                        path: '/',
+                        path_image: '',
+                        refresh_token: '',
+                        oauth: {
+                            redirect_uri: 'https://onedrivefly.github.io',
+                            client_id: '',
+                            client_secret: ''
+                        }
+                    });
+                },
+                handleAuth: function (account) {
+                    if (!account.name) {
+                        return alert('请填写账户名称');
+                    }
+                    var oauth;
+                    switch (account.provider) {
+                        default:
+                        case 'MS':
+                            oauth = insideOAuth['MS'];
+                            break;
+                        case 'CN':
+                            oauth = insideOAuth['CN'];
+                            break;
+                    }
 
-                        var return_url = location.protocol + "//" + location.host + location.pathname;
-                        var state = {
-                            name: account.name,
-                            return_url: return_url,
-                            oauth: oauth
-                        };
-                        location.href = oauth['oauth_url'] + 'authorize?scope=' + oauth['scope'] +
-                            '&response_type=code&client_id=' + oauth['client_id'] +
-                            '&redirect_uri=' + oauth['redirect_uri'] + '&state=' + encodeURIComponent(JSON.stringify(state));
-                    },
-                    handleViewConfig: function () {
-                        if (!this.form.accounts.length) {
-                            this.$alert('请至少添加一个账号');
+                    if (account.provider === 'MSC') {
+                        for (var key in account.oauth) {
+                            if (account.oauth.hasOwnProperty(key)) {
+                                if (oauth.hasOwnProperty(key)) {
+                                    oauth[key] = account.oauth[key]
+                                }
+                            }
+                        }
+                    }
+
+                    var return_url = location.protocol + "//" + location.host + location.pathname;
+                    var state = {
+                        name: account.name,
+                        return_url: return_url,
+                        oauth: oauth
+                    };
+                    location.href = oauth['oauth_url'] + 'authorize?scope=' + oauth['scope'] +
+                        '&response_type=code&client_id=' + oauth['client_id'] +
+                        '&redirect_uri=' + oauth['redirect_uri'] + '&state=' + encodeURIComponent(JSON.stringify(state));
+                },
+                handleViewConfig: function () {
+                    if (!this.form.accounts.length) {
+                        this.$alert('请至少添加一个账号');
+                        return;
+                    }
+                    for (var i = 0; i < this.form.accounts.length; i++) {
+                        if (!this.form.accounts[i].refresh_token) {
+                            this.$alert('第' + i + '个账户未登录，请登录后重试');
                             return;
                         }
-                        for (var i = 0; i < this.form.accounts.length; i++) {
-                            if (!this.form.accounts[i].refresh_token) {
-                                this.$alert('第' + i + '个账户未登录，请登录后重试');
-                                return;
-                            }
-                        }
-
-
-                        var config = "    public static $config = [\n" +
-                            "        'name' => '" + this.form.name + "',\n" +
-                            "        'multi' => " + (this.form.multi ? 1 : 0) + ",\n" +
-                            "        'accounts' => [\n";
-
-
-                        this.form.accounts.forEach(function (account) {
-                            config += "            [\n" +
-                                "                'name' => '" + account.name + "',\n" +
-                                "                'provider' => '" + account.provider + "',\n" +
-                                "                'path' => '" + account.path + "',\n" +
-                                "                'path_image' => ['" + account.path_image + "'],\n";
-                            if (account.provider === 'MSC') {
-                                config += "                'oauth' => [\n" +
-                                    "                    'redirect_uri' => '" + account.oauth.redirect_uri + "',\n" +
-                                    "                    'client_id' => '" + account.oauth.client_id + "',\n" +
-                                    "                    'client_secret' => '" + account.oauth.client_secret + "'\n" +
-                                    "                ],\n";
-                            }
-                            config += "                'refresh_token' => '" + account.refresh_token + "'\n" +
-                                "            ]\n" +
-                                "        ],\n";
-                        });
-                        config +=
-                            "        'debug' => false,\n" +
-                            "        'proxy' => '" + this.form.proxy + "',\n" +
-                            "        'password_file' => '" + this.form.password_file + "',\n" +
-                            "        'admin_password' => '" + this.form.admin_password + "',\n" +
-                            "    ];";
-                        this.$alert(null, '配置已生成', {
-                            content: function (h) {
-                                return h('textarea', {
-                                    attrs: {
-                                        rows: 24
-                                    }
-                                }, [config]);
-                            },
-                            width: '90%',
-                            className: 'config-dialog'
-                        })
                     }
-                }
-            })
-        }
-    </script>
-    </body>
-    </html>
-    <?php
 
+
+                    var config = "    public static $config = [\n" +
+                        "        'name' => '" + this.form.name + "',\n" +
+                        "        'multi' => " + (this.form.multi ? 1 : 0) + ",\n" +
+                        "        'accounts' => [\n";
+
+
+                    this.form.accounts.forEach(function (account) {
+                        config += "            [\n" +
+                            "                'name' => '" + account.name + "',\n" +
+                            "                'provider' => '" + account.provider + "',\n" +
+                            "                'path' => '" + account.path + "',\n" +
+                            "                'path_image' => ['" + account.path_image + "'],\n";
+                        if (account.provider === 'MSC') {
+                            config += "                'oauth' => [\n" +
+                                "                    'redirect_uri' => '" + account.oauth.redirect_uri + "',\n" +
+                                "                    'client_id' => '" + account.oauth.client_id + "',\n" +
+                                "                    'client_secret' => '" + account.oauth.client_secret + "'\n" +
+                                "                ],\n";
+                        }
+                        config += "                'refresh_token' => '" + account.refresh_token + "'\n" +
+                            "            ]\n" +
+                            "        ],\n";
+                    });
+                    config +=
+                        "        'debug' => false,\n" +
+                        "        'proxy' => '" + this.form.proxy + "',\n" +
+                        "        'password_file' => '" + this.form.password_file + "',\n" +
+                        "        'admin_password' => '" + this.form.admin_password + "',\n" +
+                        "    ];";
+                    this.$alert(null, '配置已生成', {
+                        content: function (h) {
+                            return h('textarea', {
+                                attrs: {
+                                    rows: 24
+                                }
+                            }, [config]);
+                        },
+                        width: '90%',
+                        className: 'config-dialog'
+                    })
+                }
+            }
+        })
+    }
+</script>
+</body>
+</html>
+    <?php
+    // @formatter:on
     $html = ob_get_clean();
     return response($html);
 }
 
+/**
+ * @param string $message
+ * @param string $title
+ * @param string|null $description
+ * @param int $status
+ * @param array $headers
+ * @return Response
+ */
 function message($message, $title, $description = null, $status = 200, $headers = [])
 {
+    // @formatter:off
     @ob_start();
     ?>
-    <!DOCTYPE html>
-    <html lang="zh-CN">
-    <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title><?php echo $title; ?></title>
+    <title><?php echo $title; ?></title>
 
-        <!-- Fonts -->
-        <link href="https://fonts.googleapis.com/css?family=Raleway:100,600" rel="stylesheet" type="text/css">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Raleway:100,600" rel="stylesheet" type="text/css">
 
-        <!-- Styles -->
-        <style type="text/css">
-            html, body {
-                background-color: #fff;
-                color: #636b6f;
-                font-family: 'Microsoft Yahei UI', 'PingFang SC', 'Raleway', sans-serif;
-                font-weight: 100;
-                height: 100vh;
-                margin: 0
-            }
-
-            .full-height {
-                height: 100vh
-            }
-
-            .flex-center {
-                display: flex;
-                justify-content: center
-            }
-
-            .position-ref {
-                position: relative
-            }
-
-            .content {
-                text-align: center;
-                padding-top: 30vh
-            }
-
-            .title {
-                font-size: 36px;
-                padding: 20px
-            }
-        </style>
-    </head>
-    <body>
-    <div class="flex-center position-ref full-height">
-        <div class="content">
-            <div class="title"><?php echo $message; ?></div>
-            <?php echo $description ? $description : ''; ?>
-        </div>
+    <!-- Styles -->
+    <style type="text/css">
+        body,html{background-color:#fff;color:#636b6f;font-family:'Microsoft Yahei UI','PingFang SC',Raleway,sans-serif;font-weight:100;height:100vh;margin:0}
+        .full-height{height:100vh}
+        .flex-center{display:flex;justify-content:center}
+        .position-ref{position:relative}
+        .content{text-align:center;padding-top:30vh}
+        .title{font-size:36px;padding:20px}
+    </style>
+</head>
+<body>
+<div class="flex-center position-ref full-height">
+    <div class="content">
+        <div class="title"><?php echo $message; ?></div>
+        <?php echo $description ? $description : ''; ?>
     </div>
-    </body>
-    </html>
+</div>
+</body>
+</html>
     <?php
+    // @formatter:on
     $html = ob_get_clean();
     return response($html, $status, $headers);
 }
@@ -725,9 +668,10 @@ function render($account, $path, $files)
     $is_video = false;
     $readme = false;
     @ob_start();
+    // @formatter:off
     ?>
-    <!DOCTYPE html>
-    <html lang="<?php echo Lang::language(); ?>">
+<!DOCTYPE html>
+<html lang="<?php echo Lang::language(); ?>">
     <head>
         <title><?php echo ($path['relative'] === '' ? '/' : urldecode($path['relative'])) . ' - ' . $config['name']; ?></title>
         <!--
@@ -741,273 +685,48 @@ function render($account, $path, $files)
         <link rel="icon" href="<?php echo $base_url ?>favicon.ico" type="image/x-icon"/>
         <link rel="shortcut icon" href="<?php echo $base_url ?>favicon.ico" type="image/x-icon"/>
         <style type="text/css">
-            body {
-                font-family: 'Microsoft Yahei UI', 'PingFang TC', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                font-size: 14px;
-                line-height: 1em;
-                background-color: #f7f7f9;
-                color: #000
-            }
-
-            a {
-                color: #24292e;
-                cursor: pointer;
-                text-decoration: none
-            }
-
-            a:hover {
-                color: #24292e
-            }
-
-            .select-language {
-                position: absolute;
-                right: 5px;
-            }
-
-            .title {
-                text-align: center;
-                margin: 2rem 0;
-                letter-spacing: 2px;
-            }
-
-            .title a {
-                color: #333;
-                text-decoration: none
-            }
-
-            .list-wrapper {
-                width: 80%;
-                margin: 0 auto 40px;
-                position: relative;
-                box-shadow: 0 3px 3px -2px rgba(0, 0, 0, .2), 0 3px 4px 0 rgba(0, 0, 0, .14), 0 1px 8px 0 rgba(0, 0, 0, .12);
-            }
-
-            .list-container {
-                position: relative;
-                overflow: hidden;
-                border-radius: 15px;
-            }
-
-            .list-header-container {
-                position: relative
-            }
-
-            .list-header-container a.back-link {
-                color: #000;
-                display: inline-block;
-                position: absolute;
-                font-size: 16px;
-                margin: 20px 10px;
-                padding: 10px 10px;
-                vertical-align: middle;
-                text-decoration: none
-            }
-
-            .list-container, .list-header-container, .list-wrapper, a.back-link:hover, body {
-                color: #24292e
-            }
-
-            .list-header-container .table-header {
-                margin: 0;
-                border: 0 none;
-                padding: 30px 60px;
-                text-align: left;
-                font-weight: 400;
-                color: #000;
-                background-color: #f7f7f9
-            }
-
-            .list-body-container {
-                position: relative;
-                left: 0;
-                overflow-x: hidden;
-                overflow-y: auto;
-                box-sizing: border-box;
-                background: #fff
-            }
-
-            .list-table {
-                width: 100%;
-                padding: 20px;
-                border-spacing: 0
-            }
-
-            .list-table tr {
-                height: 40px
-            }
-
-            .list-table tr[data-to]:hover {
-                background: #f1f1f1
-            }
-
-            .list-table tr:first-child {
-                background: #fff
-            }
-
-            .list-table td, .list-table th {
-                padding: 0 10px;
-                text-align: left;
-                cursor: pointer;
-            }
-
-            .list-table .size, .list-table .updated_at {
-                text-align: right
-            }
-
-            .list-table .file ion-icon {
-                font-size: 15px;
-                margin-right: 5px;
-                vertical-align: bottom
-            }
-
-            .mask {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: #000;
-                filter: alpha(opacity=50);
-                opacity: 0.5;
-                z-index: 2;
-            }
-
+            body{font-family:'Microsoft Yahei UI','PingFang TC','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1em;background-color:#f7f7f9;color:#000}
+            a{color:#24292e;cursor:pointer;text-decoration:none}
+            a:hover{color:#24292e}
+            .select-language{position:absolute;right:5px}
+            .title{text-align:center;margin:2rem 0;letter-spacing:2px}
+            .title a{color:#333;text-decoration:none}
+            .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
+            .list-container{position:relative;overflow:hidden;border-radius:15px}
+            .list-header-container{position:relative}
+            .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
+            .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
+            .list-header-container .table-header{margin:0;border:0 none;padding:30px 60px;text-align:left;font-weight:400;color:#000;background-color:#f7f7f9}
+            .list-body-container{position:relative;left:0;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;background:#fff}
+            .list-table{width:100%;padding:20px;border-spacing:0}
+            .list-table tr{height:40px}
+            .list-table tr[data-to]:hover{background:#f1f1f1}
+            .list-table tr:first-child{background:#fff}
+            .list-table td,.list-table th{padding:0 10px;text-align:left;cursor:pointer}
+            .list-table .size,.list-table .updated_at{text-align:right}
+            .list-table .file ion-icon{font-size:15px;margin-right:5px;vertical-align:bottom}
+            .mask{position:absolute;left:0;top:0;width:100%;height:100%;background-color:#000;opacity:.5;z-index:2}
             <?php if ($is_admin) { ?>
-            .operate {
-                display: inline-table;
-                margin: 0;
-                list-style: none;
-            }
-
-            .operate ul {
-                position: absolute;
-                display: none;
-                background: #fffaaa;
-                border: 0 #f7f7f7 solid;
-                border-radius: 5px;
-                margin: -7px 0 0 0;
-                padding: 0 7px;
-                color: #205D67;
-                z-index: 1;
-            }
-
-            .operate:hover ul {
-                position: absolute;
-                display: inline-table;
-            }
-
-            .operate ul li {
-                padding: 7px;
-                list-style: none;
-                display: inline-table;
-            }
-
+            .operate{display:inline-table;margin:0;list-style:none}
+            .operate ul{position:absolute;display:none;background:#fffaaa;border:0 #f7f7f7 solid;border-radius:5px;margin:-7px 0 0 0;padding:0 7px;color:#205d67;z-index:1}
+            .operate:hover ul{position:absolute;display:inline-table}
+            .operate ul li{padding:7px;list-style:none;display:inline-table}
             <?php } ?>
-            .operate-model {
-                position: absolute;
-                border: 1px #CCCCCC;
-                background-color: #FFFFCC;
-                z-index: 2;
-            }
-
-            .operate-model div {
-                margin: 16px
-            }
-
-            .closeModel {
-                position: absolute;
-                right: 3px;
-                top: 3px;
-            }
-
-            .readme {
-                padding: 8px;
-                background-color: #fff;
-            }
-
-            #readme {
-                padding: 20px;
-                text-align: left
-            }
-
-            @media only screen and (max-width: 480px) {
-                .title {
-                    margin-bottom: 24px
-                }
-
-                .list-wrapper {
-                    width: 95%;
-                    margin-bottom: 24px;
-                }
-
-                .list-table {
-                    padding: 8px
-                }
-
-                .list-table td, .list-table th {
-                    padding: 0 10px;
-                    text-align: left;
-                    white-space: nowrap;
-                    overflow: auto;
-                    max-width: 80px
-                }
+            .operate-model{position:absolute;border:1px #ccc;background-color:#ffc;z-index:2}
+            .operate-model div{margin:16px}
+            .closeModel{position:absolute;right:3px;top:3px}
+            .readme{padding:8px;background-color:#fff}
+            #readme{padding:20px;text-align:left}
+            @media only screen and (max-width:480px){.title{margin-bottom:24px}
+                .list-wrapper{width:95%;margin-bottom:24px}
+                .list-table{padding:8px}
+                .list-table td,.list-table th{padding:0 10px;text-align:left;white-space:nowrap;overflow:auto;max-width:80px}
             }
         </style>
         <script type="text/javascript">
-            function setCookie(name, value, expire) {
-                if (expire !== undefined) {
-                    var expTime = new Date();
-                    expTime.setTime(expTime.getTime() + expire);
-                    document.cookie = name + '=' + encodeURI(value) + '; expires=' + expTime.toUTCString() + '; path=/'
-                } else {
-                    document.cookie = name + '=' + encodeURI(value) + '; path=/'
-                }
-            }
-
-            function getCookie(name) {
-                var parts = ('; ' + document.cookie).split('; ' + name + '=');
-                if (parts.length >= 2) return parts.pop().split(';').shift();
-            }
-
-            function loadResources(type, src, callback) {
-                var script = document.createElement(type);
-                var loaded = false;
-                if (typeof callback === 'function') {
-                    script.onload = script.onreadystatechange = function () {
-                        if (!loaded && (!script.readyState || /loaded|complete/.test(script.readyState))) {
-                            script.onload = script.onreadystatechange = null;
-                            loaded = true;
-                            callback();
-                        }
-                    }
-                }
-                if (type === 'link') {
-                    script.href = src;
-                    script.rel = 'stylesheet';
-                } else {
-                    script.src = src;
-                }
-                document.getElementsByTagName('head')[0].appendChild(script);
-            }
-
-            String.prototype.between = function (before, after) {
-                var index1 = this.indexOf(before);
-                var index2 = this.indexOf(after, index1 + 1);
-                if (index1 === -1 || index2 === -1) return null;
-                return this.substring(index1 + before.length, index2)
-            };
-
-            (function timezone() {
-                if (!getCookie('timezone')) {
-                    var now = new Date();
-                    var timezone = parseInt(0 - now.getTimezoneOffset() / 60);
-                    setCookie('timezone', timezone, 7 * 24 * 3600 * 1000); // 7 days
-                    if (timezone !== 8) {
-                        alert('Your timezone is ' + timezone + ', reload local timezone.');
-                        location.reload();
-                    }
-                }
-            })();
+            function setCookie(name,value,expire){if(expire!==undefined){var expTime=new Date();expTime.setTime(expTime.getTime()+expire);document.cookie=name+'='+encodeURI(value)+'; expires='+expTime.toUTCString()+'; path=/'}else{document.cookie=name+'='+encodeURI(value)+'; path=/'}}
+            function getCookie(name){var parts=('; '+document.cookie).split('; '+name+'=');if(parts.length>=2)return parts.pop().split(';').shift()}
+            function loadResources(type,src,callback){var script=document.createElement(type);var loaded=false;if(typeof callback==='function'){script.onload=script.onreadystatechange=function(){if(!loaded&&(!script.readyState||/loaded|complete/.test(script.readyState))){script.onload=script.onreadystatechange=null;loaded=true;callback()}}}if(type==='link'){script.href=src;script.rel='stylesheet'}else{script.src=src}document.getElementsByTagName('head')[0].appendChild(script)}String.prototype.between=function(before,after){var index1=this.indexOf(before);var index2=this.indexOf(after,index1+1);if(index1===-1||index2===-1)return null;return this.substring(index1+before.length,index2)};(function timezone(){if(!getCookie('timezone')){var now=new Date();var timezone=parseInt(0-now.getTimezoneOffset()/60);setCookie('timezone',timezone,7*24*3600*1000);if(timezone!==8){alert('Your timezone is '+timezone+', reload local timezone.');location.reload()}}})();
         </script>
     </head>
 
@@ -1111,246 +830,240 @@ function render($account, $path, $files)
                             if (isset($files['file'])) {
                                 // request is a file
                                 ?>
-                                <div style="margin: 12px 4px 4px; text-align: center">
-                                    <div style="margin: 24px">
-                                        <label>
-                                        <textarea id="url" rows="1" style="width: 100%; margin-top: 2px;"
-                                                  readonly><?php echo path_format($base_url . '/' . $path['relative']); ?></textarea>
-                                        </label>
-                                        <a style="display: inline-block; margin: 8px 0 0"
-                                           href="<?php echo path_format($base_url . '/' . $path['relative']);//$files['@microsoft.graph.downloadUrl'] ?>">
-                                            <ion-icon name="download"
-                                                      style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo trans('Download'); ?>
-                                        </a>
-                                    </div>
-                                    <div style="margin: 24px">
-                                        <?php
-                                        $ext = strtolower(substr($path['relative'], strrpos($path['relative'], '.') + 1));
-                                        if (in_array($ext, Ext::IMG)) {
-                                            echo '
-                        <img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path['relative'], strrpos($path['relative'], '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />
-';
-                                        } elseif (in_array($ext, Ext::VIDEO)) {
-                                            //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
-                                            $is_video = true;
-                                            echo '<div id="video-a0" data-url="' . $files['@microsoft.graph.downloadUrl'] . '"></div>';
-                                        } elseif (in_array($ext, Ext::MUSIC)) {
-                                            echo '
-                        <audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>
-';
-                                        } elseif (in_array($ext, ['pdf'])) {
-                                            echo '
-                        <embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">
-';
-                                        } elseif (in_array($ext, Ext::OFFICE)) {
-                                            echo '
-                        <iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px; border: 0"></iframe>
-';
-                                        } elseif (in_array($ext, Ext::TXT)) {
-                                            $txt_content = htmlspecialchars(curl($files['@microsoft.graph.downloadUrl']));
-                                            ?>
-                                            <div id="txt">
-                                                <?php if ($is_admin) { ?>
-                                                <form id="txt-form" action="" method="POST">
-                                                    <a onclick="previewEnableEdit(this);"
-                                                       id="txt-editbutton"><?php echo trans('ClickToEdit'); ?></a>
-                                                    <a id="txt-save"
-                                                       style="display:none"><?php echo trans('Save'); ?></a>
-                                                    <?php } ?>
-                                                    <label for="txt-a"></label>
-                                                    <textarea id="txt-a" name="content" readonly
-                                                              style="width: 100%; margin-top: 2px;" <?php if ($is_admin) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"'; ?> ><?php echo $txt_content; ?></textarea>
-                                                    <?php if ($is_admin) echo '</form>'; ?>
-                                            </div>
-                                        <?php } elseif (in_array($ext, ['md'])) {
-                                            echo '
-                        <div class="markdown-body" id="readme">
-                            <textarea id="readme-md" style="display:none;">' . curl($files['@microsoft.graph.downloadUrl']) . '</textarea>
-                        </div>
-';
-                                        } else {
-                                            echo '<span>' . trans('FileNotSupport') . '</span>';
-                                        } ?>
-                                    </div>
-                                </div>
+<div style="margin: 12px 4px 4px; text-align: center">
+    <div style="margin: 24px">
+        <label>
+        <textarea id="url" rows="1" style="width: 100%; margin-top: 2px;"
+                  readonly><?php echo path_format($base_url . '/' . $path['relative']); ?></textarea>
+        </label>
+        <a style="display: inline-block; margin: 8px 0 0"
+           href="<?php echo path_format($base_url . '/' . $path['relative']);//$files['@microsoft.graph.downloadUrl'] ?>">
+            <ion-icon name="download"
+                      style="line-height: 16px;vertical-align: middle;"></ion-icon>&nbsp;<?php echo trans('Download'); ?>
+        </a>
+    </div>
+    <div style="margin: 24px">
+        <?php
+        $ext = strtolower(substr($path['relative'], strrpos($path['relative'], '.') + 1));
+        if (in_array($ext, Ext::IMG)) {
+            echo '<img src="' . $files['@microsoft.graph.downloadUrl'] . '" alt="' . substr($path['relative'], strrpos($path['relative'], '/')) . '" onload="if(this.offsetWidth>document.getElementById(\'url\').offsetWidth) this.style.width=\'100%\';" />';
+        } elseif (in_array($ext, Ext::VIDEO)) {
+            //echo '<video src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></video>';
+            $is_video = true;
+            echo '<div id="video-a0" data-url="' . $files['@microsoft.graph.downloadUrl'] . '"></div>';
+        } elseif (in_array($ext, Ext::MUSIC)) {
+            echo '<audio src="' . $files['@microsoft.graph.downloadUrl'] . '" controls="controls" style="width: 100%"></audio>';
+        } elseif (in_array($ext, ['pdf'])) {
+            echo '<embed src="' . $files['@microsoft.graph.downloadUrl'] . '" type="application/pdf" width="100%" height=800px">';
+        } elseif (in_array($ext, Ext::OFFICE)) {
+            echo '<iframe id="office-a" src="https://view.officeapps.live.com/op/view.aspx?src=' . urlencode($files['@microsoft.graph.downloadUrl']) . '" style="width: 100%;height: 800px; border: 0"></iframe>';
+        } elseif (in_array($ext, Ext::TXT)) {
+            $txt_content = htmlspecialchars(curl($files['@microsoft.graph.downloadUrl']));
+            ?>
+            <div id="txt">
+                <?php if ($is_admin) { ?>
+                <form id="txt-form" action="" method="POST">
+                    <a onclick="previewEnableEdit(this);"
+                       id="txt-editbutton"><?php echo trans('ClickToEdit'); ?></a>
+                    <a id="txt-save"
+                       style="display:none"><?php echo trans('Save'); ?></a>
+                    <?php } ?>
+                    <label for="txt-a"></label>
+                    <textarea id="txt-a" name="content" readonly
+                              style="width: 100%; margin-top: 2px;" <?php if ($is_admin) echo 'onchange="document.getElementById(\'txt-save\').onclick=function(){document.getElementById(\'txt-form\').submit();}"'; ?> ><?php echo $txt_content; ?></textarea>
+                    <?php if ($is_admin) echo '</form>'; ?>
+            </div>
+        <?php } elseif (in_array($ext, ['md'])) {
+            echo '<div class="markdown-body" id="readme"><textarea id="readme-md" style="display:none;">' . curl($files['@microsoft.graph.downloadUrl']) . '</textarea></div>';
+        } else {
+            echo '<span>' . trans('FileNotSupport') . '</span>';
+        } ?>
+    </div>
+</div>
                                 <?php
                             } elseif (isset($files['folder'])) {
                                 $index = 0;
                                 ?>
-                                <table class="list-table" id="list-table">
-                                    <tr id="tr0">
-                                        <th class="file" onclick="sortTable(event, 0);"><?php echo trans('File'); ?>
-                                            &nbsp;&nbsp;&nbsp;
-                                            <button onclick="showThumbnails(this)"><?php echo trans('ShowThumbnails'); ?></button>
-                                        </th>
-                                        <th class="updated_at" style="width: 25%"
-                                            onclick="sortTable(event, 1);"><?php echo trans('EditTime'); ?></th>
-                                        <th class="size" style="width: 15%"
-                                            onclick="sortTable(event, 2);"><?php echo trans('Size'); ?></th>
-                                    </tr>
-                                    <!-- Dirs -->
-                                    <?php
-                                    // echo json_encode($files['children'], JSON_PRETTY_PRINT);
-                                    foreach ($files['children'] as $file) {
-                                        // Folders
-                                        if (isset($file['folder'])) {
-                                            $index++; ?>
-                                            <tr data-to id="tr<?php echo $index; ?>">
-                                                <td class="file">
-                                                    <?php if ($is_admin) { ?>
-                                                        <li class="operate"><?php echo trans('Operate'); ?>
-                                                            <ul>
-                                                                <li>
-                                                                    <a onclick="showModel(event,'encrypt',<?php echo $index; ?>);"><?php echo trans('Encrypt'); ?></a>
-                                                                </li>
-                                                                <li>
-                                                                    <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
-                                                                </li>
-                                                                <li>
-                                                                    <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
-                                                                </li>
-                                                                <li>
-                                                                    <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
-                                                                </li>
-                                                            </ul>
-                                                        </li>&nbsp;&nbsp;&nbsp;
-                                                    <?php } ?>
-                                                    <ion-icon name="folder"></ion-icon>
-                                                    <a id="filename_<?php echo $index; ?>"
-                                                       href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'] . '/')); ?>"><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
-                                                </td>
-                                                <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                                <td class="size"><?php echo size_format($file['size']); ?></td>
-                                            </tr>
-                                        <?php }
-                                    }
-                                    // if ($filenum) echo '<tr data-to></tr>';
-                                    foreach ($files['children'] as $file) {
-                                        // Files
-                                        if (isset($file['file'])) {
-                                            if ($is_admin || (substr($file['name'], 0, 1) !== '.' && $file['name'] !== $config['password_file'])) {
-                                                if (strtolower($file['name']) === 'readme.md' || strtolower($file['name']) === 'readme') {
-                                                    $readme = $file;
-                                                }
-                                                if (strtolower($file['name']) === 'index.html' || strtolower($file['name']) === 'index.htm') {
-                                                    $html = $account['driver']->get(path_format($path['absolute'] . '/' . $file['name']));
-                                                    @ob_get_clean();
-                                                    return response($html);
-                                                }
-                                                $index++;
-                                                ?>
-                                                <tr data-to id="tr<?php echo $index; ?>">
-                                                    <td class="file">
-                                                        <?php if ($is_admin) { ?>
-                                                            <li class="operate"><?php echo trans('Operate'); ?>
-                                                                <ul>
-                                                                    <li>
-                                                                        <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
-                                                                    </li>
-                                                                    <li>
-                                                                        <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
-                                                                    </li>
-                                                                    <li>
-                                                                        <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
-                                                                    </li>
-                                                                </ul>
-                                                            </li>&nbsp;&nbsp;&nbsp;
-                                                        <?php }
-                                                        $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
-                                                        if (in_array($ext, Ext::MUSIC)) { ?>
-                                                            <ion-icon name="musical-notes"></ion-icon>
-                                                        <?php } elseif (in_array($ext, Ext::VIDEO)) { ?>
-                                                            <ion-icon name="logo-youtube"></ion-icon>
-                                                        <?php } elseif (in_array($ext, Ext::IMG)) { ?>
-                                                            <ion-icon name="image"></ion-icon>
-                                                        <?php } elseif (in_array($ext, Ext::OFFICE)) { ?>
-                                                            <ion-icon name="paper"></ion-icon>
-                                                        <?php } elseif (in_array($ext, Ext::TXT)) { ?>
-                                                            <ion-icon name="clipboard"></ion-icon>
-                                                        <?php } elseif (in_array($ext, Ext::ZIP)) { ?>
-                                                            <ion-icon name="filing"></ion-icon>
-                                                        <?php } elseif ($ext == 'iso') { ?>
-                                                            <ion-icon name="disc"></ion-icon>
-                                                        <?php } elseif ($ext == 'apk') { ?>
-                                                            <ion-icon name="logo-android"></ion-icon>
-                                                        <?php } elseif ($ext == 'exe') { ?>
-                                                            <ion-icon name="logo-windows"></ion-icon>
-                                                        <?php } else { ?>
-                                                            <ion-icon name="document"></ion-icon>
-                                                        <?php } ?>
-                                                        <a id="filename_<?php echo $index; ?>"
-                                                           class="filename"
-                                                           href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>?preview"
-                                                           target=_blank><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
-                                                        <a href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>">
-                                                            <ion-icon name="download"></ion-icon>
-                                                        </a>
-                                                    </td>
-                                                    <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
-                                                    <td class="size"><?php echo size_format($file['size']); ?></td>
-                                                </tr>
-                                            <?php }
-                                        }
-                                    } ?>
-                                </table>
-                                <?php if ($files['folder']['childCount'] > $files['folder']['perPage']) {
-                                    $pageForm = '
-                <form action="" method="GET" id="pageForm">
-                    <input type="hidden" id="page" name="page" value="' . $files['folder']['currentPage'] . '">
-                    <table style="width: 100%; border: none">
-                        <tr>
-                            <td style="width: 60px; text-align: center">';
-                                    if ($files['folder']['currentPage'] !== 1) {
-                                        $pageForm .= '
-                                <a href="?page=' . ($files['folder']['currentPage'] - 1) . '">' . trans('PrePage') . '</a>';
-                                    }
-                                    $pageForm .= '
-                            </td>
-                            <td style="color: #888">';
-                                    for ($page = 1; $page <= $files['folder']['lastPage']; $page++) {
-                                        if ($page == $files['folder']['currentPage']) {
-                                            $pageForm .= '
-                                <span style="color: red">' . $page . '</span>';
-                                        } else {
-                                            $pageForm .= '
-                                <a href="?page=' . $page . '">' . $page . '</a>';
-                                        }
-                                    }
-                                    $pageForm .= '
-                            </td>
-                            <td style="width: 60px; text-align: center">';
-                                    if ($files['folder']['currentPage'] != $files['folder']['lastPage']) {
-                                        $pageForm .= '
-                                <a href="?page=' . ($files['folder']['lastPage'] + 1) . '">' . trans('NextPage') . '</a>';
-                                    }
-                                    $pageForm .= '
-                            </td>
-                        </tr>
-                    </table>
-                </form>';
-                                    echo $pageForm;
-                                }
-                                if ($is_admin) { ?>
-                                    <div id="upload_div" style="margin:0 0 16px 0">
-                                        <div style="text-align: center">
-                                            <input id="upload_file" type="file" name="upload_filename"
-                                                   multiple="multiple">
-                                            <input id="upload_submit" onclick="uploadPrepare();"
-                                                   value="<?php echo trans('Upload'); ?>"
-                                                   type="button">
-                                        </div>
-                                    </div>
-                                <?php }
-                            } else {
-                                $status_code = 500;
-                                echo 'Unknown path or file.';
-                                echo json_encode($files, JSON_PRETTY_PRINT);
-                            }
-                            if ($readme) {
-                                echo '
-            </div>
-        </div>
+<table class="list-table" id="list-table">
+    <tr id="tr0">
+        <th class="file" onclick="sortTable(event, 0);"><?php echo trans('File'); ?>
+            &nbsp;&nbsp;&nbsp;
+            <button onclick="showThumbnails(this)"><?php echo trans('ShowThumbnails'); ?></button>
+        </th>
+        <th class="updated_at" style="width: 25%"
+            onclick="sortTable(event, 1);"><?php echo trans('EditTime'); ?></th>
+        <th class="size" style="width: 15%"
+            onclick="sortTable(event, 2);"><?php echo trans('Size'); ?></th>
+    </tr>
+    <!-- Dirs -->
+    <?php
+    // echo json_encode($files['children'], JSON_PRETTY_PRINT);
+    foreach ($files['children'] as $file) {
+        // Folders
+        if (isset($file['folder'])) {
+            $index++; ?>
+    <tr data-to id="tr<?php echo $index; ?>">
+        <td class="file">
+            <?php if ($is_admin) { ?>
+                <li class="operate"><?php echo trans('Operate'); ?>
+                    <ul>
+                        <li>
+                            <a onclick="showModel(event,'encrypt',<?php echo $index; ?>);"><?php echo trans('Encrypt'); ?></a>
+                        </li>
+                        <li>
+                            <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
+                        </li>
+                        <li>
+                            <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
+                        </li>
+                        <li>
+                            <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
+                        </li>
+                    </ul>
+                </li>&nbsp;&nbsp;&nbsp;
+            <?php } ?>
+            <ion-icon name="folder"></ion-icon>
+            <a id="filename_<?php echo $index; ?>"
+               href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'] . '/')); ?>"><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
+        </td>
+        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+        <td class="size"><?php echo size_format($file['size']); ?></td>
+    </tr>
+        <?php }
+    }
+    // if ($filenum) echo '<tr data-to></tr>';
+    foreach ($files['children'] as $file) {
+        // Files
+        if (isset($file['file'])) {
+            if ($is_admin || (substr($file['name'], 0, 1) !== '.' && $file['name'] !== $config['password_file'])) {
+                if (strtolower($file['name']) === 'readme.md' || strtolower($file['name']) === 'readme') {
+                    $readme = $file;
+                }
+                if (strtolower($file['name']) === 'index.html' || strtolower($file['name']) === 'index.htm') {
+                    $html = $account['driver']->get(path_format($path['absolute'] . '/' . $file['name']));
+                    @ob_get_clean();
+                    return response($html);
+                }
+                $index++;
+                ?>
+    <tr data-to id="tr<?php echo $index; ?>">
+        <td class="file">
+            <?php if ($is_admin) { ?>
+            <li class="operate"><?php echo trans('Operate'); ?>
+                <ul>
+                    <li>
+                        <a onclick="showModel(event, 'rename',<?php echo $index; ?>);"><?php echo trans('Rename'); ?></a>
+                    </li>
+                    <li>
+                        <a onclick="showModel(event, 'move',<?php echo $index; ?>);"><?php echo trans('Move'); ?></a>
+                    </li>
+                    <li>
+                        <a onclick="showModel(event, 'delete',<?php echo $index; ?>);"><?php echo trans('Delete'); ?></a>
+                    </li>
+                </ul>
+            </li>&nbsp;&nbsp;&nbsp;
+            <?php }
+            $ext = strtolower(substr($file['name'], strrpos($file['name'], '.') + 1));
+            if (in_array($ext, Ext::MUSIC)) { ?>
+                <ion-icon name="musical-notes"></ion-icon>
+            <?php } elseif (in_array($ext, Ext::VIDEO)) { ?>
+                <ion-icon name="logo-youtube"></ion-icon>
+            <?php } elseif (in_array($ext, Ext::IMG)) { ?>
+                <ion-icon name="image"></ion-icon>
+            <?php } elseif (in_array($ext, Ext::OFFICE)) { ?>
+                <ion-icon name="paper"></ion-icon>
+            <?php } elseif (in_array($ext, Ext::TXT)) { ?>
+                <ion-icon name="clipboard"></ion-icon>
+            <?php } elseif (in_array($ext, Ext::ZIP)) { ?>
+                <ion-icon name="filing"></ion-icon>
+            <?php } elseif ($ext == 'iso') { ?>
+                <ion-icon name="disc"></ion-icon>
+            <?php } elseif ($ext == 'apk') { ?>
+                <ion-icon name="logo-android"></ion-icon>
+            <?php } elseif ($ext == 'exe') { ?>
+                <ion-icon name="logo-windows"></ion-icon>
+            <?php } else { ?>
+                <ion-icon name="document"></ion-icon>
+            <?php } ?>
+            <a id="filename_<?php echo $index; ?>"
+               class="filename"
+               href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>?preview"
+               target=_blank><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
+            <a href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>">
+                <ion-icon name="download"></ion-icon>
+            </a>
+        </td>
+        <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
+        <td class="size"><?php echo size_format($file['size']); ?></td>
+    </tr>
+            <?php }
+        }
+    } ?>
+</table>
+
+<?php
+    if ($files['folder']['childCount'] > $files['folder']['perPage']) {
+        $pageForm = '
+<form action="" method="GET" id="pageForm">
+    <input type="hidden" id="page" name="page" value="' . $files['folder']['currentPage'] . '">
+    <table style="width: 100%; border: none">
+        <tr>
+            <td style="width: 60px; text-align: center">';
+                    if ($files['folder']['currentPage'] !== 1) {
+                        $pageForm .= '
+                <a href="?page=' . ($files['folder']['currentPage'] - 1) . '">' . trans('PrePage') . '</a>';
+                    }
+                    $pageForm .= '
+            </td>
+            <td style="color: #888">';
+                    for ($page = 1; $page <= $files['folder']['lastPage']; $page++) {
+                        if ($page == $files['folder']['currentPage']) {
+                            $pageForm .= '
+                <span style="color: red">' . $page . '</span>';
+                        } else {
+                            $pageForm .= '
+                <a href="?page=' . $page . '">' . $page . '</a>';
+                        }
+                    }
+                    $pageForm .= '
+            </td>
+            <td style="width: 60px; text-align: center">';
+                    if ($files['folder']['currentPage'] != $files['folder']['lastPage']) {
+                        $pageForm .= '
+                <a href="?page=' . ($files['folder']['lastPage'] + 1) . '">' . trans('NextPage') . '</a>';
+                    }
+                    $pageForm .= '
+            </td>
+        </tr>
+    </table>
+</form>';
+        echo $pageForm;
+    }
+?>
+
+<?php
+if ($is_admin) { ?>
+<div id="upload_div" style="margin:0 0 16px 0">
+    <div style="text-align: center">
+        <input id="upload_file" type="file" name="upload_filename"
+               multiple="multiple">
+        <input id="upload_submit" onclick="uploadPrepare();"
+               value="<?php echo trans('Upload'); ?>"
+               type="button">
     </div>
+</div>
+<?php }
+} else {
+    $status_code = 500;
+    echo 'Unknown path or file.';
+    echo json_encode($files, JSON_PRETTY_PRINT);
+}
+if ($readme) {
+    echo '
+            </div><!-- list-body-container end -->
+        </div><!-- list-container end-->
+    </div><!-- list-wrapper end-->
+    
     <div class="list-wrapper">
         <div class="list-container">
             <div class="list-header-container">
@@ -1364,9 +1077,11 @@ function render($account, $path, $files)
                     </div>
                 </div>
 ';
-                            }
-                        }
-                    } else {
+}
+                        } // end of if-error
+                    }
+                    else // end of if-password
+                    {
                         echo '
                 <div style="padding:20px">
 	            <div style="text-align: center">
@@ -1384,7 +1099,6 @@ function render($account, $path, $files)
     <?php
     if ($is_admin) {
         if (!$request->query->has('preview')) { ?>
-
             <div id="rename_div" class="operate-model" style="display:none">
                 <div>
                     <label id="rename_label"></label><br><br>
@@ -1526,12 +1240,9 @@ function render($account, $path, $files)
     } ?>
     <span style="color: #f7f7f9"><?php echo date("Y-m-d H:i:s") . " " . trans('Week.' . date('w')) . ' ' . $request->getClientIp(); ?></span>
     </body>
-
-    <link rel="stylesheet" href="//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css">
-    <script type="text/javascript" src="//unpkg.zhimg.com/marked@0.6.2/marked.min.js"></script>
-    <?php if (isset($files['folder']) && $is_image_path && !$is_admin) { ?>
-        <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script>
-    <?php } ?>
+<?php if (isset($files['folder']) && $is_image_path && !$is_admin) { ?>
+    <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script>
+<?php } ?>
     <script type="text/javascript">
         var root = '/';
 
@@ -1561,7 +1272,10 @@ function render($account, $path, $files)
 
         var $readme = document.getElementById('readme');
         if ($readme) {
-            $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+            loadResources('script','//unpkg.zhimg.com/marked@0.6.2/marked.min.js', function() {
+                $readme.innerHTML = marked(document.getElementById('readme-md').innerText)
+            });
+            loadResources('link','//unpkg.zhimg.com/github-markdown-css@3.0.1/github-markdown.css');
         }
 
         function inputPassword() {
@@ -1650,26 +1364,10 @@ function render($account, $path, $files)
                 };
             })(unloadedResourceCount);
 
-            loadResources(
-                'link',
-                host + '/dplayer/1.25.0/DPlayer.min.css',
-                callback
-            );
-            loadResources(
-                'script',
-                host + '/dplayer/1.25.0/DPlayer.min.js',
-                callback
-            );
-            loadResources(
-                'script',
-                host + '/hls.js/0.12.4/hls.light.min.js',
-                callback
-            );
-            loadResources(
-                'script',
-                host + '/flv.js/1.5.0/flv.min.js',
-                callback
-            );
+            loadResources('link', host + '/dplayer/1.25.0/DPlayer.min.css', callback);
+            loadResources('script', host + '/dplayer/1.25.0/DPlayer.min.js', callback);
+            loadResources('script', host + '/hls.js/0.12.4/hls.light.min.js', callback);
+            loadResources('script', host + '/flv.js/1.5.0/flv.min.js', callback);
         })();
         <?php
         }
@@ -2201,8 +1899,9 @@ function render($account, $path, $files)
         }
     </script>
     <script src="//unpkg.zhimg.com/ionicons@4.4.4/dist/ionicons.js"></script>
-    </html>
+</html>
     <?php
+    // @formatter:on
     $html = ob_get_clean();
     return response($html, $status_code);
 }
