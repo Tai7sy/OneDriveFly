@@ -63,7 +63,7 @@ function fc_entry($request, $context)
 }
 
 
-if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi'])) {
+if (in_array(php_sapi_name(), ['apache2handler', 'cgi-fcgi', 'fpm-fcgi'])) {
     cgi_entry();
 }
 
@@ -117,10 +117,13 @@ function handler($request)
         $account['path'] = '/';
     }
 
+
     $path = [
         'relative' => $relative_path,
         'absolute' => path_format($account['path'] . '/' . join('/', $path))
     ];
+    $is_admin = $config['is_admin'] = !empty($config['admin_password']) && $request->cookies->get('admin_password') === $config['admin_password'];
+    $is_image_path = $config['is_image_path'] = in_array($path['absolute'], $account['path_image']);
 
     try {
         $account['driver'] = new OneDrive($account['refresh_token'],
@@ -148,57 +151,65 @@ function handler($request)
         // ajax request
         if ($request->isXmlHttpRequest()) {
             $response = false;
-            switch ($request->get('action')) {
-                case trans('Create'):
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('create_name'), true);
-                    switch ($request->get('create_type')) {
-                        default:
-                        case 'file':
-                            $response = $account['driver']->put($file_path, $request->get('create_content'));
-                            break;
-                        case 'folder':
-                            $response = $account['driver']->makeDirectory($file_path);
-                            break;
-                    }
-                    break;
-                case trans('Encrypt'):
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('encrypt_folder') . '/' . $config['password_file'], true);
-                    $response = $account['driver']->put($file_path, $request->get('encrypt_newpass'));
-                    break;
-                case trans('Move'):
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('move_name'), true);
-                    if ($request->get('move_folder') === '/../') {
-                        if ($path['absolute'] == '/') {
-                            $response = ['error' => 'cannot move'];
-                            break;
+            if ($is_admin) {
+                switch ($request->get('action')) {
+                    case trans('Create'):
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('create_name'), true);
+                        switch ($request->get('create_type')) {
+                            default:
+                            case 'file':
+                                $response = $account['driver']->put($file_path, $request->get('create_content'));
+                                break;
+                            case 'folder':
+                                $response = $account['driver']->makeDirectory($file_path);
+                                break;
                         }
-                        $new_path = $path['absolute'] . '/../';
+                        break;
+                    case trans('Encrypt'):
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('encrypt_folder') . '/' . $config['password_file'], true);
+                        $response = $account['driver']->put($file_path, $request->get('encrypt_newpass'));
+                        break;
+                    case trans('Move'):
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('move_name'), true);
+                        if ($request->get('move_folder') === '/../') {
+                            if ($path['absolute'] == '/') {
+                                $response = ['error' => 'cannot move'];
+                                break;
+                            }
+                            $new_path = $path['absolute'] . '/../';
 
-                    } else {
-                        $new_path = $path['absolute'] . '/' . $request->get('move_folder');
-                    }
-                    $new_path = path_format($new_path . '/' . $request->get('move_name'), true);
-                    $response = $account['driver']->move($file_path, $new_path);
-                    break;
-                case trans('Rename'):
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('rename_oldname'), true);
-                    $response = $account['driver']->move($file_path, path_format($path['absolute'] . '/' . $request->get('rename_newname')));
-                    break;
-                case trans('Delete'):
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('delete_name'), true);
-                    $response = $account['driver']->delete($file_path);
-                    break;
-                case 'upload':
-                    $file_path = path_format($path['absolute'] . '/' . $request->get('filename'), true);
-                    $response = $account['driver']->uploadUrl($file_path);
-                    break;
+                        } else {
+                            $new_path = $path['absolute'] . '/' . $request->get('move_folder');
+                        }
+                        $new_path = path_format($new_path . '/' . $request->get('move_name'), true);
+                        $response = $account['driver']->move($file_path, $new_path);
+                        break;
+                    case trans('Rename'):
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('rename_oldname'), true);
+                        $response = $account['driver']->move($file_path, path_format($path['absolute'] . '/' . $request->get('rename_newname')));
+                        break;
+                    case trans('Delete'):
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('delete_name'), true);
+                        $response = $account['driver']->delete($file_path);
+                        break;
+                }
             }
+
+            if ($is_admin || $is_image_path) {
+                switch ($request->get('action')) {
+                    case 'upload': // create a upload session
+                        $file_path = path_format($path['absolute'] . '/' . $request->get('filename'), true);
+                        $response = $account['driver']->uploadUrl($file_path);
+                        break;
+                }
+            }
+
             if ($response)
                 return response($response, !$response || isset($response['error']) ? 500 : 200);
         }
 
         // preview -> edit file
-        if ($request->isMethod('POST')) {
+        if ($is_admin && $request->isMethod('POST')) {
             if ($request->query->has('preview')) {
                 $account['driver']->put($path['absolute'], $request->get('content'));
             }
@@ -218,12 +229,12 @@ function handler($request)
         try {
             $error = ['error' => ['message' => $e->getMessage()]];
             if ($config['debug']) {
-                $error['error']['message'] = trace_error($e);
+                $error['error']['message'] = $e->getMessage() . error_trace($e);
             }
             return render($account, $path, $error);
         } catch (Throwable $e) {
             @ob_get_clean();
-            return message($e->getMessage(), 'Error', $config['debug'] ? trace_error($e) : null, 500);
+            return message($e->getMessage(), 'Error', $config['debug'] ? error_trace($e) : null, 500);
         }
     }
 }
@@ -659,12 +670,11 @@ function render($account, $path, $files)
     global $config;
 
     $request = request();
-    $is_admin = $request->cookies->get('admin_password') === $config['admin_password'];
+    $is_admin = $config['is_admin'] === true;
+    $is_image_path = $config['is_image_path'] === true;
     $base_url = $request->getBaseUrl();
     if ($base_url == '') $base_url = '/';
     $status_code = 200;
-
-    $is_image_path = in_array($path['absolute'], $account['path_image']);
     $is_video = false;
     $readme = false;
     @ob_start();
