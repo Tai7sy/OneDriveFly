@@ -69,8 +69,11 @@ class OneDrive
         $this->oauth = array_merge($this->oauth, $oauth);
 
         // 只能用个文件缓存代替
-        if (is_writable(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'test.qdrive')) {
+
+        if (is_writable(sys_get_temp_dir())) {
             $this->cache = new FilesystemCache(sys_get_temp_dir(), '.qdrive');
+        } elseif (is_writable('/tmp/')) {
+            $this->cache = new FilesystemCache('/tmp/', '.qdrive');
         } else {
             $this->cache = new VoidCache();
         }
