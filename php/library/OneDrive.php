@@ -4,13 +4,17 @@
 namespace Library;
 
 
+use Doctrine\Common\Cache\CacheProvider;
+use Doctrine\Common\Cache\MemcacheCache;
+use Doctrine\Common\Cache\MemcachedCache;
+use Doctrine\Common\Cache\RedisCache;
 use Doctrine\Common\Cache\VoidCache;
 use Doctrine\Common\Cache\FilesystemCache;
 use Exception;
 
 class OneDrive
 {
-    /** @var FilesystemCache */
+    /** @var CacheProvider */
     private $cache;
 
     private $cache_prefix;
@@ -47,9 +51,10 @@ class OneDrive
      * @param $refresh_token
      * @param string $provider
      * @param array $oauth
+     * @param array $cache
      * @throws Exception
      */
-    public function __construct($refresh_token, $provider = 'MS', $oauth = [])
+    public function __construct($refresh_token, $provider, $oauth, $cache)
     {
         self::$instance = $this;
 
@@ -70,12 +75,35 @@ class OneDrive
 
         // 只能用个文件缓存代替
 
-        if (is_writable(sys_get_temp_dir())) {
-            $this->cache = new FilesystemCache(sys_get_temp_dir(), '.qdrive');
-        } elseif (is_writable('/tmp/')) {
-            $this->cache = new FilesystemCache('/tmp/', '.qdrive');
-        } else {
-            $this->cache = new VoidCache();
+        switch ($cache['driver']) {
+            default:
+            case 'file':
+                if (is_writable(sys_get_temp_dir())) {
+                    $this->cache = new FilesystemCache(sys_get_temp_dir(), '.qdrive');
+                } elseif (is_writable('/tmp/')) {
+                    $this->cache = new FilesystemCache('/tmp/', '.qdrive');
+                } else {
+                    $this->cache = new VoidCache();
+                }
+                break;
+            case 'redis':
+                $redis = new \Redis();
+                $redis->connect($cache['redis']['host'], $cache['redis']['port']);
+                $this->cache = new RedisCache();
+                $this->cache->setRedis($redis);
+                break;
+            case 'memcache':
+                $redis = new \Memcache();
+                $redis->addServer($cache['memcache']['host'], $cache['memcache']['port']);
+                $this->cache = new MemcacheCache();
+                $this->cache->setMemcache($redis);
+                break;
+            case 'memcached':
+                $redis = new \Memcached();
+                $redis->addServer($cache['memcached']['host'], $cache['memcached']['port']);
+                $this->cache = new MemcachedCache();
+                $this->cache->setMemcached($redis);
+                break;
         }
 
         if ($refresh_token && isset($refresh_token{1})) {

@@ -128,7 +128,12 @@ function handler($request)
     try {
         $account['driver'] = new OneDrive($account['refresh_token'],
             !empty($account['provider']) ? $account['provider'] : 'MS',
-            !empty($account['oauth']) ? $account['oauth'] : []);
+            !empty($account['oauth']) ? $account['oauth'] : [],
+            array_merge([
+                'driver' => 'file',
+                'life_time' => 60,
+            ], isset($config['cache']) ? $config['cache'] : [])
+        );
 
         // get thumbnails for image file
         if ($request->query->has('thumbnails')) {
@@ -683,7 +688,7 @@ function render($account, $path, $files)
 <!DOCTYPE html>
 <html lang="<?php echo Lang::language(); ?>">
     <head>
-        <title><?php echo ($path['relative'] === '' ? '/' : urldecode($path['relative'])) . ' - ' . $config['name']; ?></title>
+        <title><?php echo $path['relative'] === '' ? $config['name'] : (urldecode($path['relative']) . ' - ' . $config['name']); ?></title>
         <!--
         https://github.com/Tai7sy/OneDriveFly
         -->
@@ -702,7 +707,7 @@ function render($account, $path, $files)
             .title{text-align:center;margin:2rem 0;letter-spacing:2px}
             .title a{color:#333;text-decoration:none}
             .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
-            .list-container{position:relative;overflow:hidden;border-radius:15px}
+            .list-container{position:relative;overflow:hidden}
             .list-header-container{position:relative}
             .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}

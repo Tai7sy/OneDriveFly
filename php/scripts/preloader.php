@@ -17,7 +17,7 @@ $config = ClassLoader::getIncludes(function (ClassLoader $loader) {
     try {
         new \Library\Ext();
         new \Library\Lang();
-        new \Library\OneDrive(null);
+        new \Library\OneDrive(null, 'MS', [], []);
 
         new \Platforms\Normal\Normal();
         new \Platforms\QCloudSCF\QCloudSCF();

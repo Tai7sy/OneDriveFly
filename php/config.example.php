@@ -10,7 +10,6 @@ class Config
 {
     public static $config = [
         'name' => 'yes',
-        'platform' => 'Normal',
         'multi' => 0,
         'accounts' => [
             [
@@ -20,9 +19,13 @@ class Config
                 'refresh_token' => '',
             ],
         ],
-        'debug' => true,
-        'proxy' => '',
         'password_file' => 'password',
         'admin_password' => '123456',
+        'debug' => true,
+        'proxy' => '',
+        'cache' => [
+            'driver' => 'file',
+            'life_time' => 120,
+        ]
     ];
 }
