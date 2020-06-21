@@ -3,13 +3,13 @@
 /**
  * OneDriveFly
  * @author 风铃
- * @see https://github.com/Tai7sy/OneDriverFly
+ * @see https://github.com/Tai7sy/OneDriveFly
  */
 
 class Config
 {
     public static $config = [
-        'name' => 'yes',
+        'name' => 'OneDriveFly',
         'platform' => 'Normal',
         'multi' => 0,
         'accounts' => [
