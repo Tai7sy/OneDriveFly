@@ -701,8 +701,8 @@ function render($account, $path, $files)
             .select-language{position:absolute;right:5px}
             .title{text-align:center;margin:2rem 0;letter-spacing:2px}
             .title a{color:#333;text-decoration:none}
-            .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow:0 0 32px 0 rgba(0,0,0,.1)}
-            .list-container{position:relative;overflow:hidden;border-radius:15px}
+            .list-wrapper{width:80%;margin:0 auto 40px;position:relative;box-shadow: 0 0 12px 0 rgba(0,0,0,.1);}
+            .list-container{position:relative;overflow:hidden;border-radius:0}
             .list-header-container{position:relative}
             .list-header-container a.back-link{color:#000;display:inline-block;position:absolute;font-size:16px;margin:20px 10px;padding:10px 10px;vertical-align:middle;text-decoration:none}
             .list-container,.list-header-container,.list-wrapper,a.back-link:hover,body{color:#24292e}
@@ -934,7 +934,7 @@ function render($account, $path, $files)
             <?php } ?>
             <ion-icon name="folder"></ion-icon>
             <a id="filename_<?php echo $index; ?>"
-               href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'] . '/')); ?>"><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
+               href="<?php echo htmlspecialchars(path_format($base_url . '/' . $path['relative'] . '/' . $file['name'] . '/')); ?>"><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
         </td>
         <td class="updated_at"><?php echo time_format($file['lastModifiedDateTime']); ?></td>
         <td class="size"><?php echo size_format($file['size']); ?></td>
@@ -997,9 +997,9 @@ function render($account, $path, $files)
             <?php } ?>
             <a id="filename_<?php echo $index; ?>"
                class="filename"
-               href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>?preview"
+               href="<?php echo htmlspecialchars(path_format($base_url . '/' . $path['relative'] . '/' . $file['name'])); ?>?preview"
                target=_blank><?php echo htmlspecialchars(urldecode($file['name'])); ?></a>
-            <a href="<?php echo htmlspecialchars(path_format($path['relative'] . '/' . $file['name'])); ?>">
+            <a href="<?php echo htmlspecialchars(path_format($base_url . '/' . $path['relative'] . '/' . $file['name'])); ?>">
                 <ion-icon name="download"></ion-icon>
             </a>
         </td>
@@ -1254,7 +1254,7 @@ if ($readme) {
     <script type="text/javascript" src="//cdn.bootcss.com/spark-md5/3.0.0/spark-md5.min.js"></script>
 <?php } ?>
     <script type="text/javascript">
-        var root = '/';
+        var root = '<?php echo $base_url; ?>';
 
         function path_format(path) {
             path = '/' + path + '/';

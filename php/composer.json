@@ -1,5 +1,5 @@
 {
-  "name": "OneDriveFly",
+  "name": "tai7sy/onedrive-fly",
   "description": "OneDrive index anywhere",
   "license": "MIT",
   "type": "project",
@@ -7,8 +7,8 @@
     "php": "^7.0.0",
     "ext-json": "*",
     "ext-curl": "*",
-    "classpreloader/classpreloader": "^4.0",
-    "classpreloader/console": "^3.0",
+    "classpreloader/classpreloader": "~4.0.1",
+    "classpreloader/console": "~3.0.1",
     "doctrine/cache": "~1.6.2",
     "symfony/http-foundation": "~3.3"
   },
@@ -30,7 +30,7 @@
     "post-root-package-install": [
       "@php -r \"file_exists('config.php') || copy('config.example.php', 'config.php');\""
     ],
-    "post-autoload-dump": "php vendor/bin/classpreloader compile --config=scripts/preloader.php --output=../dist/vendor.php && php scripts/dist.php",
+    "post-autoload-dump": "classpreloader compile --config=scripts/preloader.php --output=../dist/vendor.php && php scripts/dist.php",
     "build": "composer dump-autoload --optimize"
   },
   "repositories": {
